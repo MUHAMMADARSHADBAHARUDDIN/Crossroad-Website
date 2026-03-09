@@ -20,7 +20,7 @@ $_SESSION['username'] = $username;
 header("Location: dashboard.php");
 exit();
 } else {
-$error = "Invalid username or password!";// checking
+$error = "Invalid username or password!";// checking error
 }
 } else {
 $error = "Invalid username or password!";
