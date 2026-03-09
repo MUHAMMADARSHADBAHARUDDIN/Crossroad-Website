@@ -1,5 +1,5 @@
 -- use database
-use crossroad_solution_inventory_management;
+use crossroad_solutions_inventory_management;
 
 -- =========================
 -- 1. asset inventory table
@@ -83,4 +83,5 @@ drop table if exists system_admin;
 create table system_admin (
     username varchar(100) primary key,
     password varchar(255)
+
 );
