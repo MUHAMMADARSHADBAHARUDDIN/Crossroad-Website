@@ -1,7 +1,7 @@
 -- cmis dummy data
 -- database: crossroad_solution_inventory_management
 
-use crossroad_solution_inventory_management;
+use crossroad_solutions_inventory_management;
 
 -- =================================
 -- asset inventory dummy data
