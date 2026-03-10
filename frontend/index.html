@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crossroad Inventory Login</title>
+
+    <!-- Font Awesome Icon Library -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+
+    <style>
+     body{
+        font-family: Arial, sans-serif;
+        height: 100vh;
+        margin: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        position: relative;
+        overflow: hidden;
+    }
+
+        /* Background image with blur */
+        body::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: url("../image/login_background.jpeg") no-repeat center center/cover;
+            filter: blur(3px);   /* adjust blur amount */
+            z-index: -1;          /* send behind login box */
+        }
+
+        .login-box{
+            background:white;
+            padding:30px;
+            width:350px;
+            border-radius:8px;
+            box-shadow:0 4px 10px rgba(0,0,0,0.5);
+        }
+
+        h2{
+            //text-align:center;
+            //margin-bottom:20px;
+        }
+        .logo-container {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .logo-text {
+            display: flex;
+           // align-items: center;   /* vertically center the text with the logo */
+           // justify-content: center; /* center horizontally */
+            gap: 10px; /* space between logo and text */
+            font-size: 24px; /* adjust as needed */
+            font-weight: bold;
+        }
+
+        .logo {
+            width: 25px;  /* adjust size of logo */
+            height: auto;
+        }
+        label{
+            font-size:14px;
+        }
+
+        input{
+            width:100%;
+            padding:10px;
+            margin-top:5px;
+            margin-bottom:15px;
+            border:1px solid #ccc;
+            border-radius:5px;
+            box-sizing:border-box;
+        }
+
+        /* password wrapper */
+
+        .password-wrapper{
+            position:relative;
+            margin-top:5px;
+            margin-bottom:15px;
+        }
+
+        .password-wrapper input{
+            padding-right:40px;
+        }
+
+        .toggle-password{
+            position:absolute;
+            right:10px;
+            top:40%;
+            transform:translateY(-50%);
+            cursor:pointer;
+            font-size:16px;
+            color:#555;
+        }
+
+        /* login button */
+
+        button{
+            width:100%;
+            padding:10px;
+            border:none;
+            background:#ffc107;
+            color:black;
+            font-size:16px;
+            border-radius:5px;
+            cursor:pointer;
+            display:flex;
+            justify-content:center;
+            align-items:center;
+            gap:8px;
+        }
+
+        button:hover{
+            background:#edb100;
+        }
+
+    </style>
+
+</head>
+<body>
+
+<div class="login-box">
+
+    <!-- Logo -->
+    <div class="logo-container">
+        <h2 class="logo-text">
+            <img src="../image/logo.png" alt="Crossroad Solutions" class="logo">
+            <span>Crossroad Solutions</span>
+        </h2>
+    </div>
+
+
+    <h3>Welcome Back</h3>
+
+    <form action="../backend/login.php" method="POST">
+
+        <label>Username</label>
+        <input type="text" name="username" required>
+
+        <label>Password</label>
+
+        <div class="password-wrapper">
+            <input type="password" id="password" name="password" required>
+            <span class="toggle-password" onclick="togglePassword()">👁</span>
+        </div>
+
+        <button type="submit">
+            <i class="fa-solid fa-right-to-bracket"></i> Login
+        </button>
+
+    </form>
+
+</div>
+
+<script>
+
+    function togglePassword(){
+
+        const password = document.getElementById("password");
+
+        if(password.type === "password"){
+            password.type = "text";
+        }else{
+            password.type = "password";
+        }
+
+    }
+
+</script>
+
+</body>
+</html>

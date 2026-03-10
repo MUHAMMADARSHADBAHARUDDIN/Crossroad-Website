@@ -1,6 +1,3 @@
--- use database
-use crossroad_solutions_inventory_management;
-
 -- =========================
 -- 1. asset inventory table
 -- =========================
