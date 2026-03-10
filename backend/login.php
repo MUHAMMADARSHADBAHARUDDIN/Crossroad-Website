@@ -7,89 +7,39 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $username = trim($_POST["username"]);
     $password = trim($_POST["password"]);
 
-    /* ---------------------------
-       1. CHECK SYSTEM ADMIN
-    --------------------------- */
+    // Define user roles and corresponding redirect pages
+    $roles = [
+        "system_admin" => "../frontend/system_admin_dashboard.html",
+        "administrator" => "../frontend/admin_dashboard.html",
+        "user" => "../frontend/user_dashboard.html"
+    ];
 
-    $stmt = $mysqli->prepare("SELECT password FROM system_admin WHERE username=?");
-    $stmt->bind_param("s",$username);
-    $stmt->execute();
-    $stmt->store_result();
+    $loggedIn = false;
 
-    if($stmt->num_rows === 1){
+    foreach ($roles as $table => $redirectPage) {
 
-        $stmt->bind_result($db_password);
-        $stmt->fetch();
+        $stmt = $mysqli->prepare("SELECT password FROM $table WHERE username=?");
+        $stmt->bind_param("s", $username);
+        $stmt->execute();
+        $stmt->store_result();
 
-        if($password === $db_password){
+        if ($stmt->num_rows === 1) {
+            $stmt->bind_result($db_password);
+            $stmt->fetch();
 
-            $_SESSION["username"] = $username;
-            $_SESSION["role"] = "system_admin";
-
-            header("Location: ../frontend/system_admin_dashboard.html");
-            exit();
+            // Plain password comparison (change to password_verify if hashed)
+            if ($password === $db_password) {
+                $_SESSION["username"] = $username;
+                $_SESSION["role"] = $table;
+                $stmt->close();
+                header("Location: $redirectPage");
+                exit();
+            }
         }
+        $stmt->close();
     }
 
-    $stmt->close();
-
-    /* ---------------------------
-       2. CHECK ADMINISTRATOR
-    --------------------------- */
-
-    $stmt = $mysqli->prepare("SELECT password FROM administrator WHERE username=?");
-    $stmt->bind_param("s",$username);
-    $stmt->execute();
-    $stmt->store_result();
-
-    if($stmt->num_rows === 1){
-
-        $stmt->bind_result($db_password);
-        $stmt->fetch();
-
-        if($password === $db_password){
-
-            $_SESSION["username"] = $username;
-            $_SESSION["role"] = "administrator";
-
-            header("Location: ../frontend/admin_dashboard.html");
-            exit();
-        }
-    }
-
-    $stmt->close();
-
-    /* ---------------------------
-       3. CHECK NORMAL USER
-    --------------------------- */
-
-    $stmt = $mysqli->prepare("SELECT password FROM user WHERE username=?");
-    $stmt->bind_param("s",$username);
-    $stmt->execute();
-    $stmt->store_result();
-
-    if($stmt->num_rows === 1){
-
-        $stmt->bind_result($db_password);
-        $stmt->fetch();
-
-        if($password === $db_password){
-
-            $_SESSION["username"] = $username;
-            $_SESSION["role"] = "user";
-
-            header("Location: ../frontend/user_dashboard.html");
-            exit();
-        }
-    }
-
-    $stmt->close();
-
-    /* ---------------------------
-       LOGIN FAILED
-    --------------------------- */
-
-    echo "Invalid username or password";
-
+    // If we reach here, login failed
+    echo "<script>alert('Invalid username or password'); window.location.href='../frontend/index.html';</script>";
 }
 ?>
