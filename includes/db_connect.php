@@ -1,7 +1,7 @@
 <?php
 $DB_HOST = 'localhost';
 $DB_PORT = 3306;
-$DB_NAME = 'crossroad_solutions_inventory_managment';
+$DB_NAME = 'crossroad_solutions_inventory_management';
 $DB_USER = 'root';
 $DB_PASS = ''; // default XAMPP password is empty
 

@@ -1,11 +1,19 @@
 <?php
 session_start();
-$role = $_SESSION['role'] ?? 'User';
+
+if(!isset($_SESSION['username'])){
+    header("Location: index.html");
+    exit();
+}
+
+$role = $_SESSION['role'];
+$username = $_SESSION['username'];
 ?>
 
 <!DOCTYPE html>
 
 <html lang="en">
+
 <head>
 
     <meta charset="UTF-8">
@@ -83,6 +91,20 @@ $role = $_SESSION['role'] ?? 'User';
             display:none;
         }
 
+        /* ADMIN BUTTON */
+
+        .manage-users{
+            background:#ffc107;
+            color:black !important;
+            font-weight:600;
+            margin-top:15px;
+            border-radius:6px;
+        }
+
+        .manage-users:hover{
+            background:#ffb300;
+        }
+
         /* HEADER */
 
         .topbar{
@@ -105,8 +127,6 @@ $role = $_SESSION['role'] ?? 'User';
         .topbar.expanded{
             left:70px;
         }
-
-        /* HEADER LEFT ITEMS */
 
         .header-left{
             display:flex;
@@ -151,9 +171,6 @@ $role = $_SESSION['role'] ?? 'User';
             box-shadow:0 4px 10px rgba(0,0,0,0.1);
             transition:all 0.25s ease;
             cursor:pointer;
-        }
-
-        .card{
             height:180px;
             display:flex;
             flex-direction:column;
@@ -220,6 +237,15 @@ $role = $_SESSION['role'] ?? 'User';
         <span>Tender Tracker</span>
     </a>
 
+    <?php if($role == "Administrator"): ?>
+
+        <a href="#" class="manage-users">
+            <i class="fa fa-user-cog"></i>
+            <span>Manage Users</span>
+        </a>
+
+    <?php endif; ?>
+
 </div>
 
 <!-- HEADER -->
@@ -227,8 +253,6 @@ $role = $_SESSION['role'] ?? 'User';
 <div class="topbar" id="topbar">
 
     <div class="header-left">
-
-
 
         <button class="btn btn-warning" onclick="toggleSidebar()">
             <i class="fa fa-bars"></i>
@@ -243,22 +267,22 @@ $role = $_SESSION['role'] ?? 'User';
     <div class="d-flex align-items-center gap-3">
 
 <span class="badge bg-warning text-dark">
-Administrator
+<?php echo $role; ?>
 </span>
 
         <span>
-<i class="fa fa-user"></i> admin
+<i class="fa fa-user"></i> <?php echo $username; ?>
 </span>
 
-        <button class="btn btn-outline-light btn-sm">
+        <a href="logout.php" class="btn btn-outline-light btn-sm">
             Logout
-        </button>
+        </a>
 
     </div>
 
 </div>
 
-<!-- MAIN CONTENT -->
+<!-- MAIN -->
 
 <div class="main" id="main">
 
@@ -270,8 +294,7 @@ Administrator
 
         <p>
             A centralized internal platform for Crossroad Solutions employees to manage project contracts,
-            track company assets, and monitor tender activities. The system provides organized inventory
-            control, contract lifecycle tracking, and operational visibility across all projects.
+            track company assets, and monitor tender activities.
         </p>
 
     </div>
@@ -291,9 +314,7 @@ Administrator
 
                 <p>Browse, manage, and monitor company project contracts.</p>
 
-                <button class="btn btn-warning">
-                    Open
-                </button>
+                <button class="btn btn-warning">Open</button>
 
             </div>
 
@@ -310,9 +331,7 @@ Administrator
 
                 <p>Track servers, hardware, and equipment across locations.</p>
 
-                <button class="btn btn-warning">
-                    Open
-                </button>
+                <button class="btn btn-warning">Open</button>
 
             </div>
 
@@ -329,9 +348,7 @@ Administrator
 
                 <p>Monitor tender opportunities and submission status.</p>
 
-                <button class="btn btn-warning">
-                    Open
-                </button>
+                <button class="btn btn-warning">Open</button>
 
             </div>
 
@@ -339,7 +356,7 @@ Administrator
 
     </div>
 
-    <!-- CONTRACT SECTION -->
+    <!-- CONTRACTS OVERVIEW -->
 
     <h4>Contracts Overview</h4>
 
@@ -378,13 +395,7 @@ Administrator
     <div class="card shadow-sm">
 
         <div class="card-header bg-dark text-white">
-
             Recent Contracts
-
-            <button class="btn btn-sm btn-warning float-end">
-                View All
-            </button>
-
         </div>
 
         <div class="card-body">
@@ -400,7 +411,6 @@ Administrator
                     <th>Year</th>
                     <th>Start</th>
                     <th>End</th>
-                    <th>Action</th>
                 </tr>
 
                 </thead>
@@ -408,9 +418,7 @@ Administrator
                 <tbody>
 
                 <tr>
-                    <td colspan="7" class="text-center">
-                        No contracts yet
-                    </td>
+                    <td colspan="6" class="text-center">No contracts yet</td>
                 </tr>
 
                 </tbody>
@@ -423,7 +431,7 @@ Administrator
 
     <div class="section-divider"></div>
 
-    <!-- ASSET INVENTORY SECTION -->
+    <!-- ASSET INVENTORY -->
 
     <h4>Asset Inventory Overview</h4>
 
@@ -461,7 +469,7 @@ Administrator
 
     <div class="section-divider"></div>
 
-    <!-- TENDER TRACKER SECTION -->
+    <!-- TENDER -->
 
     <h4>Tender Tracker Overview</h4>
 
@@ -499,17 +507,10 @@ Administrator
         const sidebar = document.getElementById("sidebar")
         const main = document.getElementById("main")
         const topbar = document.getElementById("topbar")
-        const dashboardText = document.getElementById("dashboardText")
 
         sidebar.classList.toggle("collapsed")
         main.classList.toggle("expanded")
         topbar.classList.toggle("expanded")
-
-        if(sidebar.classList.contains("collapsed")){
-            dashboardText.style.display="none"
-        }else{
-            dashboardText.style.display="block"
-        }
 
     }
 
