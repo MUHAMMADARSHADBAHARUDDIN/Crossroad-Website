@@ -94,11 +94,11 @@ $username = $_SESSION['username'];
         /* ADMIN BUTTON */
 
         .manage-users{
-            background:#ffc107;
-            color:black !important;
+            background:#1a1a1a;
+            color:white;
             font-weight:600;
-            margin-top:15px;
-            border-radius:6px;
+            margin-top:0px;
+            border-radius:20px;
         }
 
         .manage-users:hover{
@@ -239,7 +239,7 @@ $username = $_SESSION['username'];
 
     <?php if($role == "Administrator"): ?>
 
-        <a href="#" class="manage-users">
+       <a href="manage_users.php" class="manage-users">
             <i class="fa fa-user-cog"></i>
             <span>Manage Users</span>
         </a>
