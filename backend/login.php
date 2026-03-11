@@ -1,14 +1,13 @@
 <?php
-global $mysqli, $mysqli;
 session_start();
-require_once '../includes/db_connect.php';
+include("../includes/db_connect.php");
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     $username = trim($_POST["username"]);
     $password = trim($_POST["password"]);
 
-    // Table name => Role name
+    // Tables with roles
     $roles = [
         "system_admin" => "System Admin",
         "administrator" => "Administrator",
@@ -27,13 +26,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $stmt->store_result();
 
         if ($stmt->num_rows === 1) {
-
             $stmt->bind_result($db_password);
             $stmt->fetch();
 
-            // Plain password check (since your DB stores plain passwords)
-            if ($password === $db_password) {
-
+            // Verify hashed password
+            if (password_verify($password, $db_password)) {
                 $_SESSION["username"] = $username;
                 $_SESSION["role"] = $roleName;
 
@@ -45,7 +42,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $stmt->close();
     }
 
-    // If login failed
+    // Login failed
     echo "<script>
             alert('Invalid username or password');
             window.location.href='../frontend/index.html';
