@@ -1,8 +1,9 @@
 <?php
+global $mysqli;
 include("../includes/db_connect.php");
 
 // Admin username
-$username = "Boss James"; // replace with your admin username
+$username = "Boss Frank"; // replace with your admin username
 $password = "1111";  // current plain password
 
 // Hash the password

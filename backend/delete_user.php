@@ -1,5 +1,6 @@
 <?php
 
+global $mysqli;
 include("../includes/db_connect.php");
 
 $username = $_GET['username'];
