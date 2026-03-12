@@ -11,7 +11,6 @@ $username = $_SESSION['username'];
 ?>
 
 <!DOCTYPE html>
-
 <html lang="en">
 
 <head>
@@ -27,240 +26,29 @@ $username = $_SESSION['username'];
 
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
-    <style>
+    <link rel="stylesheet" href="style.css">
 
-        body{
-            background:#f4f6f9;
-            font-family:'Inter',sans-serif;
-            overflow-x:hidden;
-        }
 
-        /* SIDEBAR */
-
-        .sidebar{
-            width:230px;
-            height:100vh;
-            background:#1a1a1a;
-            position:fixed;
-            top:0;
-            left:0;
-            color:white;
-            padding-top:20px;
-            transition:width 0.3s ease;
-            overflow:hidden;
-        }
-
-        .sidebar.collapsed{
-            width:70px;
-        }
-
-        .sidebar-title{
-            color:white;
-            font-weight:600;
-            padding-left:20px;
-            margin-bottom:20px;
-            transition:opacity 0.3s;
-        }
-
-        .sidebar.collapsed .sidebar-title{
-            opacity:0;
-        }
-
-        .sidebar a{
-            display:flex;
-            align-items:center;
-            gap:12px;
-            color:white;
-            text-decoration:none;
-            padding:12px 20px;
-            font-size:15px;
-            transition:background 0.2s;
-        }
-
-        .sidebar a:hover{
-            background:#ffc107;
-            color:black;
-        }
-
-        .sidebar i{
-            width:20px;
-            text-align:center;
-        }
-
-        .sidebar.collapsed a span{
-            display:none;
-        }
-
-        /* ADMIN BUTTON */
-
-        .manage-users{
-            background:#ffc107;
-            color:black !important;
-            font-weight:600;
-            margin-top:15px;
-            border-radius:6px;
-        }
-
-        .manage-users:hover{
-            background:#ffb300;
-        }
-
-        /* HEADER */
-
-        .topbar{
-            position:fixed;
-            top:0;
-            left:230px;
-            right:0;
-            height:70px;
-            background:#1a1a1a;
-            color:white;
-            display:flex;
-            align-items:center;
-            justify-content:space-between;
-            padding:0 20px;
-            border-bottom:3px solid #ffc107;
-            transition:left 0.3s ease;
-            z-index:99;
-        }
-
-        .topbar.expanded{
-            left:70px;
-        }
-
-        .header-left{
-            display:flex;
-            align-items:center;
-            gap:15px;
-        }
-
-        .header-logo{
-            height:35px;
-        }
-
-        /* MAIN */
-
-        .main{
-            margin-left:230px;
-            padding:100px 30px 30px 30px;
-            transition:margin-left 0.3s ease;
-        }
-
-        .main.expanded{
-            margin-left:70px;
-        }
-
-        /* BANNER */
-
-        .banner{
-            background:linear-gradient(135deg,#1a1a1a,#333);
-            color:white;
-            padding:40px;
-            border-radius:15px;
-            margin-bottom:25px;
-        }
-
-        .banner h2{
-            font-weight:700;
-        }
-
-        /* CARDS */
-
-        .card{
-            border-radius:12px;
-            box-shadow:0 4px 10px rgba(0,0,0,0.1);
-            transition:all 0.25s ease;
-            cursor:pointer;
-            height:180px;
-            display:flex;
-            flex-direction:column;
-            justify-content:space-between;
-        }
-
-        .card:hover{
-            transform:translateY(-6px) scale(1.02);
-            box-shadow:0 12px 25px rgba(0,0,0,0.15);
-        }
-
-        /* STAT CARDS */
-
-        .stat-card{
-            border-radius:12px;
-            box-shadow:0 4px 10px rgba(0,0,0,0.1);
-            padding:20px;
-            background:white;
-            text-align:center;
-            transition:all 0.25s ease;
-        }
-
-        .stat-card:hover{
-            transform:translateY(-6px);
-            box-shadow:0 12px 25px rgba(0,0,0,0.15);
-        }
-
-        /* DIVIDER */
-
-        .section-divider{
-            border-top:2px solid #ddd;
-            margin:40px 0;
-        }
-
-    </style>
 
 </head>
 
 <body>
 
-<!-- SIDEBAR -->
-
-<div class="sidebar" id="sidebar">
-
-    <div class="sidebar-title">Dashboard</div>
-
-    <a href="#">
-        <i class="fa fa-home"></i>
-        <span>Homepage</span>
-    </a>
-
-    <a href="#">
-        <i class="fa fa-file-contract"></i>
-        <span>Contracts</span>
-    </a>
-
-    <a href="#">
-        <i class="fa fa-box"></i>
-        <span>Asset Inventory</span>
-    </a>
-
-    <a href="#">
-        <i class="fa fa-chart-line"></i>
-        <span>Tender Tracker</span>
-    </a>
-
-    <?php if($role == "Administrator"): ?>
-
-        <a href="#" class="manage-users">
-            <i class="fa fa-user-cog"></i>
-            <span>Manage Users</span>
-        </a>
-
-    <?php endif; ?>
-
-</div>
-
 <!-- HEADER -->
 
-<div class="topbar" id="topbar">
+<div class="topbar">
 
     <div class="header-left">
 
-        <button class="btn btn-warning" onclick="toggleSidebar()">
-            <i class="fa fa-bars"></i>
-        </button>
+        <div class="menu-btn" id="menuBtn" onclick="toggleSidebar()">
+            <span></span>
+            <span></span>
+            <span></span>
+        </div>
 
         <img src="../image/logo.png" class="header-logo">
 
-        <span>Crossroad Solutions Inventory Management</span>
+        <span class="company-title">Crossroad Solutions</span>
 
     </div>
 
@@ -282,11 +70,46 @@ $username = $_SESSION['username'];
 
 </div>
 
+<!-- SIDEBAR -->
+
+<div class="sidebar" id="sidebar">
+
+    <a href="home.php">
+        <i class="fa fa-home"></i>
+        <span>Homepage</span>
+    </a>
+
+    <a href="contracts.php">
+        <i class="fa fa-file-contract"></i>
+        <span>Contracts</span>
+    </a>
+
+    <a href="asset_inventory.php">
+        <i class="fa fa-box"></i>
+        <span>Asset Inventory</span>
+    </a>
+
+    <a href="#">
+        <i class="fa fa-chart-line"></i>
+        <span>Tender Tracker</span>
+    </a>
+
+    <?php if($role === "Administrator"): ?>
+
+        <a href="#" class="manage-users">
+            <i class="fa fa-user-cog"></i>
+            <span>Manage Users</span>
+        </a>
+
+    <?php endif; ?>
+
+</div>
+
 <!-- MAIN -->
 
-<div class="main" id="main">
 
-    <!-- BANNER -->
+
+<div class="main" id="main">
 
     <div class="banner">
 
@@ -299,13 +122,14 @@ $username = $_SESSION['username'];
 
     </div>
 
+
     <!-- QUICK ACCESS -->
 
     <div class="row mb-4">
 
         <div class="col-md-4">
 
-            <div class="card p-4 shadow-sm">
+            <div class="card dashboard-card p-4 shadow-sm">
 
                 <h5>
                     <i class="fa fa-file-contract text-warning"></i>
@@ -314,7 +138,7 @@ $username = $_SESSION['username'];
 
                 <p>Browse, manage, and monitor company project contracts.</p>
 
-                <button class="btn btn-warning">Open</button>
+                <a href="contracts.php" class="btn btn-warning">Open</a>
 
             </div>
 
@@ -322,7 +146,7 @@ $username = $_SESSION['username'];
 
         <div class="col-md-4">
 
-            <div class="card p-4 shadow-sm">
+            <div class="card dashboard-card p-4 shadow-sm">
 
                 <h5>
                     <i class="fa fa-box text-warning"></i>
@@ -331,7 +155,7 @@ $username = $_SESSION['username'];
 
                 <p>Track servers, hardware, and equipment across locations.</p>
 
-                <button class="btn btn-warning">Open</button>
+                <a href="asset_inventory.php" class="btn btn-warning">Open</a>
 
             </div>
 
@@ -339,7 +163,7 @@ $username = $_SESSION['username'];
 
         <div class="col-md-4">
 
-            <div class="card p-4 shadow-sm">
+            <div class="card dashboard-card p-4 shadow-sm">
 
                 <h5>
                     <i class="fa fa-chart-line text-warning"></i>
@@ -348,7 +172,7 @@ $username = $_SESSION['username'];
 
                 <p>Monitor tender opportunities and submission status.</p>
 
-                <button class="btn btn-warning">Open</button>
+                <a href="#" class="btn btn-warning">Open</a>
 
             </div>
 
@@ -356,7 +180,7 @@ $username = $_SESSION['username'];
 
     </div>
 
-    <!-- CONTRACTS OVERVIEW -->
+    <!-- CONTRACTS -->
 
     <h4>Contracts Overview</h4>
 
@@ -392,46 +216,9 @@ $username = $_SESSION['username'];
 
     </div>
 
-    <div class="card shadow-sm">
-
-        <div class="card-header bg-dark text-white">
-            Recent Contracts
-        </div>
-
-        <div class="card-body">
-
-            <table class="table">
-
-                <thead>
-
-                <tr>
-                    <th>Project</th>
-                    <th>Status</th>
-                    <th>Service</th>
-                    <th>Year</th>
-                    <th>Start</th>
-                    <th>End</th>
-                </tr>
-
-                </thead>
-
-                <tbody>
-
-                <tr>
-                    <td colspan="6" class="text-center">No contracts yet</td>
-                </tr>
-
-                </tbody>
-
-            </table>
-
-        </div>
-
-    </div>
-
     <div class="section-divider"></div>
 
-    <!-- ASSET INVENTORY -->
+    <!-- ASSETS -->
 
     <h4>Asset Inventory Overview</h4>
 
@@ -500,17 +287,20 @@ $username = $_SESSION['username'];
 
 </div>
 
+<?php include "layout/footer.php"; ?>
+
 <script>
 
     function toggleSidebar(){
 
         const sidebar = document.getElementById("sidebar")
         const main = document.getElementById("main")
-        const topbar = document.getElementById("topbar")
+        const btn = document.getElementById("menuBtn")
 
         sidebar.classList.toggle("collapsed")
         main.classList.toggle("expanded")
-        topbar.classList.toggle("expanded")
+
+        btn.classList.toggle("active")
 
     }
 
