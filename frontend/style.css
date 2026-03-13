@@ -140,8 +140,8 @@ body{
 /* ADMIN BUTTON */
 
 .manage-users{
-    background:#ffc107;
-    color:black !important;
+    background:#1a1a1a;
+    color:white;
     font-weight:600;
 }
 
