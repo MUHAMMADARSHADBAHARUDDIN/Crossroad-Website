@@ -9,7 +9,7 @@ if(!isset($_SESSION['username'])){
 
 include("../includes/db_connect.php");
 
-$users = $mysqli->query("SELECT username,role FROM user ORDER BY username ASC");
+$users = $mysqli->query("SELECT username FROM user ORDER BY username ASC");
 $admins = $mysqli->query("SELECT username FROM system_admin ORDER BY username ASC");
 ?>
 
@@ -103,26 +103,26 @@ $admins = $mysqli->query("SELECT username FROM system_admin ORDER BY username AS
                             <td><?= htmlspecialchars($row['username']) ?></td>
 
                             <td>
-                                <span class="badge badge-user"><?= htmlspecialchars($row['role']) ?></span>
+                                <span class="badge badge-user">User</span>
                             </td>
 
                             <td>
 
                                 <button
-                                    class="btn btn-sm btn-primary action-btn editUserBtn"
-                                    data-username="<?= $row['username'] ?>"
-                                    data-role="user"
-                                    data-bs-toggle="modal"
-                                    data-bs-target="#editUserModal">
+                                        class="btn btn-sm btn-primary action-btn editUserBtn"
+                                        data-username="<?= $row['username'] ?>"
+                                        data-role="user"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editUserModal">
 
                                     <i class="fa fa-edit"></i>
 
                                 </button>
 
                                 <a
-                                    href="../backend/delete_user.php?username=<?= $row['username'] ?>&role=user"
-                                    class="btn btn-sm btn-danger action-btn"
-                                    onclick="return confirm('Delete this user?')">
+                                        href="../backend/delete_user.php?username=<?= $row['username'] ?>&role=user"
+                                        class="btn btn-sm btn-danger action-btn"
+                                        onclick="return confirm('Delete this user?')">
 
                                     <i class="fa fa-trash"></i>
 
@@ -150,20 +150,20 @@ $admins = $mysqli->query("SELECT username FROM system_admin ORDER BY username AS
                             <td>
 
                                 <button
-                                    class="btn btn-sm btn-primary action-btn editUserBtn"
-                                    data-username="<?= $row['username'] ?>"
-                                    data-role="system_admin"
-                                    data-bs-toggle="modal"
-                                    data-bs-target="#editUserModal">
+                                        class="btn btn-sm btn-primary action-btn editUserBtn"
+                                        data-username="<?= $row['username'] ?>"
+                                        data-role="system_admin"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editUserModal">
 
                                     <i class="fa fa-edit"></i>
 
                                 </button>
 
                                 <a
-                                    href="../backend/delete_user.php?username=<?= $row['username'] ?>&role=system_admin"
-                                    class="btn btn-sm btn-danger action-btn"
-                                    onclick="return confirm('Delete this user?')">
+                                        href="../backend/delete_user.php?username=<?= $row['username'] ?>&role=system_admin"
+                                        class="btn btn-sm btn-danger action-btn"
+                                        onclick="return confirm('Delete this user?')">
 
                                     <i class="fa fa-trash"></i>
 
@@ -217,15 +217,8 @@ $admins = $mysqli->query("SELECT username FROM system_admin ORDER BY username AS
                     <div class="mb-3">
                         <label>Role</label>
                         <select name="role" class="form-control" required>
-
+                            <option value="user">User</option>
                             <option value="system_admin">System Admin</option>
-
-                            <option value="User (Project Coordinator)">Project Coordinator</option>
-
-                            <option value="User (Technical)">Technical</option>
-
-                            <option value="User (Project Manager)">Project Manager</option>
-
                         </select>
                     </div>
 

@@ -69,12 +69,6 @@ $username = $_SESSION['username'];
     </div>
 
 </div>
-<?php include "layout/sidebar.php"; ?>
-
-
-
-
-
 
 
 
