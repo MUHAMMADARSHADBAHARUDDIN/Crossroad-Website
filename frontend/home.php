@@ -48,7 +48,7 @@ $username = $_SESSION['username'];
 
         <img src="../image/logo.png" class="header-logo">
 
-        <span class="company-title">Crossroad Solutions</span>
+        <span class="company-title">Crossroad Solutions Sdn Bhd</span>
 
     </div>
 
@@ -72,6 +72,7 @@ $username = $_SESSION['username'];
 
 <!-- SIDEBAR -->
 
+<<<<<<< HEAD
 <div class="sidebar" id="sidebar">
 
     <a href="home.php">
@@ -111,6 +112,9 @@ $username = $_SESSION['username'];
 
     <?php endif; ?>
 </div>
+=======
+<?php include "layout/sidebar.php"; ?>
+>>>>>>> 1e01d133a453da04ae33a2d104d6c97d0c8ca176
 
 <!-- MAIN -->
 
