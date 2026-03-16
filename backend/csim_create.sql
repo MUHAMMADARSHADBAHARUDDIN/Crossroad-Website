@@ -1,5 +1,5 @@
 -- =========================
--- 1. asset inventory table
+-- 1. asset inventory table testing update
 -- =========================
 drop table if exists asset_inventory;
 
