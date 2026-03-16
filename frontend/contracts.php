@@ -225,32 +225,14 @@ $result = $mysqli->query($sql);
 
         $('#contractsTable').DataTable({
 
+            pageLength: 10,
+
             dom: 'Bfrtip',
 
             buttons: [
-
-                {
-                    extend: 'excel',
-                    text: '<i class="fa fa-file-excel"></i> Excel'
-                },
-
-                {
-                    extend: 'pdf',
-                    text: '<i class="fa fa-file-pdf"></i> PDF',
-
-                    orientation: 'landscape',
-                    pageSize: 'A4',
-
-                    customize: function(doc){
-
-                        doc.styles.tableHeader.alignment = 'left';
-
-                        doc.content[1].table.widths =
-                            Array(doc.content[1].table.body[0].length + 1).join('*').split('');
-
-                    }
-                }
-
+                'excel',
+                'pdf',
+                'print'
             ]
 
         });

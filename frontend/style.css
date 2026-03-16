@@ -112,6 +112,12 @@ body{
     color:black;
 }
 
+.sidebar a.active{
+    background:#ffc107;
+    color:black;
+    font-weight:600;
+}
+
 /* icon */
 
 .sidebar i{
@@ -140,9 +146,12 @@ body{
 /* ADMIN BUTTON */
 
 .manage-users{
-    background:#ffc107;
-    color:black !important;
+    background:#1a1a1a;
+    color:white;
     font-weight:600;
+    background:none;
+    color:inherit;
+    font-weight:normal;
 }
 
 .manage-users:hover{
@@ -242,4 +251,3 @@ table{
 .card{
     border-radius:12px;
 }
-

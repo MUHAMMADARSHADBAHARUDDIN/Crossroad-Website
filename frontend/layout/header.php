@@ -47,7 +47,7 @@ $username = $_SESSION['username'];
 
         <img src="../image/logo.png" class="header-logo">
 
-        <span class="company-title">Crossroad Solutions</span>
+        <span class="company-title">Crossroad Solutions Sdn Bhd</span>
 
     </div>
 
