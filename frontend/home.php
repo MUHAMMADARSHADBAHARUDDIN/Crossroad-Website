@@ -76,6 +76,12 @@ $username = $_SESSION['username'];
 
 
 
+
+
+
+<?php include "layout/sidebar.php"; ?>
+
+
 <!-- MAIN -->
 
 

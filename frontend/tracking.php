@@ -22,63 +22,85 @@ ORDER BY log_time DESC
 <html>
 <head>
 
-<title>Activity Tracking</title>
+    <title>Activity Tracking</title>
 
-<link rel="icon" href="../image/logo.png">
+    <link rel="icon" href="../image/logo.png">
 
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
 
-<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
 
 </head>
 
 <body>
 
-<div class="container mt-4">
+<?php include "layout/header.php"; ?>
+<?php include "layout/sidebar.php"; ?>
 
-<h3>System Activity Logs</h3>
+<div class="main" id="main">
 
-<table id="logsTable" class="table table-striped">
+    <h2 style="margin-bottom:20px;">Activity Tracking</h2>
 
-<thead>
-<tr>
-<th>Username</th>
-<th>Role</th>
-<th>Action</th>
-<th>Description</th>
-<th>Date & Time</th>
-</tr>
-</thead>
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
 
-<tbody>
+            <div class="table-responsive">
 
-<?php while($row = $result->fetch_assoc()): ?>
+                <table id="logsTable" class="table table-striped">
 
-<tr>
+                    <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>Role</th>
+                        <th>Action</th>
+                        <th>Description</th>
+                        <th>Date & Time</th>
+                    </tr>
+                    </thead>
 
-<td><?= $row['username'] ?></td>
-<td><?= $row['role'] ?></td>
-<td><?= $row['action_type'] ?></td>
-<td><?= $row['description'] ?></td>
-<td><?= $row['log_time'] ?></td>
+                    <tbody>
 
-</tr>
+                    <?php while($row = $result->fetch_assoc()): ?>
 
-<?php endwhile; ?>
+                        <tr>
 
-</tbody>
+                            <td><?= $row['username'] ?></td>
+                            <td><?= $row['role'] ?></td>
+                            <td><?= $row['action_type'] ?></td>
+                            <td><?= $row['description'] ?></td>
+                            <td><?= $row['log_time'] ?></td>
 
-</table>
+                        </tr>
+
+                    <?php endwhile; ?>
+
+                    </tbody>
+
+                </table>
+
+            </div>
+        </div>
+    </div>
 
 </div>
 
+<?php include "layout/footer.php"; ?>
+
 <script src="https://code.jquery.com/jquery-3.7.1.js"></script>
+
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
 
 <script>
-$(document).ready(function(){
-    $('#logsTable').DataTable();
-});
+    $(document).ready(function(){
+        $('#logsTable').DataTable({
+            pageLength: 10
+        });
+    });
 </script>
 
 </body>
