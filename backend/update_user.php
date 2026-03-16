@@ -1,6 +1,7 @@
 <?php
 session_start();
 include("../includes/db_connect.php");
+require_once "../includes/activity_log.php";
 
 // Only allow administrators
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== "Administrator") {
@@ -17,22 +18,30 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         die("All fields are required.");
     }
 
-    // Hash the new password
     $hashed_password = password_hash($password, PASSWORD_DEFAULT);
 
-    // Decide table
     $table = ($role === "system_admin") ? "system_admin" : "user";
 
-    // Update password
     $stmt = $mysqli->prepare("UPDATE $table SET password=? WHERE username=?");
     $stmt->bind_param("ss", $hashed_password, $username);
 
     if ($stmt->execute()) {
+
+        // 🔵 LOG ACTIVITY
+        logActivity(
+            $mysqli,
+            $_SESSION['username'],
+            $_SESSION['role'],
+            "UPDATE USER",
+            "Updated password for user: $username"
+        );
+
         echo "<script>
                 alert('User updated successfully');
                 window.location.href='../frontend/manage_users.php';
               </script>";
     } else {
+
         echo "<script>
                 alert('Error: " . $mysqli->error . "');
                 window.location.href='../frontend/manage_users.php';

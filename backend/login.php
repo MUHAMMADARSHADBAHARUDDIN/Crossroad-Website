@@ -2,6 +2,8 @@
 global $mysqli;
 session_start();
 include("../includes/db_connect.php");
+require_once "../includes/activity_log.php";
+
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
@@ -34,6 +36,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             if (password_verify($password, $db_password)) {
                 $_SESSION["username"] = $username;
                 $_SESSION["role"] = $roleName;
+
+                logActivity($mysqli, $username, $roleName, "LOGIN", "User logged in");
 
                 header("Location: ../frontend/home.php");
                 exit();

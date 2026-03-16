@@ -102,7 +102,14 @@ $username = $_SESSION['username'];
         </a>
 
     <?php endif; ?>
+    <?php if($role === "Administrator"): ?>
 
+    <a href="tracking.php">
+    <i class="fa fa-history"></i>
+    <span>Activity Tracking</span>
+    </a>
+
+    <?php endif; ?>
 </div>
 
 <!-- MAIN -->
