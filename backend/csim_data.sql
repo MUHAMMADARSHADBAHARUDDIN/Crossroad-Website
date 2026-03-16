@@ -1,73 +1,80 @@
--- cmis dummy data
--- database: crossroad_solution_inventory_management
+-- csim dummy data
+-- database: crossroad_solutions_inventory_management
 
-use crossroad_solutions_inventory_management;
+USE crossroad_solutions_inventory_management;
 
 -- =================================
 -- asset inventory dummy data
 -- =================================
 
-insert into asset_inventory
+INSERT INTO asset_inventory
 (part_number, serial_number, brand, description, interface, quantity, type, location, remark)
-values
-('pn-1001','sn-a1001','cisco','network switch 24 port','ethernet',5,'network','server room a','active'),
-('pn-1002','sn-a1002','hp','rack mount server','ethernet',2,'server','data center 1','running'),
-('pn-1003','sn-a1003','dell','storage device','sas',3,'storage','data center 1','backup storage'),
-('pn-1004','sn-a1004','mikrotik','router board','ethernet',4,'network','network rack','stable'),
-('pn-1005','sn-a1005','juniper','core router','fiber',1,'network','main rack','critical device');
+VALUES
+    ('pn-1001','sn-a1001','Cisco','Network Switch 24 Port','Ethernet',5,'Network','Server Room A','Active'),
+    ('pn-1002','sn-a1002','HP','Rack Mount Server','Ethernet',2,'Server','Data Center 1','Running'),
+    ('pn-1003','sn-a1003','Dell','Storage Device','SAS',3,'Storage','Data Center 1','Backup Storage'),
+    ('pn-1004','sn-a1004','Mikrotik','Router Board','Ethernet',4,'Network','Network Rack','Stable'),
+    ('pn-1005','sn-a1005','Juniper','Core Router','Fiber',1,'Network','Main Rack','Critical Device');
 
 -- =================================
 -- project inventory dummy data
 -- =================================
 
-insert into project_inventory
+INSERT INTO project_inventory
 (name, contract_name, contract_code, contract_start, contract_end, location, pic, support_coverage, preventive_management, partner, partner_pic, remark)
-values
-('hospital network upgrade','hospital it modernization','ctr-2024-001','2024-01-01','2026-01-01','kuala lumpur','ahmad faiz','24x7','quarterly','cisco partner','john tan','active project'),
+VALUES
+    ('Hospital Network Upgrade','Hospital IT Modernization','CTR-2024-001','2024-01-01','2026-01-01','Kuala Lumpur','Ahmad Faiz','24x7','Quarterly','Cisco Partner','John Tan','Active Project'),
 
-('airport security system','airport surveillance system','ctr-2023-010','2023-06-01','2025-06-01','selangor','farid hakim','business hours','bi yearly','hikvision partner','michael lee','maintenance phase'),
+    ('Airport Security System','Airport Surveillance System','CTR-2023-010','2023-06-01','2025-06-01','Selangor','Farid Hakim','Business Hours','Bi Yearly','Hikvision Partner','Michael Lee','Maintenance Phase'),
 
-('government cloud setup','gov private cloud','ctr-2025-003','2025-03-01','2027-03-01','putrajaya','nur azmi','24x7','monthly','dell partner','jason lim','deployment ongoing');
+    ('Government Cloud Setup','Gov Private Cloud','CTR-2025-003','2025-03-01','2027-03-01','Putrajaya','Nur Azmi','24x7','Monthly','Dell Partner','Jason Lim','Deployment Ongoing');
 
 -- =================================
 -- tender tracker dummy data
 -- =================================
 
-insert into tender_tracker
+INSERT INTO tender_tracker
 (tender_name, tender_code, company, submission_date, status, remark)
-values
-('smart city monitoring','tnd-001','majlis bandaraya','2025-05-10','submitted','awaiting result'),
-('school network upgrade','tnd-002','ministry of education','2025-07-01','evaluation','technical review'),
-('data center expansion','tnd-003','telekom malaysia','2025-09-15','preparation','proposal drafting'),
-('government firewall project','tnd-004','mampu','2025-10-01','submitted','pending review');
+VALUES
+    ('Smart City Monitoring','TND-001','Majlis Bandaraya','2025-05-10','Submitted','Awaiting Result'),
+    ('School Network Upgrade','TND-002','Ministry of Education','2025-07-01','Evaluation','Technical Review'),
+    ('Data Center Expansion','TND-003','Telekom Malaysia','2025-09-15','Preparation','Proposal Drafting'),
+    ('Government Firewall Project','TND-004','MAMPU','2025-10-01','Submitted','Pending Review');
 
 -- =================================
 -- administrator dummy data
 -- =================================
 
-insert into administrator
-(username, password)
-values
-('admin1','admin123'),
-('admin2','admin456');
+INSERT INTO administrator (username, password)
+VALUES
+    ('admin1','$2y$10$6Yp0a7gS0g6nWQ5R3p8bJ.NrHq7Yq0F0d1M8B7QXh5y8rLq6wE6nG'),
+    ('admin2','$2y$10$6Yp0a7gS0g6nWQ5R3p8bJ.NrHq7Yq0F0d1M8B7QXh5y8rLq6wE6nG');
 
--- =================================
--- user dummy data
--- =================================
+-- password for both = admin123
 
-insert into user
-(username, password)
-values
-('user1','user123'),
-('user2','user456'),
-('staff1','staff123');
 
 -- =================================
 -- system admin dummy data
 -- =================================
 
-insert into system_admin
-(username, password)
-values
-('sysadmin','sysadmin123'),
-('superadmin','super123');
+INSERT INTO system_admin (username, password)
+VALUES
+    ('sysadmin','$2y$10$6Yp0a7gS0g6nWQ5R3p8bJ.NrHq7Yq0F0d1M8B7QXh5y8rLq6wE6nG'),
+    ('superadmin','$2y$10$6Yp0a7gS0g6nWQ5R3p8bJ.NrHq7Yq0F0d1M8B7QXh5y8rLq6wE6nG');
+
+-- password = admin123
+
+
+-- =================================
+-- user dummy data (with roles)
+-- =================================
+
+INSERT INTO user (username, password, role)
+VALUES
+    ('coordinator1','$2y$10$6Yp0a7gS0g6nWQ5R3p8bJ.NrHq7Yq0F0d1M8B7QXh5y8rLq6wE6nG','user_project_coordinator'),
+
+    ('technical1','$2y$10$6Yp0a7gS0g6nWQ5R3p8bJ.NrHq7Yq0F0d1M8B7QXh5y8rLq6wE6nG','user_technical'),
+
+    ('manager1','$2y$10$6Yp0a7gS0g6nWQ5R3p8bJ.NrHq7Yq0F0d1M8B7QXh5y8rLq6wE6nG','user_project_manager');
+
+-- password = admin123

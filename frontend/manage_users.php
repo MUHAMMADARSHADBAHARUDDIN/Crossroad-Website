@@ -9,7 +9,7 @@ if(!isset($_SESSION['username'])){
 
 include("../includes/db_connect.php");
 
-$users = $mysqli->query("SELECT username FROM user ORDER BY username ASC");
+$users = $mysqli->query("SELECT username,role FROM user ORDER BY username ASC");
 $admins = $mysqli->query("SELECT username FROM system_admin ORDER BY username ASC");
 ?>
 
@@ -103,7 +103,7 @@ $admins = $mysqli->query("SELECT username FROM system_admin ORDER BY username AS
                             <td><?= htmlspecialchars($row['username']) ?></td>
 
                             <td>
-                                <span class="badge badge-user">User</span>
+                               <span class="badge badge-user"><?= htmlspecialchars($row['role']) ?></span>
                             </td>
 
                             <td>
@@ -217,8 +217,15 @@ $admins = $mysqli->query("SELECT username FROM system_admin ORDER BY username AS
                     <div class="mb-3">
                         <label>Role</label>
                         <select name="role" class="form-control" required>
-                            <option value="user">User</option>
-                            <option value="system_admin">System Admin</option>
+
+                        <option value="system_admin">System Admin</option>
+
+                        <option value="User (Project Coordinator)">Project Coordinator</option>
+
+                        <option value="User (Technical)">Technical</option>
+
+                        <option value="User (Project Manager)">Project Manager</option>
+
                         </select>
                     </div>
 
