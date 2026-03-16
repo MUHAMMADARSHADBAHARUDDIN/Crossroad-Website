@@ -1,4 +1,5 @@
 <?php
+global $mysqli;
 session_start();
 
 include("../includes/db_connect.php");

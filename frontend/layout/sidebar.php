@@ -32,6 +32,11 @@ $current = basename($_SERVER['SCRIPT_NAME']);
             <span>Manage Users</span>
         </a>
 
+        <a href="tracking.php" class="<?php if($current=='tracking.php') echo 'active'; ?>">
+            <i class="fa fa-history"></i>
+            <span>Activity Tracker</span>
+        </a>
+
     <?php endif; ?>
 
 </div>
