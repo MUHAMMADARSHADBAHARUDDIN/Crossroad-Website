@@ -14,7 +14,23 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $password = trim($_POST["password"]);
     $role = trim($_POST["role"]);
 
-    $hashed_password = password_hash($password,PASSWORD_DEFAULT);
+    /* PASSWORD SECURITY CHECK */
+
+    if(strlen($password) < 8){
+        die("Password must be at least 8 characters long.");
+    }
+
+    if(!preg_match('/[A-Z]/', $password)){
+        die("Password must include at least one uppercase letter.");
+    }
+
+    if(!preg_match('/[\W]/', $password)){
+        die("Password must include at least one symbol.");
+    }
+
+    /* HASH PASSWORD */
+
+    $hashed_password = password_hash($password, PASSWORD_DEFAULT);
 
     if($role == "system_admin"){
 

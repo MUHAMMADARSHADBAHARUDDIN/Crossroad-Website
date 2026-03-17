@@ -211,7 +211,9 @@ $admins = $mysqli->query("SELECT username FROM system_admin ORDER BY username AS
 
                     <div class="mb-3">
                         <label>Password</label>
-                        <input type="password" name="password" class="form-control" required>
+                       <input type="password" name="password" class="form-control"
+                       pattern="^(?=.*[A-Z])(?=.*[\W]).{8,}$"
+                       title="Password must be at least 8 characters, include 1 uppercase letter and 1 symbol">
                     </div>
 
                     <div class="mb-3">
