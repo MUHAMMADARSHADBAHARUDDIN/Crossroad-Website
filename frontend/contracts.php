@@ -87,15 +87,18 @@ $result = $mysqli->query($sql);
 
     <!-- ADD BUTTON -->
 
-    <?php if($role == "Administrator" || $role == "System Admin"): ?>
+<?php if(
+      $role == "Administrator" ||
+      $role == "User (Project Coordinator)" ||
+      $role == "User (Technical)" ||
+      $role == "User (Project Manager)"
+      ): ?>
 
-        <a href="contract_add.php" class="btn btn-warning mb-3">
+<a href="contract_add.php" class="btn btn-warning mb-3">
+    <i class="fa fa-plus"></i> Add Contract
+</a>
 
-            <i class="fa fa-plus"></i> Add Contract
-
-        </a>
-
-    <?php endif; ?>
+<?php endif; ?>
 
     <!-- TABLE -->
 
@@ -151,28 +154,57 @@ $result = $mysqli->query($sql);
                         <td><?php echo $row['partner_pic']; ?></td>
                         <td><?php echo $row['remark']; ?></td>
 
-                        <td>
+                       <td>
 
-                            <?php if($role == "Administrator" || $role == "System Admin"): ?>
+                       <?php
 
-                                <div class="d-flex gap-2">
+                       $owner = $row['created_by'];
 
-                                    <a href="contract_edit.php?id=<?php echo $row['no']; ?>"
-                                       class="btn btn-sm btn-primary">
-                                        <i class="fa fa-pen"></i>
-                                    </a>
+                       if($role == "Administrator" || $role == "User (Project Coordinator)"){
 
-                                    <a href="../backend/contract_delete.php?id=<?php echo $row['no']; ?>"
-                                       class="btn btn-sm btn-danger"
-                                       onclick="return confirm('Delete this contract?')">
-                                        <i class="fa fa-trash"></i>
-                                    </a>
+                       ?>
 
-                                </div>
+                       <div class="d-flex gap-2">
 
-                            <?php endif; ?>
+                       <a href="contract_edit.php?id=<?php echo $row['no']; ?>"
+                       class="btn btn-sm btn-primary">
+                       <i class="fa fa-pen"></i>
+                       </a>
 
-                        </td>
+                       <a href="../backend/contract_delete.php?id=<?php echo $row['no']; ?>"
+                       class="btn btn-sm btn-danger"
+                       onclick="return confirm('Delete this contract?')">
+                       <i class="fa fa-trash"></i>
+                       </a>
+
+                       </div>
+
+                       <?php
+                       }
+
+                     elseif(($role == "User (Technical)" || $role == "User (Project Manager)") && $username == $owner){
+                     ?>
+
+                     <div class="d-flex gap-2">
+
+                     <a href="contract_edit.php?id=<?php echo $row['no']; ?>"
+                     class="btn btn-sm btn-primary">
+                     <i class="fa fa-pen"></i>
+                     </a>
+
+                     <a href="../backend/contract_delete.php?id=<?php echo $row['no']; ?>"
+                     class="btn btn-sm btn-danger"
+                     onclick="return confirm('Delete this contract?')">
+                     <i class="fa fa-trash"></i>
+                     </a>
+
+                     </div>
+
+                       <?php
+                       }
+                       ?>
+
+                       </td>
 
                     </tr>
 

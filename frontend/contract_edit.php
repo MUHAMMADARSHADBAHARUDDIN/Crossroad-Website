@@ -23,6 +23,20 @@ $id = $_GET['id'];
 $result = $mysqli->query("SELECT * FROM project_inventory WHERE no=$id");
 $row = $result->fetch_assoc();
 
+$owner = $row['created_by'];
+$username = $_SESSION['username'];
+
+if(
+    $role != "Administrator" &&
+    $role != "User (Project Coordinator)" &&
+    !(
+        ($role == "User (Technical)" || $role == "User (Project Manager)")
+        && $username == $owner
+    )
+){
+    header("Location: contracts.php");
+    exit();
+}
 /* UPDATE CONTRACT */
 
 if(isset($_POST['update'])){

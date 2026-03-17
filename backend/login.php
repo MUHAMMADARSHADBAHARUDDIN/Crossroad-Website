@@ -29,7 +29,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             logActivity($mysqli,$username,"System Admin","LOGIN","User logged in");
 
-            header("Location: ../frontend/home.php");
+            header("Location: ../frontend/dashboard.php");
             exit();
         }
     }
@@ -55,7 +55,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             logActivity($mysqli,$username,"Administrator","LOGIN","User logged in");
 
-            header("Location: ../frontend/home.php");
+            header("Location: ../frontend/dashboard.php");
             exit();
         }
     }
@@ -81,7 +81,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             logActivity($mysqli,$username,$role,"LOGIN","User logged in");
 
-            header("Location: ../frontend/home.php");
+            header("Location: ../frontend/dashboard.php");
             exit();
         }
     }

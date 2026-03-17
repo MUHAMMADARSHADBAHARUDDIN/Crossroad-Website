@@ -88,3 +88,6 @@ CREATE TABLE activity_logs (
                                description TEXT,
                                log_time DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE project_inventory
+    ADD created_by VARCHAR(100);
