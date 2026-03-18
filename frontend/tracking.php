@@ -12,9 +12,25 @@ if($_SESSION['role'] !== "Administrator"){
     die("Access Denied");
 }
 
+/* GET LATEST ACTIVITY */
+$latestResult = $mysqli->query("
+    SELECT log_time FROM activity_logs
+    ORDER BY log_time DESC
+    LIMIT 1
+");
+
+$latestData = $latestResult->fetch_assoc();
+$latestTime = $latestData ? $latestData['log_time'] : null;
+
+/* FORMAT DATE */
+$formattedTime = $latestTime
+    ? date("d M Y, h:i A", strtotime($latestTime))
+    : "No activity yet";
+
+/* GET ALL LOGS */
 $result = $mysqli->query("
-SELECT * FROM activity_logs
-ORDER BY log_time DESC
+    SELECT * FROM activity_logs
+    ORDER BY log_time DESC
 ");
 ?>
 
@@ -45,6 +61,14 @@ ORDER BY log_time DESC
 
     <h2 style="margin-bottom:20px;">Activity Tracking</h2>
 
+    <!-- ✅ LATEST ACTIVITY -->
+    <div class="alert alert-info d-flex justify-content-between align-items-center">
+        <div>
+            <i class="fa fa-clock"></i>
+            <strong>Latest Activity:</strong> <?= $formattedTime ?>
+        </div>
+    </div>
+
     <div class="card shadow-sm">
         <div class="card-body p-0">
 
@@ -64,19 +88,27 @@ ORDER BY log_time DESC
 
                     <tbody>
 
-                    <?php while($row = $result->fetch_assoc()): ?>
+                    <?php if($result && $result->num_rows > 0): ?>
+                        <?php while($row = $result->fetch_assoc()): ?>
+
+                            <tr>
+                                <td><?= $row['username'] ?></td>
+                                <td><?= $row['role'] ?></td>
+                                <td><?= $row['action_type'] ?></td>
+                                <td><?= $row['description'] ?></td>
+                                <td><?= date("d M Y, h:i A", strtotime($row['log_time'])) ?></td>
+                            </tr>
+
+                        <?php endwhile; ?>
+                    <?php else: ?>
 
                         <tr>
-
-                            <td><?= $row['username'] ?></td>
-                            <td><?= $row['role'] ?></td>
-                            <td><?= $row['action_type'] ?></td>
-                            <td><?= $row['description'] ?></td>
-                            <td><?= $row['log_time'] ?></td>
-
+                            <td colspan="5" class="text-center text-muted">
+                                No activity logs found
+                            </td>
                         </tr>
 
-                    <?php endwhile; ?>
+                    <?php endif; ?>
 
                     </tbody>
 

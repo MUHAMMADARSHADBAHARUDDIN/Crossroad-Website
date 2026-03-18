@@ -12,6 +12,15 @@ require_once "../includes/db_connect.php";
 $role = $_SESSION['role'];
 $username = $_SESSION['username'];
 
+require_once "../includes/activity_log.php";
+
+logActivity(
+    $mysqli,
+    $_SESSION['username'],
+    $_SESSION['role'],
+    "VIEW CONTRACTS",
+    "Accessed contracts page"
+);
 /* SEARCH */
 
 $search = "";

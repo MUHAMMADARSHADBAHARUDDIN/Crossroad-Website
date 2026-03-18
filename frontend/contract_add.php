@@ -46,7 +46,15 @@ if(isset($_POST['submit'])){
     ('$org_name','$contract_name','$contract_code','$contract_start','$contract_end','$location','$pic','$support_coverage','$preventive_management','$partner','$partner_pic','$remark','$created_by')";
 
     $mysqli->query($sql);
+require_once "../includes/activity_log.php";
 
+logActivity(
+    $mysqli,
+    $_SESSION['username'],
+    $_SESSION['role'],
+    "ADD CONTRACT",
+    "Added contract: $contract_name"
+);
     header("Location: contracts.php");
 }
 ?>
@@ -73,108 +81,98 @@ if(isset($_POST['submit'])){
 <h2 class="mb-4">Add Contract</h2>
 
 <div class="">
-<div class="card-body p-10">
 
-<form method="POST">
+<form method="POST" class="modern-form">
 
-<div class="container-fluid">
+<div class="row">
 
-<div class="row g-3">
+    <!-- LEFT COLUMN -->
+    <div class="col-md-6">
 
-<!-- Organization -->
-<div class="col-md-6">
-<label class="form-label">Organization Name</label>
-<input type="text" name="org_name" class="form-control" required>
-</div>
+        <div class="form-floating mb-3">
+            <input type="text" name="org_name" class="form-control" placeholder="Organization" required>
+            <label>Organization Name</label>
+        </div>
 
-<!-- Contract Name -->
-<div class="col-md-6">
-<label class="form-label">Contract Name</label>
-<input type="text" name="contract_name" class="form-control" required>
-</div>
+        <div class="form-floating mb-3">
+            <input type="text" name="contract_name" class="form-control" placeholder="Contract Name" required>
+            <label>Contract Name</label>
+        </div>
 
-<!-- Contract Code -->
-<div class="col-md-6">
-<label class="form-label">Contract Code</label>
-<input type="text" name="contract_code" class="form-control">
-</div>
+        <div class="form-floating mb-3">
+            <input type="text" name="contract_code" class="form-control" placeholder="Code">
+            <label>Contract Code</label>
+        </div>
 
-<!-- Location -->
-<div class="col-md-6">
-<label class="form-label">Location</label>
-<input type="text" name="location" class="form-control">
-</div>
+        <div class="form-floating mb-3">
+            <input type="text" name="location" class="form-control" placeholder="Location">
+            <label>Location</label>
+        </div>
 
-<!-- Contract Start -->
-<div class="col-md-6">
-<label class="form-label">Contract Start</label>
-<input type="date" name="contract_start" class="form-control">
-</div>
+    </div>
 
-<!-- Contract End -->
-<div class="col-md-6">
-<label class="form-label">Contract End</label>
-<input type="date" name="contract_end" class="form-control">
-</div>
+    <!-- RIGHT COLUMN -->
+    <div class="col-md-6">
 
-<!-- PIC -->
-<div class="col-md-6">
-<label class="form-label">Person In Charge</label>
-<input type="text" name="pic" class="form-control">
-</div>
+        <div class="form-floating mb-3">
+            <input type="date" name="contract_start" class="form-control">
+            <label>Contract Start</label>
+        </div>
 
-<!-- Support -->
-<div class="col-md-6">
-<label class="form-label">Support Coverage</label>
-<input type="text" name="support_coverage" class="form-control">
-</div>
+        <div class="form-floating mb-3">
+            <input type="date" name="contract_end" class="form-control">
+            <label>Contract End</label>
+        </div>
 
-<!-- Preventive -->
-<div class="col-md-6">
-<label class="form-label">Preventive Management</label>
-<input type="text" name="preventive_management" class="form-control">
-</div>
+        <div class="form-floating mb-3">
+            <input type="text" name="pic" class="form-control" placeholder="PIC">
+            <label>Person In Charge</label>
+        </div>
 
-<!-- Partner -->
-<div class="col-md-6">
-<label class="form-label">Partner</label>
-<input type="text" name="partner" class="form-control">
-</div>
+        <div class="form-floating mb-3">
+            <input type="text" name="partner" class="form-control" placeholder="Partner">
+            <label>Partner</label>
+        </div>
 
-<!-- Partner PIC -->
-<div class="col-md-6">
-<label class="form-label">Partner Person In Charge</label>
-<input type="text" name="partner_pic" class="form-control">
-</div>
-
-<!-- Remarks -->
-<div class="col-12">
-<label class="form-label">Remarks</label>
-<textarea name="remark" class="form-control" rows="3"></textarea>
-</div>
+    </div>
 
 </div>
 
-<hr class="my-4">
-
-<div class="d-flex gap-2">
-
-<button type="submit" name="submit" class="btn btn-warning">
-<i class="fa fa-save"></i> Add Contract
-</button>
-
-<a href="contracts.php" class="btn btn-secondary">
-<i class="fa fa-arrow-left"></i> Cancel
-</a>
-
+<!-- FULL WIDTH -->
+<div class="form-floating mb-3">
+    <input type="text" name="support_coverage" class="form-control" placeholder="Support">
+    <label>Support Coverage</label>
 </div>
+
+<div class="form-floating mb-3">
+    <input type="text" name="preventive_management" class="form-control" placeholder="Preventive">
+    <label>Preventive Management</label>
+</div>
+
+<div class="form-floating mb-3">
+    <input type="text" name="partner_pic" class="form-control" placeholder="Partner PIC">
+    <label>Partner Person In Charge</label>
+</div>
+
+<div class="form-floating mb-3">
+    <textarea name="remark" class="form-control" style="height:100px"></textarea>
+    <label>Remarks</label>
+</div>
+
+<!-- BUTTONS -->
+<div class="d-flex justify-content-end gap-2 mt-3">
+
+    <a href="contracts.php" class="btn btn-light px-4">
+        Cancel
+    </a>
+
+    <button type="submit" name="submit" class="btn btn-warning px-4">
+        <i class="fa fa-save"></i> Save
+    </button>
 
 </div>
 
 </form>
-
-</div>
-</div>
 
 </div>
 
