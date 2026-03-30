@@ -1,96 +1,70 @@
 <?php
-global $mysqli;
 session_start();
-
-include("../includes/db_connect.php");
+require_once "../includes/db_connect.php";
 require_once "../includes/activity_log.php";
 
-if ($_SERVER["REQUEST_METHOD"] === "POST") {
+// Only process POST requests
+if($_SERVER["REQUEST_METHOD"] === "POST"){
 
-    $username = trim($_POST["username"]);
+    $email = trim($_POST["email"]);
     $password = trim($_POST["password"]);
 
-    /* ---------- SYSTEM ADMIN ---------- */
+    // Tables to check: system_admin, administrator, user
+    $tables = [
+        "system_admin" => "System Admin",
+        "administrator" => "Administrator",
+        "user" => null // role comes from DB
+    ];
 
-    $stmt = $mysqli->prepare("SELECT password FROM system_admin WHERE username=?");
-    $stmt->bind_param("s",$username);
-    $stmt->execute();
-    $stmt->store_result();
+    $login_success = false;
 
-    if($stmt->num_rows == 1){
+    foreach($tables as $table => $role_name){
 
-        $stmt->bind_result($db_password);
-        $stmt->fetch();
-
-        if(password_verify($password,$db_password)){
-
-            $_SESSION['username']=$username;
-            $_SESSION['role']="System Admin";
-
-            logActivity($mysqli,$username,"System Admin","LOGIN","User logged in");
-
-            header("Location: ../frontend/dashboard.php");
-            exit();
+        // Prepare SQL depending on table
+        if($table === "user"){
+            $stmt = $mysqli->prepare("SELECT username, password, role FROM $table WHERE email=?");
+        } else {
+            $stmt = $mysqli->prepare("SELECT username, password FROM $table WHERE email=?");
         }
+
+        if(!$stmt){
+            die("SQL Error: " . $mysqli->error);
+        }
+
+        $stmt->bind_param("s", $email);
+        $stmt->execute();
+        $stmt->store_result();
+
+        if($stmt->num_rows === 1){
+            if($table === "user"){
+                $stmt->bind_result($db_username, $db_password, $role);
+            } else {
+                $stmt->bind_result($db_username, $db_password);
+                $role = $role_name;
+            }
+
+            $stmt->fetch();
+
+            // Verify password
+            if(password_verify($password, $db_password)){
+                // Set session variables
+                $_SESSION['username'] = $db_username;
+                $_SESSION['email'] = $email;
+                $_SESSION['role'] = $role;
+
+                // Log activity
+                logActivity($mysqli, $db_username, $role, "LOGIN", "User logged in");
+
+                // Redirect to dashboard
+                header("Location: ../frontend/dashboard.php");
+                exit();
+            }
+        }
+
+        $stmt->close();
     }
 
-    $stmt->close();
-
-    /* ---------- ADMINISTRATOR ---------- */
-
-    $stmt = $mysqli->prepare("SELECT password FROM administrator WHERE username=?");
-    $stmt->bind_param("s",$username);
-    $stmt->execute();
-    $stmt->store_result();
-
-    if($stmt->num_rows == 1){
-
-        $stmt->bind_result($db_password);
-        $stmt->fetch();
-
-        if(password_verify($password,$db_password)){
-
-            $_SESSION['username']=$username;
-            $_SESSION['role']="Administrator";
-
-            logActivity($mysqli,$username,"Administrator","LOGIN","User logged in");
-
-            header("Location: ../frontend/dashboard.php");
-            exit();
-        }
-    }
-
-    $stmt->close();
-
-    /* ---------- USER TABLE ---------- */
-
-    $stmt = $mysqli->prepare("SELECT password,role FROM user WHERE username=?");
-    $stmt->bind_param("s",$username);
-    $stmt->execute();
-    $stmt->store_result();
-
-    if($stmt->num_rows == 1){
-
-        $stmt->bind_result($db_password,$role);
-        $stmt->fetch();
-
-        if(password_verify($password,$db_password)){
-
-            $_SESSION['username']=$username;
-            $_SESSION['role']=$role;
-
-            logActivity($mysqli,$username,$role,"LOGIN","User logged in");
-
-            header("Location: ../frontend/dashboard.php");
-            exit();
-        }
-    }
-
-    $stmt->close();
-
-    echo "<script>
-            alert('Invalid username or password');
-            window.location.href='../frontend/index.html';
-          </script>";
+    // If login failed
+    echo "<script>alert('Invalid email or password'); window.location.href='../frontend/index.html';</script>";
 }
 ?>

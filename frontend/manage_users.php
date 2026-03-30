@@ -9,8 +9,8 @@ if(!isset($_SESSION['username'])){
 
 include("../includes/db_connect.php");
 
-$users = $mysqli->query("SELECT username,role FROM user ORDER BY username ASC");
-$admins = $mysqli->query("SELECT username FROM system_admin ORDER BY username ASC");
+$users = $mysqli->query("SELECT username, email, role FROM user ORDER BY username ASC");
+$admins = $mysqli->query("SELECT username, email FROM system_admin ORDER BY username ASC");
 ?>
 
 <!DOCTYPE html>
@@ -85,9 +85,10 @@ $admins = $mysqli->query("SELECT username FROM system_admin ORDER BY username AS
                     <thead>
 
                     <tr>
-                        <th>Username</th>
-                        <th>Role</th>
-                        <th style="width:180px">Actions</th>
+                       <th>Username</th>
+                       <th>Email</th>
+                       <th>Role</th>
+                       <th style="width:180px">Actions</th>
                     </tr>
 
                     </thead>
@@ -101,7 +102,7 @@ $admins = $mysqli->query("SELECT username FROM system_admin ORDER BY username AS
                         <tr>
 
                             <td><?= htmlspecialchars($row['username']) ?></td>
-
+                            <td><?= htmlspecialchars($row['email']) ?></td>
                             <td>
                                <span class="badge badge-user"><?= htmlspecialchars($row['role']) ?></span>
                             </td>
@@ -142,7 +143,7 @@ $admins = $mysqli->query("SELECT username FROM system_admin ORDER BY username AS
                         <tr>
 
                             <td><?= htmlspecialchars($row['username']) ?></td>
-
+                            <td><?= htmlspecialchars($row['email']) ?></td>
                             <td>
                                 <span class="badge badge-admin">System Admin</span>
                             </td>
@@ -205,15 +206,38 @@ $admins = $mysqli->query("SELECT username FROM system_admin ORDER BY username AS
                 <div class="modal-body">
 
                     <div class="mb-3">
-                        <label>Username / Email</label>
+                        <label>Username</label>
                         <input type="text" name="username" class="form-control" required>
                     </div>
 
                     <div class="mb-3">
+                        <label>Email</label>
+                        <input type="email" name="email" class="form-control" required>
+                    </div>
+
+                    <div class="mb-3">
                         <label>Password</label>
-                       <input type="password" name="password" class="form-control"
-                       pattern="^(?=.*[A-Z])(?=.*[\W]).{8,}$"
-                       title="Password must be at least 8 characters, include 1 uppercase letter and 1 symbol">
+
+                        <div class="position-relative">
+
+                            <input
+                                type="password"
+                                name="password"
+                                id="add_password"
+                                class="form-control pe-5"
+                                pattern="^(?=.*[A-Z])(?=.*[\W]).{8,}$"
+                                title="Password must be at least 8 characters, include 1 uppercase letter and 1 symbol"
+                                required
+                            >
+
+                            <i
+                                id="add_eye_icon"
+                                class="fa-solid fa-eye position-absolute"
+                                style="right:15px; top:50%; transform:translateY(-50%); cursor:pointer;"
+                                onclick="toggleAddPassword()">
+                            </i>
+
+                        </div>
                     </div>
 
                     <div class="mb-3">
@@ -316,6 +340,32 @@ $admins = $mysqli->query("SELECT username FROM system_admin ORDER BY username AS
     })
 
 </script>
+<script>
+function toggleAddPassword(){
+    const password = document.getElementById("add_password");
 
+    if(password.type === "password"){
+        password.type = "text";
+    } else {
+        password.type = "password";
+    }
+}
+</script>
+<script>
+function toggleAddPassword(){
+    const password = document.getElementById("add_password");
+    const icon = document.getElementById("add_eye_icon");
+
+    if(password.type === "password"){
+        password.type = "text";
+        icon.classList.remove("fa-eye");
+        icon.classList.add("fa-eye-slash");
+    } else {
+        password.type = "password";
+        icon.classList.remove("fa-eye-slash");
+        icon.classList.add("fa-eye");
+    }
+}
+</script>
 </body>
 </html>

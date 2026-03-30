@@ -11,11 +11,11 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== "Administrator") {
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     $username = trim($_POST["username"]);
+    $email = trim($_POST["email"]);
     $password = trim($_POST["password"]);
     $role = trim($_POST["role"]);
 
-    /* PASSWORD SECURITY CHECK */
-
+    // PASSWORD VALIDATION
     if(strlen($password) < 8){
         die("Password must be at least 8 characters long.");
     }
@@ -28,20 +28,19 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         die("Password must include at least one symbol.");
     }
 
-    /* HASH PASSWORD */
-
+    // HASH PASSWORD
     $hashed_password = password_hash($password, PASSWORD_DEFAULT);
 
     if($role == "system_admin"){
 
-        $stmt = $mysqli->prepare("INSERT INTO system_admin (username,password) VALUES (?,?)");
-        $stmt->bind_param("ss",$username,$hashed_password);
+        $stmt = $mysqli->prepare("INSERT INTO system_admin (username, email, password) VALUES (?,?,?)");
+        $stmt->bind_param("sss",$username,$email,$hashed_password);
 
     }
     else{
 
-        $stmt = $mysqli->prepare("INSERT INTO user (username,password,role) VALUES (?,?,?)");
-        $stmt->bind_param("sss",$username,$hashed_password,$role);
+        $stmt = $mysqli->prepare("INSERT INTO user (username, email, password, role) VALUES (?,?,?,?)");
+        $stmt->bind_param("ssss",$username,$email,$hashed_password,$role);
 
     }
 
@@ -60,6 +59,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         window.location.href='../frontend/manage_users.php';
         </script>";
 
+    } else {
+        echo "Error: " . $mysqli->error;
     }
 
 }

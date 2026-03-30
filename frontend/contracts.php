@@ -12,54 +12,31 @@ require_once "../includes/db_connect.php";
 $role = $_SESSION['role'];
 $username = $_SESSION['username'];
 
-require_once "../includes/activity_log.php";
-
-logActivity(
-    $mysqli,
-    $_SESSION['username'],
-    $_SESSION['role'],
-    "VIEW CONTRACTS",
-    "Accessed contracts page"
-);
-/* SEARCH */
-
 $search = "";
 if(isset($_GET['search'])){
     $search = $mysqli->real_escape_string($_GET['search']);
 }
 
-
-/* QUERY */
-
 $sql = "SELECT * FROM project_inventory
-WHERE Name LIKE '%$search%'
+WHERE name LIKE '%$search%'
 OR contract_name LIKE '%$search%'";
 
 $result = $mysqli->query($sql);
-
-
-
 ?>
 
 <!DOCTYPE html>
 <html lang="en">
 <head>
 
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8">
+<title>Contracts</title>
 
-    <title>Contracts</title>
+<link rel="icon" href="../image/logo.png">
+<link rel="stylesheet" href="style.css">
 
-    <link rel="icon" href="../image/logo.png">
-
-    <link rel="stylesheet" href="style.css">
-
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
-    <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.bootstrap5.min.css">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
 
 </head>
 
@@ -68,218 +45,176 @@ $result = $mysqli->query($sql);
 <?php include "layout/header.php"; ?>
 <?php include "layout/sidebar.php"; ?>
 
-<div class="main" id="main">
+<div class="main">
 
-    <h2 style="margin-bottom:20px;">Contracts</h2>
+<h2>Contracts</h2>
 
-    <!-- SEARCH -->
+<form method="GET" class="mb-3">
+    <input type="text" name="search" class="form-control" placeholder="Search..." value="<?= $search ?>">
+</form>
 
-    <form method="GET" class="mb-3">
+<div class="card">
+<div class="card-body">
 
-        <div class="input-group">
+<table id="contractsTable" class="table table-hover">
 
-            <input type="text"
-                   name="search"
-                   class="form-control"
-                   placeholder="Search contracts..."
-                   value="<?php echo $search ?>">
+<thead>
+<tr>
+    <th>Organization</th>
+    <th>Contract</th>
+    <th>Code</th>
+    <th>Start</th>
+    <th>End</th>
+    <th>Actions</th>
+</tr>
+</thead>
 
-            <button class="btn btn-warning">
+<tbody>
 
-                <i class="fa fa-search"></i>
+<?php while($row = $result->fetch_assoc()): ?>
 
-            </button>
+<tr
+data-id="<?= $row['no']; ?>"
+data-name="<?= htmlspecialchars($row['name']); ?>"
+data-contract="<?= htmlspecialchars($row['contract_name']); ?>"
+data-code="<?= $row['contract_code']; ?>"
+data-owner="<?= $row['created_by']; ?>"
+data-role="<?= $role; ?>"
+data-username="<?= $username; ?>">
 
-        </div>
+<td><?= $row['name']; ?></td>
+<td><?= $row['contract_name']; ?></td>
+<td><?= $row['contract_code']; ?></td>
+<td><?= $row['contract_start']; ?></td>
+<td><?= $row['contract_end']; ?></td>
 
-    </form>
+<td>
+<?php
+$owner = $row['created_by'];
 
-    <!-- ADD BUTTON -->
+if($role == "Administrator" || $role == "User (Project Coordinator)"){
+?>
+<a href="contract_edit.php?id=<?= $row['no']; ?>" class="btn btn-sm btn-primary">Edit</a>
+<a href="../backend/contract_delete.php?id=<?= $row['no']; ?>" class="btn btn-sm btn-danger">Delete</a>
+<?php
+}
+elseif(($role == "User (Project Manager)" || $role == "User (Technical)") && $username == $owner){
+?>
+<a href="contract_edit.php?id=<?= $row['no']; ?>" class="btn btn-sm btn-primary">Edit</a>
+<a href="../backend/contract_delete.php?id=<?= $row['no']; ?>" class="btn btn-sm btn-danger">Delete</a>
+<?php } ?>
+</td>
 
-<?php if(
-      $role == "Administrator" ||
-      $role == "User (Project Coordinator)" ||
-      $role == "User (Technical)" ||
-      $role == "User (Project Manager)"
-      ): ?>
+</tr>
 
-<a href="contract_add.php" class="btn btn-warning mb-3">
-    <i class="fa fa-plus"></i> Add Contract
-</a>
+<?php endwhile; ?>
 
-<?php endif; ?>
+</tbody>
+</table>
 
-    <!-- TABLE -->
+</div>
+</div>
 
-    <div class="card shadow-sm">
-        <div class="card-body p-0">
+</div>
 
-            <div class="table-responsive">
+<!-- MODAL -->
+<div class="modal fade" id="contractModal">
+<div class="modal-dialog">
+<div class="modal-content">
 
-        <table id="contractsTable" class="table table-striped">
+<div class="modal-header">
+<h5>Contract Details</h5>
+<button class="btn-close" data-bs-dismiss="modal"></button>
+</div>
 
+<div class="modal-body">
 
+<p><b>Organization:</b> <span id="m_name"></span></p>
+<p><b>Contract:</b> <span id="m_contract"></span></p>
+<p><b>Code:</b> <span id="m_code"></span></p>
 
-            <thead>
+<hr>
 
-            <tr>
+<h6>Attachments</h6>
+<div id="filesContainer">No files</div>
 
-                <th>Organization</th>
-                <th>Contract</th>
-                <th>Code</th>
-                <th>Start</th>
-                <th>End</th>
-                <th>Location</th>
-                <th>PIC</th>
-                <th>Support</th>
-                <th>Preventive</th>
-                <th>Partner</th>
-                <th>Partner PIC</th>
-                <th>Remarks</th>
-                <th>Actions</th>
+<hr>
 
-            </tr>
+<div id="uploadSection">
+<form action="../backend/upload_contract.php" method="POST" enctype="multipart/form-data">
+<input type="hidden" name="contract_id" id="m_id">
+<input type="file" name="file" class="form-control mb-2">
+<button class="btn btn-warning">Upload</button>
+</form>
+</div>
 
-            </thead>
+</div>
 
-            <tbody>
-
-            <?php if($result && $result->num_rows > 0): ?>
-
-                <?php while($row = $result->fetch_assoc()): ?>
-
-                    <tr>
-
-                        <td><?php echo $row['name']; ?></td>
-                        <td><?php echo $row['contract_name']; ?></td>
-                        <td><?php echo $row['contract_code']; ?></td>
-                        <td><?php echo $row['contract_start']; ?></td>
-                        <td><?php echo $row['contract_end']; ?></td>
-                        <td><?php echo $row['location']; ?></td>
-                        <td><?php echo $row['pic']; ?></td>
-                        <td><?php echo $row['support_coverage']; ?></td>
-                        <td><?php echo $row['preventive_management']; ?></td>
-                        <td><?php echo $row['partner']; ?></td>
-                        <td><?php echo $row['partner_pic']; ?></td>
-                        <td><?php echo $row['remark']; ?></td>
-
-                       <td>
-
-                       <?php
-
-                       $owner = $row['created_by'];
-
-                       if($role == "Administrator" || $role == "User (Project Coordinator)"){
-
-                       ?>
-
-                       <div class="d-flex gap-2">
-
-                       <a href="contract_edit.php?id=<?php echo $row['no']; ?>"
-                       class="btn btn-sm btn-primary">
-                       <i class="fa fa-pen"></i>
-                       </a>
-
-                       <a href="../backend/contract_delete.php?id=<?php echo $row['no']; ?>"
-                       class="btn btn-sm btn-danger"
-                       onclick="return confirm('Delete this contract?')">
-                       <i class="fa fa-trash"></i>
-                       </a>
-
-                       </div>
-
-                       <?php
-                       }
-
-                     elseif(($role == "User (Technical)" || $role == "User (Project Manager)") && $username == $owner){
-                     ?>
-
-                     <div class="d-flex gap-2">
-
-                     <a href="contract_edit.php?id=<?php echo $row['no']; ?>"
-                     class="btn btn-sm btn-primary">
-                     <i class="fa fa-pen"></i>
-                     </a>
-
-                     <a href="../backend/contract_delete.php?id=<?php echo $row['no']; ?>"
-                     class="btn btn-sm btn-danger"
-                     onclick="return confirm('Delete this contract?')">
-                     <i class="fa fa-trash"></i>
-                     </a>
-
-                     </div>
-
-                       <?php
-                       }
-                       ?>
-
-                       </td>
-
-                    </tr>
-
-                <?php endwhile; ?>
-
-            <?php else: ?>
-
-                <tr>
-                    <td colspan="13" class="text-center text-muted">
-                        No contracts found
-                    </td>
-                </tr>
-
-            <?php endif; ?>
-
-            </tbody>
-
-        </table>
-            </div>
-        </div>
-    </div>
-
-    </div>
-
-
-
+</div>
+</div>
 </div>
 
 <?php include "layout/footer.php"; ?>
 
 <script src="https://code.jquery.com/jquery-3.7.1.js"></script>
-
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
-
-<script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
-<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.bootstrap5.min.js"></script>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
-
-
-<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
-<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.print.min.js"></script>
 
 <script>
+$(document).ready(function(){
 
-    $(document).ready(function(){
+$('#contractsTable').DataTable();
 
-        $('#contractsTable').DataTable({
+$('#contractsTable tbody').on('click','tr',function(e){
 
-            pageLength: 10,
+if($(e.target).closest('a,button').length){
+return;
+}
 
-            dom: 'Bfrtip',
+let row = $(this);
 
-            buttons: [
-                'excel',
-                'pdf',
-                'print'
-            ]
+let id = row.data('id');
+let name = row.data('name');
+let contract = row.data('contract');
+let code = row.data('code');
+let owner = row.data('owner');
+let role = row.data('role');
+let username = row.data('username');
 
-        });
+$('#m_id').val(id);
+$('#m_name').text(name);
+$('#m_contract').text(contract);
+$('#m_code').text(code);
 
-    });
+// ROLE RULE
+let canUpload = false;
 
+if(role === "Administrator" || role === "User (Project Coordinator)"){
+canUpload = true;
+}
+else if(role === "User (Project Manager)" && username === owner){
+canUpload = true;
+}
+
+if(canUpload){
+$('#uploadSection').show();
+}else{
+$('#uploadSection').hide();
+}
+
+// LOAD FILES
+$('#filesContainer').html("Loading...");
+
+$.post("../backend/get_contract_files.php",{id:id},function(data){
+$('#filesContainer').html(data);
+});
+
+let modal = new bootstrap.Modal(document.getElementById('contractModal'));
+modal.show();
+
+});
+
+});
 </script>
 
 </body>

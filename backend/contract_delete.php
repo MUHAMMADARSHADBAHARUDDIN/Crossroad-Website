@@ -21,7 +21,7 @@ if(
     $role == "Administrator" ||
     $role == "User (Project Coordinator)" ||
     (
-        ($role == "User (Technical)" || $role == "User (Project Manager)")
+        ($role == "User (Project Manager)")
         && $username == $owner
     )
 ){

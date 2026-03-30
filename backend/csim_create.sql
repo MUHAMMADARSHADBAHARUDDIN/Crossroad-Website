@@ -1,12 +1,15 @@
+-- =================================
+-- DATABASE
+-- =================================
 DROP DATABASE IF EXISTS crossroad_solutions_inventory_management;
-
 CREATE DATABASE crossroad_solutions_inventory_management;
-
 USE crossroad_solutions_inventory_management;
 
--- =========================
--- 1. asset inventory table
--- =========================
+-- =================================
+-- TABLES
+-- =================================
+
+-- 1. Asset Inventory
 CREATE TABLE asset_inventory (
                                  no INT AUTO_INCREMENT PRIMARY KEY,
                                  part_number VARCHAR(100),
@@ -20,9 +23,7 @@ CREATE TABLE asset_inventory (
                                  remark TEXT
 );
 
--- =========================
--- 2. project inventory table
--- =========================
+-- 2. Project Inventory
 CREATE TABLE project_inventory (
                                    no INT AUTO_INCREMENT PRIMARY KEY,
                                    name VARCHAR(150),
@@ -36,12 +37,11 @@ CREATE TABLE project_inventory (
                                    preventive_management VARCHAR(150),
                                    partner VARCHAR(150),
                                    partner_pic VARCHAR(150),
-                                   remark TEXT
+                                   remark TEXT,
+                                   created_by VARCHAR(100)
 );
 
--- =========================
--- 3. tender tracker table
--- =========================
+-- 3. Tender Tracker
 CREATE TABLE tender_tracker (
                                 no INT AUTO_INCREMENT PRIMARY KEY,
                                 tender_name VARCHAR(150),
@@ -52,34 +52,29 @@ CREATE TABLE tender_tracker (
                                 remark TEXT
 );
 
--- =========================
--- 4. administrator table
--- =========================
+-- 4. Administrator
 CREATE TABLE administrator (
                                username VARCHAR(100) PRIMARY KEY,
+                               email VARCHAR(100),
                                password VARCHAR(255)
 );
 
--- =========================
--- 5. system admin table
--- =========================
+-- 5. System Admin
 CREATE TABLE system_admin (
                               username VARCHAR(100) PRIMARY KEY,
+                              email VARCHAR(100),
                               password VARCHAR(255)
 );
 
--- =========================
--- 6. user table
--- =========================
+-- 6. User
 CREATE TABLE user (
                       username VARCHAR(100) PRIMARY KEY,
+                      email VARCHAR(100),
                       password VARCHAR(255),
                       role VARCHAR(50)
 );
 
--- =========================
--- 7. activity log table
--- =========================
+-- 7. Activity Logs
 CREATE TABLE activity_logs (
                                id INT AUTO_INCREMENT PRIMARY KEY,
                                username VARCHAR(100),
@@ -88,6 +83,18 @@ CREATE TABLE activity_logs (
                                description TEXT,
                                log_time DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-
-ALTER TABLE project_inventory
-    ADD created_by VARCHAR(100);
+CREATE TABLE contract_documents (
+                                    id INT AUTO_INCREMENT PRIMARY KEY,
+                                    contract_id INT,
+                                    file_name VARCHAR(255),
+                                    uploaded_by VARCHAR(100),
+                                    upload_time DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE contract_files (
+                                id INT AUTO_INCREMENT PRIMARY KEY,
+                                contract_id INT,
+                                file_name VARCHAR(255),
+                                file_path VARCHAR(255),
+                                uploaded_by VARCHAR(100),
+                                uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);

@@ -14,7 +14,7 @@ $role = $_SESSION['role'];
 $allowed = [
     "Administrator",
     "User (Project Coordinator)",
-    "User (Technical)",
+   // "User (Technical)",
     "User (Project Manager)"
 ];
 
