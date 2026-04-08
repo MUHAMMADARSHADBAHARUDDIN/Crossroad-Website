@@ -24,8 +24,9 @@ SELECT
     brand,
     description,
     type,
-    MAX(remark) as remark,
-    COUNT(*) as total_qty
+    MAX(remark) AS remark,
+    COUNT(*) AS total_qty,
+    MIN(created_by) AS created_by
 FROM asset_inventory
 WHERE part_number LIKE '%$search%'
 GROUP BY part_number
@@ -97,17 +98,24 @@ $result = $mysqli->query($sql);
 
 <td onclick="event.stopPropagation();">
 
-<?php if($role == "Administrator" || $role == "System Admin" || $role == "User (Technical)"): ?>
+<?php
+// Determine if the user can edit this row
+$canEdit = false;
 
-    <a href="asset_edit.php?id=<?php echo $row['part_number']; ?>"
-       class="btn btn-sm btn-primary">
+if($role == "Administrator" || $role == "System Admin"){
+    $canEdit = true;
+}
+elseif($role == "User (Technical)" && $row['created_by'] == $username){
+    $canEdit = true;
+}
+
+if($canEdit):
+?>
+    <a href="asset_edit.php?id=<?= $row['part_number']; ?>" class="btn btn-sm btn-primary">
         <i class="fa fa-pen"></i>
     </a>
-
 <?php else: ?>
-
     <span class="badge bg-secondary">View Only</span>
-
 <?php endif; ?>
 
 </td>
