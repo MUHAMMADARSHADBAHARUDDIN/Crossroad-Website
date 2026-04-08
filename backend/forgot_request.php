@@ -154,8 +154,14 @@ button:hover{
     <h3>Forgot Password</h3>
 
     <form method="POST">
-        <label>Email</label>
+        <label>Username</label>
         <input type="email" name="email" class="form-control" required>
+            <!-- SMALL BACK LINK -->
+            <div class="mb-2">
+                <a href="../frontend/index.html" style="font-size: 14px; text-decoration: none;">
+                    Back to Login
+                </a>
+            </div>
         <button name="submit" class="mt-3">Send Request</button>
     </form>
 </div>

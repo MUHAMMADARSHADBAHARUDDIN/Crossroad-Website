@@ -10,18 +10,20 @@ USE crossroad_solutions_inventory_management;
 -- =================================
 
 -- 1. Asset Inventory
-CREATE TABLE asset_inventory (
-                                 no INT AUTO_INCREMENT PRIMARY KEY,
-                                 part_number VARCHAR(100),
-                                 serial_number VARCHAR(100),
-                                 brand VARCHAR(100),
-                                 description TEXT,
-                                 interface VARCHAR(100),
-                                 quantity INT,
-                                 type VARCHAR(100),
-                                 location VARCHAR(150),
-                                 remark TEXT
-);
+CREATE TABLE `asset_inventory` (
+                                   `no` int(11) NOT NULL AUTO_INCREMENT,
+                                   `part_number` varchar(100) NOT NULL,
+                                   `serial_number` varchar(100) NOT NULL,
+                                   `brand` varchar(100) DEFAULT NULL,
+                                   `description` text DEFAULT NULL,
+                                   `quantity` int(11) DEFAULT 1,
+                                   `type` varchar(100) DEFAULT NULL,
+                                   `location` varchar(150) DEFAULT NULL,
+                                   `remark` text DEFAULT NULL,
+                                   `created_by` varchar(100) DEFAULT NULL,
+                                   PRIMARY KEY (`no`),
+                                   UNIQUE KEY `serial_number` (`serial_number`)
+) ENGINE=InnoDB AUTO_INCREMENT=14 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
 
 -- 2. Project Inventory
 CREATE TABLE project_inventory (
@@ -97,4 +99,15 @@ CREATE TABLE contract_files (
                                 file_path VARCHAR(255),
                                 uploaded_by VARCHAR(100),
                                 uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+ALTER TABLE asset_inventory ADD created_by VARCHAR(100);
+
+CREATE TABLE stock_out_history (
+                                   id INT AUTO_INCREMENT PRIMARY KEY,
+                                   part_number VARCHAR(100),
+                                   serial_number VARCHAR(100),
+                                   location VARCHAR(100),
+                                   remark TEXT,
+                                   stock_out_by VARCHAR(100),
+                                   stock_out_time DATETIME DEFAULT CURRENT_TIMESTAMP
 );

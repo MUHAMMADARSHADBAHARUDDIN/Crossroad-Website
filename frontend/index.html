@@ -18,8 +18,9 @@
            overflow: hidden;
        }
       .logo-text span {
-    font-size: 14px; /* adjust smaller if needed */
-}
+          font-size: 16px; /* adjust smaller if needed */
+          text-align: left;
+       }
        body::before {
            content: "";
            position: absolute;
@@ -117,9 +118,9 @@
             <span>Crossroad Solutions Sdn Bhd</span>
         </h3>
     </div>
-    <h3>Welcome Back</h3>
+    <!-- <h4>Welcome Back</h4> -->
     <form action="../backend/login.php" method="POST">
-        <label>Email</label>
+        <label>Username</label>
         <input type="email" name="email" required>
         <label>Password</label>
         <div class="password-wrapper">

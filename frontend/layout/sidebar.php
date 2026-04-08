@@ -24,7 +24,14 @@ $current = basename($_SERVER['SCRIPT_NAME']);
         <i class="fa fa-box"></i>
         <span>Asset Inventory</span>
     </a>
+    <?php if($role == "Administrator" || $role == "System Admin" || $role == "User (Technical)"): ?>
 
+        <a href="stock_out.php" class="<?php if($current=='stock_out.php') echo 'active'; ?>">
+            <i class="fa fa-arrow-up-right-from-square"></i> <!-- New Stock Out Icon -->
+            <span>Stock Out</span>
+        </a>
+
+    <?php endif; ?>
     <a href="#">
         <i class="fa fa-chart-line"></i>
         <span>Tender Tracker</span>
