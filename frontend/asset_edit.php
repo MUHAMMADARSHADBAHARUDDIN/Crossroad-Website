@@ -47,7 +47,18 @@ if(isset($_POST['update']) && $canEdit){
     ");
 
     if(!$update) die("Update Error: " . $mysqli->error);
-
+// INSERT INTO ACTIVITY LOG
+$mysqli->query("
+INSERT INTO activity_logs
+(username, role, action_type, description)
+VALUES
+(
+    '$username',
+    '$role',
+    'Edit Asset',
+    'Edited asset: Old Part Number ".$row['part_number'].", Old Serial Number ".$row['serial_number'].". New Part Number $new_part, New Serial Number $new_serial, Brand $brand, Type $type, Location $location, Remark $remark'
+)
+");
     header("Location: ../frontend/asset_inventory.php");
     exit();
 }

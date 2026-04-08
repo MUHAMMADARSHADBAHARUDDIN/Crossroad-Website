@@ -46,6 +46,19 @@ if(isset($_POST['add'])){
             ('$part','$serial','$brand','$desc','$type','$location','$remark','$username')
             ");
 
+            // ✅ ACTIVITY LOG (PLACE HERE AFTER VARIABLES ARE DEFINED)
+            $mysqli->query("
+            INSERT INTO activity_logs
+            (username, role, action_type, description)
+            VALUES
+            (
+                '$username',
+                '$role',
+                'Stock In',
+                'Added asset: Part Number $part, Serial Number $serial, Brand $brand, Type $type, Location $location, Remark $remark'
+            )
+            ");
+
             header("Location: ../frontend/asset_inventory.php");
             exit();
         }

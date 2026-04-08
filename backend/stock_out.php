@@ -29,7 +29,18 @@ VALUES
     '$username'
 )
 ");
-
+// INSERT INTO ACTIVITY LOG
+$mysqli->query("
+INSERT INTO activity_logs
+(username, role, action_type, description)
+VALUES
+(
+    '$username',
+    '$role',
+    'Stock Out',
+    'Stocked out asset: Part Number ".$row['part_number'].", Serial Number ".$row['serial_number'].", Location ".$row['location'].", Remark: $remark'
+)
+");
 // DELETE FROM INVENTORY
 $mysqli->query("DELETE FROM asset_inventory WHERE no=$id");
 
