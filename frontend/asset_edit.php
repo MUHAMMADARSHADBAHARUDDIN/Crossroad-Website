@@ -103,17 +103,17 @@ if(isset($_POST['update'])){
 
             <div class="row">
 
-                <div class="col-md-6 mb-3">
-                    <label>Part Number *</label>
-                    <input type="text" class="form-control"
-                           value="<?php echo $row['part_number']; ?>">
-                </div>
+               <div class="col-md-6 mb-3">
+                   <label>Part Number *</label>
+                   <input type="text" name="part_number" class="form-control"
+                          value="<?php echo $row['part_number']; ?>" required>
+               </div>
 
-                <div class="col-md-6 mb-3">
-                    <label>Serial Number *</label>
-                    <input type="text" class="form-control"
-                           value="<?php echo $row['serial_number']; ?>">
-                </div>
+               <div class="col-md-6 mb-3">
+                   <label>Serial Number *</label>
+                   <input type="text" name="serial_number" class="form-control"
+                          value="<?php echo $row['serial_number']; ?>" required>
+               </div>
 
                 <div class="col-md-6 mb-3">
                     <label>Brand</label>

@@ -111,17 +111,20 @@ data-username="<?= $username; ?>"
 <?php
 $owner = $row['created_by'];
 
-if($role == "Administrator" || $role == "User (Project Coordinator)"){
+// Only allow Edit/Delete for these roles OR owner
+if(
+    $role == "Administrator" ||
+    $role == "User (Project Coordinator)" ||
+    ($role == "User (Project Manager)" && $username == $owner)
+){
 ?>
-<a href="contract_edit.php?id=<?= $row['no']; ?>" class="btn btn-sm btn-primary">Edit</a>
-<a href="../backend/contract_delete.php?id=<?= $row['no']; ?>" class="btn btn-sm btn-danger" onclick="return confirm('Delete this contract?')">Delete</a>
+    <a href="contract_edit.php?id=<?= $row['no']; ?>" class="btn btn-sm btn-primary">Edit</a>
+    <a href="../backend/contract_delete.php?id=<?= $row['no']; ?>" class="btn btn-sm btn-danger" onclick="return confirm('Delete this contract?')">Delete</a>
 <?php
+} else {
+    echo '<span class="badge bg-secondary">View Only</span>';
 }
-elseif(($role == "User (Project Manager)" || $role == "User (Technical)") && $username == $owner){
 ?>
-<a href="contract_edit.php?id=<?= $row['no']; ?>" class="btn btn-sm btn-primary">Edit</a>
-<a href="../backend/contract_delete.php?id=<?= $row['no']; ?>" class="btn btn-sm btn-danger" onclick="return confirm('Delete this contract?')">Delete</a>
-<?php } ?>
 </td>
 
 </tr>
