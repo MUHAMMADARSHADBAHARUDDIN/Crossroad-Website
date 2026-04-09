@@ -81,5 +81,16 @@ $result = $mysqli->query($sql);
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+function toggleSidebar(){
+    const sidebar = document.getElementById("sidebar");
+    const main = document.querySelector(".main");
+    const btn = document.getElementById("menuBtn");
+
+    sidebar.classList.toggle("collapsed");
+    main.classList.toggle("expanded");
+    btn.classList.toggle("active");
+}
+</script>
 </body>
 </html>

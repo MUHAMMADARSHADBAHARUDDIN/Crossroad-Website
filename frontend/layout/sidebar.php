@@ -10,10 +10,10 @@ $current = basename($_SERVER['SCRIPT_NAME']);
         <span>Dashboard</span>
     </a>
 
-    <a href="myhome.php" class="<?php if(strpos($current,'myhome') !== false) echo 'active'; ?>">
-        <i class="fa fa-home"></i>
-        <span>My Home</span>
-    </a>
+  <!--<a href="myhome.php" class="<?php if(strpos($current,'myhome') !== false) echo 'active'; ?>">
+              <i class="fa fa-home"></i>
+              <span>My Home</span>
+          </a>-->
 
     <a href="contracts.php" class="<?php if($current=='contracts.php') echo 'active'; ?>">
         <i class="fa fa-file-contract"></i>
