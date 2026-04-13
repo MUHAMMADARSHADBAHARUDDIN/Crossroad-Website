@@ -10,29 +10,34 @@ if(!isset($_SESSION['username'])){
 $role = $_SESSION['role'];
 $username = $_SESSION['username'];
 
-// Secure GET parameter
-$part = $mysqli->real_escape_string($_GET['id']);
+// ✅ DEFINE THIS (YOU MISSED THIS)
+$canEdit = in_array($role, ["Administrator", "System Admin", "User (Technical)"]);
 
-// Fetch the asset
-$result = $mysqli->query("SELECT * FROM asset_inventory WHERE part_number='$part' LIMIT 1");
+// ✅ GET ID SAFELY
+$id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+
+// ✅ FETCH DATA
+$result = $mysqli->query("
+    SELECT * FROM asset_inventory WHERE no='$id' LIMIT 1
+");
+
 if(!$result) die("Query Error: " . $mysqli->error);
 
 $row = $result->fetch_assoc();
 if(!$row) die("No data found");
 
-// ROLE CONTROL
-$canEdit = in_array($role, ["Administrator", "System Admin"]) || ($role === "User (Technical)" && $row['created_by'] === $username);
-
-// Handle update only if user can edit
+// ✅ HANDLE UPDATE
 if(isset($_POST['update']) && $canEdit){
+
     $new_part     = $mysqli->real_escape_string($_POST['part_number']);
     $new_serial   = $mysqli->real_escape_string($_POST['serial_number']);
     $brand        = $mysqli->real_escape_string($_POST['brand']);
     $description  = $mysqli->real_escape_string($_POST['description']);
     $type         = $mysqli->real_escape_string($_POST['type']);
     $location     = $mysqli->real_escape_string($_POST['location']);
-    $remark       = $mysqli->real_escape_string($_POST['remark']);
+    $date         = $mysqli->real_escape_string($_POST['date_received']);
 
+    // ✅ UPDATE USING UNIQUE ID
     $update = $mysqli->query("
         UPDATE asset_inventory SET
             part_number='$new_part',
@@ -41,24 +46,26 @@ if(isset($_POST['update']) && $canEdit){
             description='$description',
             type='$type',
             location='$location',
-            remark='$remark'
-        WHERE part_number='$part'
-          AND serial_number='".$row['serial_number']."'
+            date_received='$date'
+        WHERE no='$id'
     ");
 
     if(!$update) die("Update Error: " . $mysqli->error);
-// INSERT INTO ACTIVITY LOG
-$mysqli->query("
-INSERT INTO activity_logs
-(username, role, action_type, description)
-VALUES
-(
-    '$username',
-    '$role',
-    'Edit Asset',
-    'Edited asset: Old Part Number ".$row['part_number'].", Old Serial Number ".$row['serial_number'].". New Part Number $new_part, New Serial Number $new_serial, Brand $brand, Type $type, Location $location, Remark $remark'
-)
-");
+
+    // ✅ ACTIVITY LOG (INSIDE UPDATE BLOCK)
+    $mysqli->query("
+        INSERT INTO activity_logs
+        (username, role, action_type, description)
+        VALUES
+        (
+            '$username',
+            '$role',
+            'Edit Asset',
+            'Edited asset: Old Part ".$row['part_number'].", Old Serial ".$row['serial_number'].
+            ". New Part $new_part, New Serial $new_serial, Brand $brand, Type $type, Location $location, Date $date'
+        )
+    ");
+
     header("Location: ../frontend/asset_inventory.php");
     exit();
 }
@@ -120,8 +127,9 @@ VALUES
             </div>
 
             <div class="col-12 mb-3">
-                <label>Remark</label>
-                <textarea name="remark" class="form-control" <?= $canEdit ? '' : 'readonly' ?>><?= $row['remark'] ?></textarea>
+                <label>Date Received</label>
+                <input type="date" name="date_received" class="form-control"
+                       value="<?= $row['date_received'] ?>">
             </div>
 
         </div>

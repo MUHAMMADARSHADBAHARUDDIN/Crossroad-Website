@@ -12,7 +12,7 @@ $check = $mysqli->query("SELECT * FROM asset_inventory WHERE no=$id");
 $row = $check->fetch_assoc();
 
 // PERMISSION
-if($role == "User (Technical)" && $row['created_by'] != $username){
+if($role == "User (Technical)"){
     die("Access denied");
 }
 

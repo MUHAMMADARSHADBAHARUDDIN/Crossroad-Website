@@ -3,17 +3,14 @@ session_start();
 require_once "../includes/db_connect.php";
 
 if(!isset($_SESSION['username'])){
-    header("Location: index.html");
-    exit();
+    exit("No session");
 }
 
 $role = $_SESSION['role'];
 $username = $_SESSION['username'];
 
-// Only allow certain roles
-if(!in_array($role, ["Administrator","System Admin","User (Technical)"])){
-    die("Access denied");
-}
+// ✅ VIEW ONLY CONTROL (NO MORE ACCESS DENIED)
+$canEdit = in_array($role, ["Administrator","System Admin","User (Technical)"]);
 
 $search = "";
 if(isset($_GET['search'])){
@@ -49,7 +46,9 @@ $result = $mysqli->query($sql);
 
     <form method="GET" class="mb-3">
         <div class="input-group">
-            <input type="text" name="search" class="form-control" placeholder="Search by Part Number..." value="<?php echo $search ?>">
+            <input type="text" name="search" class="form-control"
+                   placeholder="Search by Part Number..."
+                   value="<?php echo $search ?>">
             <button class="btn btn-warning"><i class="fa fa-search"></i></button>
         </div>
     </form>
@@ -68,12 +67,12 @@ $result = $mysqli->query($sql);
     <tbody>
         <?php while($row = $result->fetch_assoc()): ?>
             <tr>
-                <td><?php echo $row['part_number']; ?></td>
-                <td><?php echo $row['serial_number']; ?></td>
-                <td><?php echo $row['location']; ?></td>
-                <td><?php echo $row['remark']; ?></td>
-                <td><?php echo $row['stock_out_by']; ?></td>
-                <td><?php echo $row['stock_out_date']; ?></td>
+                <td><?= $row['part_number']; ?></td>
+                <td><?= $row['serial_number']; ?></td>
+                <td><?= $row['location']; ?></td>
+                <td><?= $row['remark']; ?></td>
+                <td><?= $row['stock_out_by']; ?></td>
+                <td><?= $row['stock_out_date']; ?></td>
             </tr>
         <?php endwhile; ?>
     </tbody>
@@ -81,6 +80,7 @@ $result = $mysqli->query($sql);
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
 <script>
 function toggleSidebar(){
     const sidebar = document.getElementById("sidebar");
@@ -92,5 +92,6 @@ function toggleSidebar(){
     btn.classList.toggle("active");
 }
 </script>
+
 </body>
 </html>

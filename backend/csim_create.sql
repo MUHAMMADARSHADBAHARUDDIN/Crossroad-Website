@@ -115,3 +115,29 @@ CREATE TABLE `stock_out_history` (
                                      `stock_out_by` VARCHAR(100),
                                      `stock_out_time` DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE `server_inventory` (
+                                    `no` INT AUTO_INCREMENT PRIMARY KEY,
+                                    `server_name` VARCHAR(150) NOT NULL,
+                                    `brand` VARCHAR(100),
+                                    `machine_type` VARCHAR(150),
+                                    `serial_number` VARCHAR(150) UNIQUE,
+                                    `location` VARCHAR(150),
+                                    `status` VARCHAR(50),
+                                    `remark` TEXT,
+                                    `date_testing` DATE,
+                                    `tester` VARCHAR(100),
+                                    `created_by` VARCHAR(100)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE server_stockout_history (
+                                         id INT AUTO_INCREMENT PRIMARY KEY,
+                                         server_name VARCHAR(150),
+                                         machine_type VARCHAR(150),
+                                         serial_number VARCHAR(150),
+                                         location VARCHAR(150),
+                                         status VARCHAR(50),
+                                         remark TEXT,
+                                         tester VARCHAR(100),
+                                         stock_out_by VARCHAR(100),
+                                         stock_out_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

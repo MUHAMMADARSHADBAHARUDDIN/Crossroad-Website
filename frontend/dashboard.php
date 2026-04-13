@@ -35,22 +35,28 @@ WHERE contract_end < CURDATE()
 // =====================
 // ASSET STATS
 // =====================
-$totalDevices = $mysqli->query("SELECT COUNT(*) as total FROM asset_inventory")->fetch_assoc()['total'];
 
+// TOTAL ASSETS (everything in asset_inventory)
+$totalDevices = $mysqli->query("
+    SELECT COUNT(*) as total
+    FROM asset_inventory
+")->fetch_assoc()['total'];
+
+
+// TOTAL SERVERS (from server_inventory)
 $servers = $mysqli->query("
-SELECT COUNT(*) as total FROM asset_inventory
-WHERE type LIKE '%server%'
+    SELECT COUNT(*) as total
+    FROM server_inventory
 ")->fetch_assoc()['total'];
 
+
+// TOTAL STORAGE (from asset_inventory only)
 $storage = $mysqli->query("
-SELECT COUNT(*) as total FROM asset_inventory
-WHERE type LIKE '%storage%'
+    SELECT COUNT(*) as total
+    FROM asset_inventory
+    WHERE type LIKE '%storage%'
 ")->fetch_assoc()['total'];
 
-$maintenance = $mysqli->query("
-SELECT COUNT(*) as total FROM asset_inventory
-WHERE remark LIKE '%maintenance%'
-")->fetch_assoc()['total'];
 ?>
 
 <!DOCTYPE html>
@@ -157,14 +163,14 @@ WHERE remark LIKE '%maintenance%'
 <div class="row text-center mb-4">
 
     <div class="col-lg-3 col-md-6 col-12 mb-3">
-        <div class="stat-card">
-            <h6>Total Devices</h6>
+        <div class="stat-card" onclick="openExportModal('asset')" style="cursor:pointer;">
+            <h6>Total Assets</h6>
             <h2><?= $totalDevices ?></h2>
         </div>
     </div>
 
     <div class="col-lg-3 col-md-6 col-12 mb-3">
-        <div class="stat-card">
+        <div class="stat-card" onclick="openExportModal('server')" style="cursor:pointer;">
             <h6>Servers</h6>
             <h2><?= $servers ?></h2>
         </div>
@@ -177,12 +183,7 @@ WHERE remark LIKE '%maintenance%'
         </div>
     </div>
 
-    <div class="col-lg-3 col-md-6 col-12 mb-3">
-        <div class="stat-card">
-            <h6>Maintenance</h6>
-            <h2 class="text-warning"><?= $maintenance ?></h2>
-        </div>
-    </div>
+
 
 </div>
 
@@ -217,17 +218,88 @@ WHERE remark LIKE '%maintenance%'
 </div>
 
 </div>
+<div class="modal fade" id="exportModal">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
 
+      <div class="modal-header bg-dark text-white">
+        <h5 class="modal-title">Export Data</h5>
+        <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body text-center">
+
+        <p id="exportText" class="mb-3"></p>
+
+        <button class="btn btn-success w-100 mb-2" onclick="exportData('excel')">
+            <i class="fa fa-file-excel"></i> Excel
+        </button>
+
+        <button class="btn btn-danger w-100 mb-2" onclick="exportData('pdf')">
+            <i class="fa fa-file-pdf"></i> PDF
+        </button>
+
+        <button class="btn btn-primary w-100" onclick="exportData('print')">
+            <i class="fa fa-print"></i> Print
+        </button>
+
+      </div>
+
+    </div>
+  </div>
+</div>
 <?php include "layout/footer.php"; ?>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
 function toggleSidebar(){
     const sidebar = document.getElementById("sidebar");
     const main = document.getElementById("main");
+    const btn = document.querySelector(".menu-btn");
+
     sidebar.classList.toggle("collapsed");
     main.classList.toggle("expanded");
+    btn.classList.toggle("active");
 }
 </script>
 
+<script>
+let exportType = "";
+
+function openExportModal(type){
+
+    exportType = type;
+
+    let text = (type === "asset")
+        ? "Export TOTAL ASSETS (Inventory + Stock Out)"
+        : "Export SERVERS (Inventory + Stock Out)";
+
+    document.getElementById("exportText").innerText = text;
+
+    new bootstrap.Modal(document.getElementById('exportModal')).show();
+}
+function exportData(format){
+
+    let url = "";
+
+    if(exportType === "asset"){
+        url = "../backend/export_assets.php?format=" + format;
+    }
+    else if(exportType === "server"){
+        url = "../backend/export_servers.php?format=" + format;
+    }
+
+    // 🔥 OPEN IN NEW TAB (PDF & PRINT)
+    if(format === "pdf" || format === "print"){
+        window.open(url, "_blank");
+    }
+    else{
+        // Excel stays download (same tab)
+        window.location.href = url;
+    }
+
+}
+</script>
 </body>
 </html>

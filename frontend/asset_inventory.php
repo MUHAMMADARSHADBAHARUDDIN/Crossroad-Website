@@ -24,7 +24,7 @@ SELECT
     brand,
     description,
     type,
-    MAX(remark) AS remark,
+    MAX(date_received) AS date_received,
     COUNT(*) AS total_qty,
     MIN(created_by) AS created_by
 FROM asset_inventory
@@ -77,8 +77,7 @@ $result = $mysqli->query($sql);
     <th>Description</th>
     <th>Quantity</th>
     <th>Type</th>
-    <th>Remark</th>
-    <th>Action</th>
+    <th>Date Received</th>
 </tr>
 </thead>
 
@@ -91,35 +90,9 @@ $result = $mysqli->query($sql);
 <td><?php echo $row['part_number']; ?></td>
 <td><?php echo $row['brand']; ?></td>
 <td><?php echo $row['description']; ?></td>
-
 <td><?php echo $row['total_qty']; ?></td>
 <td><?php echo $row['type']; ?></td>
-<td><?php echo $row['remark']; ?></td>
-
-<td onclick="event.stopPropagation();">
-
-<?php
-// Determine if the user can edit this row
-$canEdit = false;
-
-if($role == "Administrator" || $role == "System Admin"){
-    $canEdit = true;
-}
-elseif($role == "User (Technical)" && $row['created_by'] == $username){
-    $canEdit = true;
-}
-
-if($canEdit):
-?>
-    <a href="asset_edit.php?id=<?= $row['part_number']; ?>" class="btn btn-sm btn-primary">
-        <i class="fa fa-pen"></i>
-    </a>
-<?php else: ?>
-    <span class="badge bg-secondary">View Only</span>
-<?php endif; ?>
-
-</td>
-
+<td><?php echo $row['date_received']; ?></td>
 </tr>
 
 <?php endwhile; ?>

@@ -1,0 +1,217 @@
+<?php
+session_start();
+require_once "../includes/db_connect.php";
+
+if(!isset($_SESSION['username'])){
+    header("Location: index.html");
+    exit();
+}
+
+$role = $_SESSION['role'];
+$username = $_SESSION['username'];
+
+// ✅ VIEW ONLY CONTROL (NO MORE ACCESS DENIED)
+$canEdit = in_array($role, ["Administrator","System Admin","User (Technical)"]);
+
+$search = "";
+if(isset($_GET['search'])){
+    $search = $mysqli->real_escape_string($_GET['search']);
+}
+
+// ✅ UPDATED QUERY (date_testing instead of date_received)
+$sql = "
+SELECT
+    MIN(no) as id,
+    server_name,
+    machine_type,
+    brand,
+    location,
+    MAX(date_testing) AS date_testing,
+    MAX(status) AS status,
+    MAX(remark) AS remark,
+    MAX(tester) AS tester,
+    COUNT(*) AS total_qty
+FROM server_inventory
+WHERE server_name LIKE '%$search%'
+GROUP BY server_name, machine_type
+";
+
+$result = $mysqli->query($sql);
+?>
+
+<!DOCTYPE html>
+<html>
+<head>
+<title>Server Inventory</title>
+
+<link rel="stylesheet" href="style.css">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script src="https://code.jquery.com/jquery-3.7.1.js"></script>
+</head>
+
+<body>
+
+<?php include "layout/header.php"; ?>
+<?php include "layout/sidebar.php"; ?>
+
+<div class="main">
+
+<h2 class="mb-4">Server Inventory</h2>
+
+<form method="GET" class="mb-3">
+    <div class="input-group">
+        <input type="text" name="search" class="form-control" placeholder="Search..." value="<?= $search ?>">
+        <button class="btn btn-warning"><i class="fa fa-search"></i></button>
+    </div>
+</form>
+
+<a href="server_add.php" class="btn btn-warning mb-3">
+    <i class="fa fa-plus"></i> Add Server
+</a>
+
+<table class="table table-striped">
+<thead>
+<tr>
+    <th>Server Name</th>
+    <th>Machine Type</th>
+    <th>Brand</th>
+    <th>Quantity</th>
+    <th>Status</th>
+    <th>Remark</th>
+    <th>Date Testing</th>
+    <th>Tester</th>
+</tr>
+</thead>
+
+<tbody>
+
+<?php while($row = $result->fetch_assoc()): ?>
+
+<tr onclick="viewServer('<?= $row['server_name']; ?>','<?= $row['machine_type']; ?>')" style="cursor:pointer;">
+
+<td><?= $row['server_name']; ?></td>
+<td><?= $row['machine_type']; ?></td>
+<td><?= $row['brand']; ?></td>
+<td><?= $row['total_qty']; ?></td>
+
+<?php
+$statusColor = ($row['status'] == 'Okay') ? 'success' : 'danger';
+?>
+
+<td>
+    <span class="badge bg-<?= $statusColor ?>">
+        <?= $row['status'] ?>
+    </span>
+</td>
+
+<td><?= $row['remark'] ?: '-' ?></td>
+<td><?= $row['date_testing'] ?></td>
+<td><?= $row['tester'] ?: '-' ?></td>
+
+</tr>
+
+<?php endwhile; ?>
+
+</tbody>
+</table>
+
+</div>
+
+<!-- MODAL -->
+<div class="modal fade" id="serialModal">
+<div class="modal-dialog">
+<div class="modal-content">
+
+<div class="modal-header">
+<h5>Server Serial List</h5>
+<button class="btn-close" data-bs-dismiss="modal"></button>
+</div>
+
+<div class="modal-body" id="serialContent"></div>
+
+</div>
+</div>
+</div>
+<!-- SERVER REMARK MODAL -->
+<div class="modal fade" id="serverRemarkModal">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title">Server Stock Out</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+        <p id="serverSelectedSerial"></p>
+
+        <textarea id="serverRemarkInput" class="form-control"
+            placeholder="Enter stock out reason..."></textarea>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-danger" onclick="submitServerStockOut()">Confirm</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+function viewServer(name, type){
+    $.post("../backend/get_server_serials.php",
+    {name:name, type:type},
+    function(data){
+        $("#serialContent").html(data);
+        new bootstrap.Modal(document.getElementById('serialModal')).show();
+    });
+}
+</script>
+<script>
+let serverSelectedId = 0;
+
+function openServerRemarkModal(id, serial){
+    serverSelectedId = id;
+
+    document.getElementById("serverSelectedSerial").innerHTML =
+        "Serial: <b>" + serial + "</b>";
+
+    document.getElementById("serverRemarkInput").value = "";
+
+    var modal = new bootstrap.Modal(document.getElementById('serverRemarkModal'));
+    modal.show();
+}
+
+function submitServerStockOut(){
+    let remark = document.getElementById("serverRemarkInput").value;
+
+    $.post("../backend/server_stock_out.php",
+    {
+        id: serverSelectedId,
+        remark: remark
+    }, function(data){
+        if(data.trim() == "success"){
+            location.reload();
+        }else{
+            alert(data);
+        }
+    });
+}
+</script>
+<script>
+function toggleSidebar(){
+    const sidebar = document.getElementById("sidebar");
+    const main = document.querySelector(".main");
+    const btn = document.getElementById("menuBtn");
+
+    sidebar.classList.toggle("collapsed");
+    main.classList.toggle("expanded");
+    btn.classList.toggle("active");
+}
+</script>
+
+</body>
+</html>

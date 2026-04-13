@@ -39,14 +39,19 @@ while($row = $result->fetch_assoc()){
 $canClick = (
     $role == "Administrator" ||
     $role == "System Admin" ||
-    ($role == "User (Technical)" && $row['created_by'] == $username)
+    ($role == "User (Technical)")
 );
     if($canClick){
         echo "
         <td>
+            <a href='asset_edit.php?id=".$row['no']."'
+               class='btn btn-sm btn-primary'>
+               <i class='fa fa-pen'></i>
+            </a>
+
             <button class='btn btn-sm btn-danger'
                 onclick='openRemarkModal(".$row['no'].", \"".$row['serial_number']."\")'>
-                <i class='fa fa-arrow-up'></i> Stock Out
+                <i class='fa fa-arrow-up'></i>
             </button>
         </td>";
     }else{

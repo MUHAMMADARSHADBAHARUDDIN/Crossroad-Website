@@ -324,6 +324,15 @@ modal.show();
 
 });
 </script>
+<style>
+#contractsTable tbody tr {
+    cursor: pointer;
+    transition: background 0.2s;
+}
 
+#contractsTable tbody tr:hover {
+    background-color: #f5f5f5;
+}
+</style>
 </body>
 </html>

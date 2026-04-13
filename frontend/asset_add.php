@@ -25,7 +25,7 @@ if(isset($_POST['add'])){
     $desc = trim($_POST['desc']);
     $type = trim($_POST['type']);
     $location = trim($_POST['location']);
-    $remark = trim($_POST['remark']);
+    $date = trim($_POST['date_received']);
 
     // ✅ VALIDATION
     if($part == "" || $serial == ""){
@@ -41,9 +41,9 @@ if(isset($_POST['add'])){
             // ✅ INSERT
             $mysqli->query("
             INSERT INTO asset_inventory
-            (part_number,serial_number,brand,description,type,location,remark,created_by)
+            (part_number,serial_number,brand,description,type,location,date_received,created_by)
             VALUES
-            ('$part','$serial','$brand','$desc','$type','$location','$remark','$username')
+            ('$part','$serial','$brand','$desc','$type','$location','$date','$username')
             ");
 
             // ✅ ACTIVITY LOG (PLACE HERE AFTER VARIABLES ARE DEFINED)
@@ -55,7 +55,7 @@ if(isset($_POST['add'])){
                 '$username',
                 '$role',
                 'Stock In',
-                'Added asset: Part Number $part, Serial Number $serial, Brand $brand, Type $type, Location $location, Remark $remark'
+                'Added asset: Part Number $part, Serial Number $serial, Brand $brand, Type $type, Location $location, Date Received $date'
             )
             ");
 
@@ -125,8 +125,8 @@ if(isset($_POST['add'])){
                 </div>
 
                 <div class="col-12 mb-3">
-                    <label>Remark (Asset Info)</label>
-                    <textarea name="remark" class="form-control"></textarea>
+                    <label>Date Received</label>
+                    <input type="date" name="date_received" class="form-control">
                 </div>
 
             </div>
