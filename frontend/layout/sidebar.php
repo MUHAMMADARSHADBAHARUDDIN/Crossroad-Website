@@ -13,26 +13,26 @@ $menu = [
 
     "MAIN" => [
         ["name"=>"Dashboard","icon"=>"fa-dashboard","link"=>"dashboard.php"],
-        ["name"=>"My Home","icon"=>"fa-home","link"=>"myhome.php"],
+       // ["name"=>"My Home","icon"=>"fa-home","link"=>"myhome.php"],
     ],
 
     "PRE-SALE" => [
         ["name"=>"Contracts","icon"=>"fa-file-contract","link"=>"contracts.php"],
-        ["name"=>"Tender Tracker","icon"=>"fa-chart-line","link"=>"#"],
+        ["name"=>"Project Tracker","icon"=>"fa-chart-line","link"=>"project_tracker.php"],
     ],
 
     "TECHNICAL" => [
         ["name"=>"Asset Inventory","icon"=>"fa-box","link"=>"asset_inventory.php"],
 
         ["name"=>"Stock Out","icon"=>"fa-angle-right","link"=>"stock_out.php",
-            "roles"=>["Administrator","System Admin","User (Technical)"],
+            //"roles"=>["Administrator","System Admin","User (Technical)"],
             "submenu"=>true
         ],
 
         ["name"=>"Server Inventory","icon"=>"fa-server","link"=>"server_inventory.php"],
 
         ["name"=>"Stock Out","icon"=>"fa-angle-right","link"=>"server_stockout.php",
-            "roles"=>["Administrator","System Admin","User (Technical)"],
+          //  "roles"=>["Administrator","System Admin","User (Technical)"],
             "submenu"=>true
         ],
     ],

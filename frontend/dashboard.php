@@ -10,6 +10,7 @@ if(!isset($_SESSION['username'])){
 $role = $_SESSION['role'];
 $username = $_SESSION['username'];
 
+$isExportAllowed = in_array($role, ["Administrator", "User (Technical)"]);
 
 // =====================
 // CONTRACT STATS
@@ -54,7 +55,7 @@ $servers = $mysqli->query("
 $storage = $mysqli->query("
     SELECT COUNT(*) as total
     FROM asset_inventory
-    WHERE type LIKE '%storage%'
+    WHERE description LIKE '%storage%'
 ")->fetch_assoc()['total'];
 
 ?>
@@ -112,9 +113,9 @@ $storage = $mysqli->query("
 
     <div class="col-lg-4 col-md-6 col-12">
         <div class="card dashboard-card p-4 shadow-sm h-100">
-            <h5><i class="fa fa-chart-line text-warning"></i> Tender Tracker</h5>
+            <h5><i class="fa fa-chart-line text-warning"></i> Project Tracker</h5>
             <p>Monitor tender activities and progress.</p>
-            <a href="#" class="btn btn-warning">Open</a>
+            <a href="project_tracker.php" class="btn btn-warning">Open</a>
         </div>
     </div>
 
@@ -163,14 +164,20 @@ $storage = $mysqli->query("
 <div class="row text-center mb-4">
 
     <div class="col-lg-3 col-md-6 col-12 mb-3">
-        <div class="stat-card" onclick="openExportModal('asset')" style="cursor:pointer;">
+       <div class="stat-card <?php echo $isExportAllowed ? 'clickable' : 'disabled-card'; ?>"
+            <?php if($isExportAllowed): ?>
+               onclick="openExportModal('asset')"
+            <?php endif; ?>>
             <h6>Total Assets</h6>
             <h2><?= $totalDevices ?></h2>
         </div>
     </div>
 
     <div class="col-lg-3 col-md-6 col-12 mb-3">
-        <div class="stat-card" onclick="openExportModal('server')" style="cursor:pointer;">
+        <div class="stat-card <?php echo $isExportAllowed ? 'clickable' : 'disabled-card'; ?>"
+             <?php if($isExportAllowed): ?>
+                onclick="openExportModal('server')"
+             <?php endif; ?>>
             <h6>Servers</h6>
             <h2><?= $servers ?></h2>
         </div>
@@ -184,36 +191,6 @@ $storage = $mysqli->query("
     </div>
 
 
-
-</div>
-
-<div class="section-divider"></div>
-
-<!-- TENDER (STATIC FOR NOW) -->
-<h4>Tender Tracker Overview</h4>
-
-<div class="row text-center mb-4">
-
-    <div class="col-lg-4 col-md-6 col-12 mb-3">
-        <div class="stat-card">
-            <h6>Active Tenders</h6>
-            <h2>0</h2>
-        </div>
-    </div>
-
-    <div class="col-lg-4 col-md-6 col-12 mb-3">
-        <div class="stat-card">
-            <h6>Submitted</h6>
-            <h2>0</h2>
-        </div>
-    </div>
-
-    <div class="col-lg-4 col-md-6 col-12 mb-3">
-        <div class="stat-card">
-            <h6>Won</h6>
-            <h2 class="text-success">0</h2>
-        </div>
-    </div>
 
 </div>
 
@@ -267,7 +244,13 @@ function toggleSidebar(){
 <script>
 let exportType = "";
 
+let isExportAllowed = <?= json_encode($isExportAllowed) ?>;
+
 function openExportModal(type){
+
+    if(!isExportAllowed){
+        return; // 🚫 do nothing for unauthorized roles
+    }
 
     exportType = type;
 
@@ -301,5 +284,14 @@ function exportData(format){
 
 }
 </script>
+<style>
+.clickable{
+    cursor: pointer;
+}
+
+.disabled-card{
+    cursor: not-allowed;
+}
+</style>
 </body>
 </html>

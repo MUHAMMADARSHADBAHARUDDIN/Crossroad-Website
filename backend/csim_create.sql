@@ -27,21 +27,17 @@ CREATE TABLE `asset_inventory` (
 
 -- 2. Project Inventory
 CREATE TABLE `project_inventory` (
-                                     `no` INT AUTO_INCREMENT PRIMARY KEY,
-                                     `name` VARCHAR(150),
-                                     `contract_name` VARCHAR(150),
-                                     `contract_code` VARCHAR(100),
-                                     `contract_start` DATE,
-                                     `contract_end` DATE,
-                                     `location` VARCHAR(150),
-                                     `pic` VARCHAR(150),
-                                     `support_coverage` VARCHAR(150),
-                                     `preventive_management` VARCHAR(150),
-                                     `partner` VARCHAR(150),
-                                     `partner_pic` VARCHAR(150),
-                                     `remark` TEXT,
-                                     `created_by` VARCHAR(100)
-);
+                                     `no` INT(11) NOT NULL AUTO_INCREMENT,
+
+    -- NEW REQUIRED FIELDS
+                                     `year_awarded` INT(4) DEFAULT NULL,
+                                     `project_name` TEXT,
+                                     `project_owner` VARCHAR(255),
+                                     `end_user` VARCHAR(255),
+                                     `contract_no` VARCHAR(150),
+                                     `service` VARCHAR(150),
+                                     `po_date` DATE,
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- 3. Tender Tracker
 CREATE TABLE `tender_tracker` (

@@ -11,8 +11,9 @@ $role = $_SESSION['role'];
 $username = $_SESSION['username'];
 
 // ✅ DEFINE THIS (YOU MISSED THIS)
-$canEdit = in_array($role, ["Administrator", "System Admin", "User (Technical)"]);
+$isView = isset($_GET['view']);
 
+$canEdit = !$isView && in_array($role, ["Administrator", "System Admin", "User (Technical)"]);
 // ✅ GET ID SAFELY
 $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 
@@ -33,7 +34,6 @@ if(isset($_POST['update']) && $canEdit){
     $new_serial   = $mysqli->real_escape_string($_POST['serial_number']);
     $brand        = $mysqli->real_escape_string($_POST['brand']);
     $description  = $mysqli->real_escape_string($_POST['description']);
-    $type         = $mysqli->real_escape_string($_POST['type']);
     $location     = $mysqli->real_escape_string($_POST['location']);
     $date         = $mysqli->real_escape_string($_POST['date_received']);
 
@@ -44,7 +44,6 @@ if(isset($_POST['update']) && $canEdit){
             serial_number='$new_serial',
             brand='$brand',
             description='$description',
-            type='$type',
             location='$location',
             date_received='$date'
         WHERE no='$id'
@@ -62,7 +61,7 @@ if(isset($_POST['update']) && $canEdit){
             '$role',
             'Edit Asset',
             'Edited asset: Old Part ".$row['part_number'].", Old Serial ".$row['serial_number'].
-            ". New Part $new_part, New Serial $new_serial, Brand $brand, Type $type, Location $location, Date $date'
+            ". New Part $new_part, New Serial $new_serial, Brand $brand, Location $location, Date $date'
         )
     ");
 
@@ -74,7 +73,7 @@ if(isset($_POST['update']) && $canEdit){
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Edit Asset</title>
+    <title><?= $isView ? 'View Asset' : 'Edit Asset' ?></title>
     <link rel="stylesheet" href="style.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
@@ -84,7 +83,7 @@ if(isset($_POST['update']) && $canEdit){
 <?php include "layout/sidebar.php"; ?>
 
 <div class="main">
-    <h2 class="mb-4">Edit Asset</h2>
+    <h2 class="mb-4"><?= $isView ? 'View Asset' : 'Edit Asset' ?></h2>
 
     <form method="POST">
 
@@ -106,12 +105,6 @@ if(isset($_POST['update']) && $canEdit){
                 <label>Brand</label>
                 <input type="text" name="brand" class="form-control"
                        value="<?= $row['brand'] ?>" <?= $canEdit ? '' : 'readonly' ?>>
-            </div>
-
-            <div class="col-md-6 mb-3">
-                <label>Type</label>
-                <input type="text" name="type" class="form-control"
-                       value="<?= $row['type'] ?>" <?= $canEdit ? '' : 'readonly' ?>>
             </div>
 
             <div class="col-md-6 mb-3">

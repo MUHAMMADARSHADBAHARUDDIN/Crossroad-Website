@@ -41,9 +41,9 @@ if(isset($_POST['add'])){
             // ✅ INSERT
             $mysqli->query("
             INSERT INTO asset_inventory
-            (part_number,serial_number,brand,description,type,location,date_received,created_by)
+            (part_number,serial_number,brand,description,location,date_received,created_by)
             VALUES
-            ('$part','$serial','$brand','$desc','$type','$location','$date','$username')
+            ('$part','$serial','$brand','$desc','$location','$date','$username')
             ");
 
             // ✅ ACTIVITY LOG (PLACE HERE AFTER VARIABLES ARE DEFINED)
@@ -55,7 +55,7 @@ if(isset($_POST['add'])){
                 '$username',
                 '$role',
                 'Stock In',
-                'Added asset: Part Number $part, Serial Number $serial, Brand $brand, Type $type, Location $location, Date Received $date'
+                'Added asset: Part Number $part, Serial Number $serial, Brand $brand, Location $location, Date Received $date'
             )
             ");
 
@@ -107,11 +107,6 @@ if(isset($_POST['add'])){
                 <div class="col-md-6 mb-3">
                     <label>Brand</label>
                     <input type="text" name="brand" class="form-control">
-                </div>
-
-                <div class="col-md-6 mb-3">
-                    <label>Type</label>
-                    <input type="text" name="type" class="form-control">
                 </div>
 
                 <div class="col-md-6 mb-3">

@@ -38,30 +38,28 @@ body{
     letter-spacing:0.3px;
 }
 
-/* MENU BUTTON */
-
+/* MENU BUTTON (SMALL BUT STABLE) */
 .menu-btn{
-    width:48px;
-    height:40px;
+    width:19px;
+    height:14px;          /* increased slightly for animation room */
     cursor:pointer;
     display:flex;
     flex-direction:column;
     justify-content:center;
-    gap:6px;
+    gap:3px;
 }
 
 .menu-btn span{
-    height:4px;
+    height:2px;           /* thinner for small icon */
     width:100%;
     background:white;
-    border-radius:3px;
+    border-radius:2px;
     transition:all 0.3s ease;
 }
-
 /* X animation */
 
 .menu-btn:not(.active) span:nth-child(1){
-    transform:rotate(45deg) translate(6px,6px);
+   transform: rotate(45deg) translate(3px, 3px);
 }
 
 .menu-btn:not(.active) span:nth-child(2){
@@ -69,7 +67,7 @@ body{
 }
 
 .menu-btn:not(.active) span:nth-child(3){
-    transform:rotate(-45deg) translate(7px,-7px);
+     transform: rotate(-45deg) translate(3px, -3px);
 }
 
 /* SIDEBAR */
@@ -334,4 +332,19 @@ table{
 .sidebar.collapsed .sidebar-section {
     text-align: center;
     font-size: 0;
+}
+/* Clickable table row hover effect */
+.table tbody tr {
+    transition: all 0.2s ease;
+}
+
+.table tbody tr:hover {
+    background-color: #fff3cd !important; /* soft yellow (matches your theme) */
+    transform: scale(1.01);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+/* Optional: make cursor obvious */
+.table tbody tr {
+    cursor: pointer;
 }

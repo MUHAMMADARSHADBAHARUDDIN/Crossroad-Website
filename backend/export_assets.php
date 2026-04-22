@@ -22,7 +22,6 @@ if($format === "excel"){
             <th>Part Number</th>
             <th>Serial Number</th>
             <th>Brand</th>
-            <th>Type</th>
             <th>Location</th>
             <th>Quantity</th>
         </tr>
@@ -34,7 +33,6 @@ if($format === "excel"){
             <td>{$a['part_number']}</td>
             <td>{$a['serial_number']}</td>
             <td>{$a['brand']}</td>
-            <td>{$a['type']}</td>
             <td>{$a['location']}</td>
             <td>{$a['quantity']}</td>
         </tr>
@@ -161,7 +159,7 @@ if($format === "pdf"){
     $pdf->SetFont('Arial','B',9);
     $widths = [25,35,25,25,40,15];
 
-    $pdf->Row(['Part No','Serial','Brand','Type','Location','Qty'], $widths);
+    $pdf->Row(['Part No','Serial','Brand','Location','Qty'], $widths);
 
     $pdf->SetFont('Arial','',8);
 
@@ -170,7 +168,6 @@ if($format === "pdf"){
             $a['part_number'],
             $a['serial_number'],
             $a['brand'],
-            $a['type'],
             $a['location'],
             $a['quantity']
         ], $widths);
@@ -234,7 +231,6 @@ if($format === "print"){
     <th>Part Number</th>
     <th>Serial</th>
     <th>Brand</th>
-    <th>Type</th>
     <th>Location</th>
     <th>Qty</th>
 </tr>
@@ -244,7 +240,6 @@ if($format === "print"){
     <td><?= $a['part_number'] ?></td>
     <td><?= $a['serial_number'] ?></td>
     <td><?= $a['brand'] ?></td>
-    <td><?= $a['type'] ?></td>
     <td><?= $a['location'] ?></td>
     <td><?= $a['quantity'] ?></td>
 </tr>

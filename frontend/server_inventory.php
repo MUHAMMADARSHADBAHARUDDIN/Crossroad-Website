@@ -17,25 +17,35 @@ $search = "";
 if(isset($_GET['search'])){
     $search = $mysqli->real_escape_string($_GET['search']);
 }
-
+$isOkay = stripos($search, 'okay') !== false;
+$isFaulty = stripos($search, 'faulty') !== false;
 // ✅ UPDATED QUERY (date_testing instead of date_received)
 $sql = "
 SELECT
-    MIN(no) as id,
     server_name,
     machine_type,
     brand,
-    location,
-    MAX(date_testing) AS date_testing,
-    MAX(status) AS status,
-    MAX(remark) AS remark,
-    MAX(tester) AS tester,
-    COUNT(*) AS total_qty
+    COUNT(*) AS total_qty,
+
+    SUM(CASE WHEN status = 'Okay' THEN 1 ELSE 0 END) AS ok_qty,
+    SUM(CASE WHEN status = 'Faulty' THEN 1 ELSE 0 END) AS faulty_qty
+
 FROM server_inventory
-WHERE server_name LIKE '%$search%'
+
+WHERE
+    server_name LIKE '%$search%' OR
+    machine_type LIKE '%$search%' OR
+    brand LIKE '%$search%' OR
+    serial_number LIKE '%$search%'
+
 GROUP BY server_name, machine_type
 ";
-
+if($isOkay){
+    $sql .= " HAVING ok_qty > 0";
+}
+else if($isFaulty){
+    $sql .= " HAVING faulty_qty > 0";
+}
 $result = $mysqli->query($sql);
 ?>
 
@@ -70,17 +80,14 @@ $result = $mysqli->query($sql);
     <i class="fa fa-plus"></i> Add Server
 </a>
 
-<table class="table table-striped">
+<table class="table table-striped table-hover">
 <thead>
 <tr>
     <th>Server Name</th>
     <th>Machine Type</th>
     <th>Brand</th>
-    <th>Quantity</th>
     <th>Status</th>
-    <th>Remark</th>
-    <th>Date Testing</th>
-    <th>Tester</th>
+    <th>Quantity</th>
 </tr>
 </thead>
 
@@ -93,21 +100,16 @@ $result = $mysqli->query($sql);
 <td><?= $row['server_name']; ?></td>
 <td><?= $row['machine_type']; ?></td>
 <td><?= $row['brand']; ?></td>
-<td><?= $row['total_qty']; ?></td>
-
-<?php
-$statusColor = ($row['status'] == 'Okay') ? 'success' : 'danger';
-?>
-
 <td>
-    <span class="badge bg-<?= $statusColor ?>">
-        <?= $row['status'] ?>
-    </span>
-</td>
+    <?php if($row['ok_qty'] > 0): ?>
+        <span class="badge bg-success"><?= $row['ok_qty'] ?> Okay</span>
+    <?php endif; ?>
 
-<td><?= $row['remark'] ?: '-' ?></td>
-<td><?= $row['date_testing'] ?></td>
-<td><?= $row['tester'] ?: '-' ?></td>
+    <?php if($row['faulty_qty'] > 0): ?>
+        <span class="badge bg-danger"><?= $row['faulty_qty'] ?> Faulty</span>
+    <?php endif; ?>
+</td>
+<td><?= $row['total_qty']; ?></td>
 
 </tr>
 
@@ -120,7 +122,7 @@ $statusColor = ($row['status'] == 'Okay') ? 'success' : 'danger';
 
 <!-- MODAL -->
 <div class="modal fade" id="serialModal">
-<div class="modal-dialog">
+<div class="modal-dialog modal-xl">
 <div class="modal-content">
 
 <div class="modal-header">
@@ -154,6 +156,20 @@ $statusColor = ($row['status'] == 'Okay') ? 'success' : 'danger';
         <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
         <button class="btn btn-danger" onclick="submitServerStockOut()">Confirm</button>
       </div>
+
+    </div>
+  </div>
+</div>
+<div class="modal fade" id="serverDetailModal">
+  <div class="modal-dialog">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5>Server Details</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body" id="serverDetailContent"></div>
 
     </div>
   </div>
@@ -198,6 +214,12 @@ function submitServerStockOut(){
         }else{
             alert(data);
         }
+    });
+}
+function viewServerDetail(id){
+    $.post("../backend/get_server_detail.php",{id:id},function(data){
+        $("#serverDetailContent").html(data);
+        new bootstrap.Modal(document.getElementById('serverDetailModal')).show();
     });
 }
 </script>

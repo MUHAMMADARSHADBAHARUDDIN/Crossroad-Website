@@ -23,12 +23,15 @@ SELECT
     part_number,
     brand,
     description,
-    type,
     MAX(date_received) AS date_received,
     COUNT(*) AS total_qty,
     MIN(created_by) AS created_by
 FROM asset_inventory
-WHERE part_number LIKE '%$search%'
+WHERE
+    part_number LIKE '%$search%' OR
+    brand LIKE '%$search%' OR
+    description LIKE '%$search%' OR
+    serial_number LIKE '%$search%'
 GROUP BY part_number
 ";
 
@@ -69,15 +72,13 @@ $result = $mysqli->query($sql);
 </a>
 <?php endif; ?>
 
-<table class="table table-striped">
+<table class="table table-striped table-hover">
 <thead>
 <tr>
     <th>Part Number</th>
     <th>Brand</th>
     <th>Description</th>
     <th>Quantity</th>
-    <th>Type</th>
-    <th>Date Received</th>
 </tr>
 </thead>
 
@@ -91,8 +92,7 @@ $result = $mysqli->query($sql);
 <td><?php echo $row['brand']; ?></td>
 <td><?php echo $row['description']; ?></td>
 <td><?php echo $row['total_qty']; ?></td>
-<td><?php echo $row['type']; ?></td>
-<td><?php echo $row['date_received']; ?></td>
+
 </tr>
 
 <?php endwhile; ?>
@@ -104,7 +104,7 @@ $result = $mysqli->query($sql);
 
 <!-- SERIAL MODAL -->
 <div class="modal fade" id="serialModal">
-  <div class="modal-dialog">
+<div class="modal-dialog modal-lg">
     <div class="modal-content">
 
       <div class="modal-header">
@@ -165,6 +165,20 @@ $result = $mysqli->query($sql);
     </div>
   </div>
 </div>
+<div class="modal fade" id="detailModal">
+  <div class="modal-dialog">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5>Asset Details</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body" id="detailContent"></div>
+
+    </div>
+  </div>
+</div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
@@ -215,6 +229,14 @@ function confirmDelete(id, serial){
 function deleteSerial(){
     $.post("../frontend/asset_delete.php", {id: deleteId}, function(){
         location.reload();
+    });
+}
+function viewDetail(id){
+    $.post("../backend/get_asset_detail.php",{id:id},function(data){
+        $("#detailContent").html(data);
+
+        var modal = new bootstrap.Modal(document.getElementById('detailModal'));
+        modal.show();
     });
 }
 </script>

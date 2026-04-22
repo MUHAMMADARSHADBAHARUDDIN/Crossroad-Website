@@ -10,8 +10,9 @@ $stockout_remark = isset($_POST['remark']) ? $_POST['remark'] : '';
 $username = $_SESSION['username'];
 $role = $_SESSION['role'];
 
-// BLOCK USER ROLE (same logic as asset system)
-if($role == "User (Technical)"){
+$allowedRoles = ["Administrator", "System Admin", "User (Technical)"];
+
+if(!in_array($role, $allowedRoles)){
     die("Access denied");
 }
 

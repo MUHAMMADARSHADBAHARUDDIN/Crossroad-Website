@@ -62,7 +62,7 @@ $result = $mysqli->query($sql);
     </form>
 
     <!-- TABLE -->
-    <table class="table table-striped">
+    <table class="table table-striped table-hover">
     <thead>
         <tr>
             <th>Server Name</th>
@@ -99,7 +99,15 @@ $result = $mysqli->query($sql);
             <td><?php echo $row['remark'] ?: '-'; ?></td>
             <td><?php echo $row['tester'] ?: '-'; ?></td>
             <td><?php echo $row['stock_out_by']; ?></td>
-            <td><?php echo $row['stock_out_date']; ?></td>
+             <?php
+                            $date = date("d/m/Y", strtotime($row['stock_out_date']));
+                            $time = date("H:i:s", strtotime($row['stock_out_date']));
+                            ?>
+
+                            <td>
+                                <?= $date ?><br>
+                                <small class="text-muted"><?= $time ?></small>
+                            </td>
         </tr>
         <?php endwhile; ?>
     <?php else: ?>

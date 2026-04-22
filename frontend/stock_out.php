@@ -53,7 +53,7 @@ $result = $mysqli->query($sql);
         </div>
     </form>
 
-    <table class="table table-striped">
+    <table class="table table-striped table-hover">
     <thead>
         <tr>
             <th>Part Number</th>
@@ -72,7 +72,15 @@ $result = $mysqli->query($sql);
                 <td><?= $row['location']; ?></td>
                 <td><?= $row['remark']; ?></td>
                 <td><?= $row['stock_out_by']; ?></td>
-                <td><?= $row['stock_out_date']; ?></td>
+                <?php
+                $date = date("d/m/Y", strtotime($row['stock_out_date']));
+                $time = date("H:i:s", strtotime($row['stock_out_date']));
+                ?>
+
+                <td>
+                    <?= $date ?><br>
+                    <small class="text-muted"><?= $time ?></small>
+                </td>
             </tr>
         <?php endwhile; ?>
     </tbody>
