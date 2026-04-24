@@ -11,44 +11,65 @@ $id = intval($_GET['id']);
 $role = $_SESSION['role'];
 $username = $_SESSION['username'];
 
-/* GET CONTRACT OWNER */
-$stmt = $mysqli->prepare("SELECT project_name, project_owner FROM project_inventory WHERE no = ?");
+/* GET CONTRACT DATA */
+$stmt = $mysqli->prepare("
+    SELECT project_name, project_owner, created_by
+    FROM project_inventory
+    WHERE no = ?
+");
+
 $stmt->bind_param("i", $id);
 $stmt->execute();
-$res = $stmt->get_result();
-$data = $res->fetch_assoc();
+$result = $stmt->get_result();
+$data = $result->fetch_assoc();
 
 if(!$data){
     exit("Contract not found");
 }
 
+/* OWNER */
+$created_by = $data['created_by'];
 $project_name = $data['project_name'];
-$owner = $data['project_owner'];
+$project_owner = $data['project_owner'];
 
 /* PERMISSION CHECK */
 $allowed =
     $role === "Administrator" ||
     $role === "User (Project Coordinator)" ||
-    ($role === "User (Project Manager)" && $username === $owner);
+    ($role === "User (Project Manager)" && $username === $created_by);
 
 if(!$allowed){
     exit("Access denied");
 }
 
 /* DELETE */
-$stmt = $mysqli->prepare("DELETE FROM project_inventory WHERE no = ?");
-$stmt->bind_param("i", $id);
-$stmt->execute();
+$deleteStmt = $mysqli->prepare("DELETE FROM project_inventory WHERE no = ?");
+$deleteStmt->bind_param("i", $id);
 
-/* LOG */
-logActivity(
-    $mysqli,
-    $username,
-    $role,
-    "DELETE CONTRACT",
-    "Deleted contract: $project_name"
-);
+if($deleteStmt->execute()){
 
-header("Location: ../frontend/contracts.php");
-exit();
+    $ip = $_SERVER['REMOTE_ADDR'];
+    $time = date("Y-m-d H:i:s");
+
+    $description = "User [$username] deleted contract.
+Project Name: $project_name
+Project Owner: $project_owner
+Contract ID: $id
+IP Address: $ip
+Time: $time";
+
+    logActivity(
+        $mysqli,
+        $username,
+        $role,
+        "DELETE CONTRACT",
+        $description
+    );
+
+    header("Location: ../frontend/contracts.php");
+    exit();
+
+} else {
+    echo "Delete failed: " . $mysqli->error;
+}
 ?>

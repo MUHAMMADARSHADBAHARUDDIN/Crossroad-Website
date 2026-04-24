@@ -76,9 +76,11 @@ $result = $mysqli->query($sql);
     </div>
 </form>
 
+<?php if($canEdit): ?>
 <a href="server_add.php" class="btn btn-warning mb-3">
     <i class="fa fa-plus"></i> Add Server
 </a>
+<?php endif; ?>
 
 <table class="table table-striped table-hover">
 <thead>

@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once "../includes/db_connect.php";
+require_once "../includes/activity_log.php";
 
 if(!isset($_SESSION['username'])){
     header("Location: index.html");
@@ -50,6 +51,47 @@ if(isset($_POST['update']) && $canEdit){
     tester='$tester'
     WHERE no='$id'
     ");
+
+    $ip = $_SERVER['REMOTE_ADDR'];
+    $time = date("Y-m-d H:i:s");
+
+    $description = "User [$username] updated server.
+    Server ID: $id
+
+    OLD DATA:
+    - Server Name: {$row['server_name']}
+    - Serial Number: {$row['serial_number']}
+    - Brand: {$row['brand']}
+    - Machine Type: {$row['machine_type']}
+    - Location: {$row['location']}
+    - Status: {$row['status']}
+    - Tester: {$row['tester']}
+    - Date Testing: {$row['date_testing']}
+
+    NEW DATA:
+    - Server Name: $server
+    - Serial Number: $serial
+    - Brand: $brand
+    - Machine Type: $machine
+    - Location: $location
+    - Status: $status
+    - Tester: $tester
+    - Date Testing: $date
+    - Remark: $remark
+
+    IP Address: $ip
+    Time: $time";
+
+    logActivity(
+        $mysqli,
+        $username,
+        $role,
+        "UPDATE SERVER",
+        $description
+    );
+
+    header("Location: server_inventory.php");
+    exit();
 
     header("Location: server_inventory.php");
     exit();

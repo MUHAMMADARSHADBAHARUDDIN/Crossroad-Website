@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once "../includes/db_connect.php";
+require_once "../includes/activity_log.php";
 
 $id = $_POST['id'];
 
@@ -42,17 +43,25 @@ VALUES
 ");
 
 // ACTIVITY LOG
-$mysqli->query("
-INSERT INTO activity_logs
-(username, role, action_type, description)
-VALUES
-(
-    '$username',
-    '$role',
-    'Stock Out Server',
-    'Stocked out server: ".$row['server_name']." | Serial: ".$row['serial_number']."'
-)
-");
+$ip = $_SERVER['REMOTE_ADDR'];
+$time = date("Y-m-d H:i:s");
+
+$description = "User [$username] performed STOCK OUT on server.
+Server Name: {$row['server_name']}
+Machine Type: {$row['machine_type']}
+Serial Number: {$row['serial_number']}
+Location: {$row['location']}
+Remark: $stockout_remark
+IP Address: $ip
+Time: $time";
+
+logActivity(
+    $mysqli,
+    $username,
+    $role,
+    "STOCK OUT SERVER",
+    $description
+);
 
 // DELETE FROM INVENTORY
 $mysqli->query("DELETE FROM server_inventory WHERE no='$id'");

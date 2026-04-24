@@ -18,11 +18,11 @@ if(isset($_GET['search'])){
 }
 
 /* ✅ CENTRAL PERMISSION FUNCTION */
-function canManageContract($role, $username, $owner){
+function canManageContract($role, $username, $created_by){
     return (
         $role === "Administrator" ||
         $role === "User (Project Coordinator)" ||
-        ($role === "User (Project Manager)" && $username === $owner)
+        ($role === "User (Project Manager)" && $username === $created_by)
     );
 }
 
@@ -142,7 +142,7 @@ if($search != ""){
     }
 }
 
-$owner = $row['project_owner'];
+$created_by = $row['created_by'];
 
 ?>
 
@@ -184,7 +184,7 @@ data-username="<?= $username; ?>"
 
 <td>
 
-<?php if(canManageContract($role, $username, $owner)): ?>
+<?php if(canManageContract($role, $username, $created_by)): ?>
 
     <a href="contract_edit.php?id=<?= $row['no']; ?>" class="btn btn-sm btn-primary">
         Edit

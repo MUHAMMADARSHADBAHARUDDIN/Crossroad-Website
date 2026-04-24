@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once "../includes/db_connect.php";
+require_once "../includes/activity_log.php";
 
 if(!isset($_SESSION['username'])){
     header("Location: index.html");
@@ -45,13 +46,29 @@ if(isset($_POST['add'])){
             ('$server','$serial','$brand','$machine','$location','$status','$remark','$date','$tester','$username')
             ");
 
-            $mysqli->query("
-            INSERT INTO activity_logs
-            (username, role, action_type, description)
-            VALUES
-            ('$username','$role','Add Server',
-            'Added server: $server, Serial $serial')
-            ");
+            $ip = $_SERVER['REMOTE_ADDR'];
+            $time = date("Y-m-d H:i:s");
+
+            $description = "User [$username] added new server.
+            Server Name: $server
+            Serial Number: $serial
+            Brand: $brand
+            Machine Type: $machine
+            Location: $location
+            Status: $status
+            Tester: $tester
+            Date Testing: $date
+            Remark: $remark
+            IP Address: $ip
+            Time: $time";
+
+            logActivity(
+                $mysqli,
+                $username,
+                $role,
+                "ADD SERVER",
+                $description
+            );
 
             header("Location: server_inventory.php");
             exit();

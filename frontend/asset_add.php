@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once "../includes/db_connect.php";
+require_once "../includes/activity_log.php";
 
 if(!isset($_SESSION['username'])){
     header("Location: index.html");
@@ -47,17 +48,26 @@ if(isset($_POST['add'])){
             ");
 
             // ✅ ACTIVITY LOG (PLACE HERE AFTER VARIABLES ARE DEFINED)
-            $mysqli->query("
-            INSERT INTO activity_logs
-            (username, role, action_type, description)
-            VALUES
-            (
-                '$username',
-                '$role',
-                'Stock In',
-                'Added asset: Part Number $part, Serial Number $serial, Brand $brand, Location $location, Date Received $date'
-            )
-            ");
+            $ip = $_SERVER['REMOTE_ADDR'];
+            $time = date("Y-m-d H:i:s");
+
+            $description = "User [$username] added new asset (STOCK IN).
+            Part Number: $part
+            Serial Number: $serial
+            Brand: $brand
+            Description: $desc
+            Location: $location
+            Date Received: $date
+            IP Address: $ip
+            Time: $time";
+
+            logActivity(
+                $mysqli,
+                $username,
+                $role,
+                "STOCK IN ASSET",
+                $description
+            );
 
             header("Location: ../frontend/asset_inventory.php");
             exit();

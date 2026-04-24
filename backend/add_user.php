@@ -44,14 +44,29 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     }
 
+    // ✅ EXECUTE FIRST
     if($stmt->execute()){
 
+        $adminUser = $_SESSION['username'];
+        $adminRole = $_SESSION['role'];
+
+        $ip = $_SERVER['REMOTE_ADDR'];
+        $time = date("Y-m-d H:i:s");
+
+        $description = "Admin [$adminUser] created new user.
+New Username: $username
+Role: $role
+Email: $email
+IP Address: $ip
+Time: $time";
+
+        // ✅ LOG ONLY AFTER SUCCESS
         logActivity(
             $mysqli,
-            $_SESSION['username'],
-            $_SESSION['role'],
+            $adminUser,
+            $adminRole,
             "ADD USER",
-            "Created user: $username ($role)"
+            $description
         );
 
         echo "<script>

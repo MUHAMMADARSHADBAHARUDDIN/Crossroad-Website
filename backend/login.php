@@ -9,18 +9,14 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
     $email = trim($_POST["email"]);
     $password = trim($_POST["password"]);
 
-    // Tables to check: system_admin, administrator, user
     $tables = [
         "system_admin" => "System Admin",
         "administrator" => "Administrator",
-        "user" => null // role comes from DB
+        "user" => null
     ];
-
-    $login_success = false;
 
     foreach($tables as $table => $role_name){
 
-        // Prepare SQL depending on table
         if($table === "user"){
             $stmt = $mysqli->prepare("SELECT username, password, role FROM $table WHERE email=?");
         } else {
@@ -36,6 +32,7 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
         $stmt->store_result();
 
         if($stmt->num_rows === 1){
+
             if($table === "user"){
                 $stmt->bind_result($db_username, $db_password, $role);
             } else {
@@ -45,17 +42,23 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
 
             $stmt->fetch();
 
-            // Verify password
             if(password_verify($password, $db_password)){
-                // Set session variables
+
                 $_SESSION['username'] = $db_username;
                 $_SESSION['email'] = $email;
                 $_SESSION['role'] = $role;
 
-                // Log activity
-                logActivity($mysqli, $db_username, $role, "LOGIN", "User logged in");
+                $ip = $_SERVER['REMOTE_ADDR'];
+                $time = date("Y-m-d H:i:s");
 
-                // Redirect to dashboard
+                $description = "User [$db_username] logged in successfully.
+Email: $email
+Role: $role
+IP Address: $ip
+Time: $time";
+
+                logActivity($mysqli, $db_username, $role, "LOGIN SUCCESS", $description);
+
                 header("Location: ../frontend/dashboard.php");
                 exit();
             }
@@ -64,7 +67,21 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
         $stmt->close();
     }
 
-    // If login failed
+    // FAILED LOGIN LOG
+    $ip = $_SERVER['REMOTE_ADDR'];
+    $time = date("Y-m-d H:i:s");
+
+    logActivity(
+        $mysqli,
+        $email,
+        "UNKNOWN",
+        "LOGIN FAILED",
+        "Failed login attempt.
+Email: $email
+IP Address: $ip
+Time: $time"
+    );
+
     echo "<script>alert('Invalid email or password'); window.location.href='../frontend/index.html';</script>";
 }
 ?>

@@ -8,6 +8,7 @@ if(!isset($_SESSION['username'])){
 }
 
 require_once "../includes/db_connect.php";
+require_once "../includes/activity_log.php";
 
 $role = $_SESSION['role'];
 $username = $_SESSION['username'];
@@ -37,8 +38,9 @@ if(!$row){
 }
 
 /* OWNER CHECK */
-if($role == "User (Project Manager)" && $row['created_by'] != $username){
-    die("Access denied.");
+if($role == "User (Project Manager)" && $row['created_by'] !== $username){
+    header("Location: contracts.php");
+    exit();
 }
 
 /* UPDATE */
@@ -85,10 +87,54 @@ if(isset($_POST['update'])){
         $id
     );
 
-    $stmt->execute();
+$stmt->execute();
 
-    header("Location: contracts.php");
-    exit();
+/* 🔥 PUT YOUR LOG HERE (RIGHT AFTER SUCCESSFUL UPDATE) */
+
+$ip = $_SERVER['REMOTE_ADDR'];
+$time = date("Y-m-d H:i:s");
+
+$description = "User [$username] updated contract.
+Contract No: $id
+
+OLD DATA:
+- Year Awarded: {$row['year_awarded']}
+- Project Name: {$row['project_name']}
+- Project Owner: {$row['project_owner']}
+- End User: {$row['end_user']}
+- Contract No: {$row['contract_no']}
+- Service: {$row['service']}
+- PO Date: {$row['po_date']}
+- Start Date: {$row['contract_start']}
+- End Date: {$row['contract_end']}
+- Amount: RM {$row['amount']}
+
+NEW DATA:
+- Year Awarded: $year_awarded
+- Project Name: $project_name
+- Project Owner: $project_owner
+- End User: $end_user
+- Contract No: $contract_no
+- Service: $service
+- PO Date: $po_date
+- Start Date: $contract_start
+- End Date: $contract_end
+- Amount: RM $amount
+
+IP Address: $ip
+Time: $time";
+
+logActivity(
+    $mysqli,
+    $username,
+    $role,
+    "UPDATE CONTRACT",
+    $description
+);
+
+/* THEN REDIRECT */
+header("Location: contracts.php");
+exit();
 }
 ?>
 

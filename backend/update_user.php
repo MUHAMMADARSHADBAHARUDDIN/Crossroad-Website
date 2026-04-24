@@ -29,12 +29,24 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     if ($stmt->execute()) {
 
         // 🔵 LOG ACTIVITY
+        $adminUser = $_SESSION['username'];
+        $adminRole = $_SESSION['role'];
+
+        $ip = $_SERVER['REMOTE_ADDR'];
+        $time = date("Y-m-d H:i:s");
+
+        $description = "Admin [$adminUser] updated user password.
+        Target Username: $username
+        Target Role: $role
+        IP Address: $ip
+        Time: $time";
+
         logActivity(
             $mysqli,
-            $_SESSION['username'],
-            $_SESSION['role'],
-            "UPDATE USER",
-            "Updated password for user: $username"
+            $adminUser,
+            $adminRole,
+            "UPDATE USER PASSWORD",
+            $description
         );
 
         echo "<script>

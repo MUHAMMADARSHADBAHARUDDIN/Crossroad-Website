@@ -1,7 +1,17 @@
 <?php
 require_once "../includes/db_connect.php";
+require_once "../includes/activity_log.php"; // ✅ ADD
+
+session_start(); // ✅ ADD
 
 $format = $_GET['format'] ?? 'excel';
+
+/* ✅ SAFE SESSION */
+$username = $_SESSION['username'] ?? 'Unknown';
+$role = $_SESSION['role'] ?? 'Unknown';
+
+$ip = $_SERVER['REMOTE_ADDR'];
+$time = date("Y-m-d H:i:s");
 
 // GET DATA
 $server = $mysqli->query("SELECT * FROM server_inventory");
@@ -79,9 +89,15 @@ if($format === "excel"){
         ";
     }
 
-    echo "</table>";
+echo "</table>";
 
-    exit();
+$description = "User [$username] exported server report (EXCEL).
+IP Address: $ip
+Time: $time";
+
+logActivity($mysqli, $username, $role, "EXPORT SERVER EXCEL", $description);
+
+exit();
 }
 
 
@@ -218,6 +234,13 @@ if($format === "pdf"){
     }
 
     $pdf->Output();
+
+    $description = "User [$username] exported server report (PDF).
+    IP Address: $ip
+    Time: $time";
+
+    logActivity($mysqli, $username, $role, "EXPORT SERVER PDF", $description);
+
     exit();
 }
 
@@ -302,6 +325,12 @@ if($format === "print"){
 </body>
 </html>
 <?php
+$description = "User [$username] printed server report.
+IP Address: $ip
+Time: $time";
+
+logActivity($mysqli, $username, $role, "PRINT SERVER REPORT", $description);
+
 exit();
 }
 ?>

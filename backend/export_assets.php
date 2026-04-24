@@ -1,7 +1,19 @@
 <?php
 require_once "../includes/db_connect.php";
+require_once "../includes/activity_log.php"; // ✅ ADD
+
+session_start(); // ✅ ADD
 
 $format = $_GET['format'] ?? 'excel';
+
+/* ✅ SAFE SESSION CHECK */
+$username = $_SESSION['username'] ?? 'Unknown';
+$role = $_SESSION['role'] ?? 'Unknown';
+
+$ip = $_SERVER['REMOTE_ADDR'];
+$time = date("Y-m-d H:i:s");
+
+/* ✅ PREPARE DESCRIPTION (dynamic later) */
 
 // GET DATA
 $asset = $mysqli->query("SELECT * FROM asset_inventory");
@@ -70,7 +82,13 @@ if($format === "excel"){
 
     echo "</table>";
 
-    exit();
+  $description = "User [$username] exported asset report (EXCEL).
+  IP Address: $ip
+  Time: $time";
+
+  logActivity($mysqli, $username, $role, "EXPORT EXCEL", $description);
+
+  exit();
 }
 // =======================
 // PDF FIX (NO OVERLAP)
@@ -196,8 +214,20 @@ if($format === "pdf"){
     }
 
     $pdf->Output();
+
+    $description = "User [$username] exported asset report (PDF).
+    IP Address: $ip
+    Time: $time";
+
+    logActivity($mysqli, $username, $role, "EXPORT PDF", $description);
+
     exit();
 }
+
+// =======================
+// PRINT FIX (NO OVERLAP)
+// =======================
+
 if($format === "print"){
 ?>
 <html>
@@ -271,6 +301,12 @@ if($format === "print"){
 </body>
 </html>
 <?php
+$description = "User [$username] printed asset report.
+IP Address: $ip
+Time: $time";
+
+logActivity($mysqli, $username, $role, "PRINT REPORT", $description);
+
 exit();
 }
 ?>

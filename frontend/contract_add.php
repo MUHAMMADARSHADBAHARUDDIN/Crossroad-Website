@@ -8,7 +8,7 @@ if(!isset($_SESSION['username'])){
 }
 
 require_once "../includes/db_connect.php";
-
+$created_by = $_SESSION['username'];
 $role = $_SESSION['role'];
 
 $allowed = [
@@ -55,8 +55,8 @@ if(isset($_POST['submit'])){
     $stmt = $mysqli->prepare("
         INSERT INTO project_inventory
         (no, year_awarded, project_name, project_owner, end_user,
-        contract_no, service, po_date, contract_start, contract_end, status, amount)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+        contract_no, service, po_date, contract_start, contract_end, status, amount, created_by)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
     ");
 
     if(!$stmt){
@@ -64,7 +64,7 @@ if(isset($_POST['submit'])){
     }
 
     $stmt->bind_param(
-        "iisssssssssd",
+        "iisssssssssds",
         $no,
         $year_awarded,
         $project_name,
@@ -76,19 +76,41 @@ if(isset($_POST['submit'])){
         $contract_start,
         $contract_end,
         $status,
-        $amount
+        $amount,
+        $created_by
     );
 
     $stmt->execute();
 
     require_once "../includes/activity_log.php";
 
+    $adminUser = $_SESSION['username'];
+    $adminRole = $_SESSION['role'];
+
+    $ip = $_SERVER['REMOTE_ADDR'];
+    $time = date("Y-m-d H:i:s");
+
+    $description = "User [$adminUser] created new contract.
+    Contract No: $no
+    Project Name: $project_name
+    Year Awarded: $year_awarded
+    Project Owner: $project_owner
+    End User: $end_user
+    Service: $service
+    PO Date: $po_date
+    Start Date: $contract_start
+    End Date: $contract_end
+    Amount: RM $amount
+    Status: $status
+    IP Address: $ip
+    Time: $time";
+
     logActivity(
         $mysqli,
-        $_SESSION['username'],
-        $_SESSION['role'],
+        $adminUser,
+        $adminRole,
         "ADD CONTRACT",
-        "Added contract #$no: $project_name"
+        $description
     );
 
     header("Location: contracts.php");

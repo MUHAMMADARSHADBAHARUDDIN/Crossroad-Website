@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once "../includes/db_connect.php";
+require_once "../includes/activity_log.php";
 
 if(!isset($_SESSION['username'])){
     header("Location: ../frontend/index.html");
@@ -52,18 +53,31 @@ if(isset($_POST['update']) && $canEdit){
     if(!$update) die("Update Error: " . $mysqli->error);
 
     // ✅ ACTIVITY LOG (INSIDE UPDATE BLOCK)
-    $mysqli->query("
-        INSERT INTO activity_logs
-        (username, role, action_type, description)
-        VALUES
-        (
-            '$username',
-            '$role',
-            'Edit Asset',
-            'Edited asset: Old Part ".$row['part_number'].", Old Serial ".$row['serial_number'].
-            ". New Part $new_part, New Serial $new_serial, Brand $brand, Location $location, Date $date'
-        )
-    ");
+    $ip = $_SERVER['REMOTE_ADDR'];
+    $time = date("Y-m-d H:i:s");
+
+    $description = "User [$username] edited asset.
+    OLD DATA:
+    - Part Number: {$row['part_number']}
+    - Serial Number: {$row['serial_number']}
+
+    NEW DATA:
+    - Part Number: $new_part
+    - Serial Number: $new_serial
+    - Brand: $brand
+    - Location: $location
+    - Date Received: $date
+
+    IP Address: $ip
+    Time: $time";
+
+    logActivity(
+        $mysqli,
+        $username,
+        $role,
+        "EDIT ASSET",
+        $description
+    );
 
     header("Location: ../frontend/asset_inventory.php");
     exit();

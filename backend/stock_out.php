@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once "../includes/db_connect.php";
+require_once "../includes/activity_log.php";
 
 header('Content-Type: text/plain');
 
@@ -43,17 +44,24 @@ VALUES
 ");
 
 // ACTIVITY LOG
-$mysqli->query("
-INSERT INTO activity_logs
-(username, role, action_type, description)
-VALUES
-(
-    '$username',
-    '$role',
-    'Stock Out',
-    'Stocked out asset: Part ".$row['part_number']." Serial ".$row['serial_number']." Location ".$row['location']." Remark: $remark'
-)
-");
+$ip = $_SERVER['REMOTE_ADDR'];
+$time = date("Y-m-d H:i:s");
+
+$description = "User [$username] performed STOCK OUT on asset.
+Part Number: {$row['part_number']}
+Serial Number: {$row['serial_number']}
+Location: {$row['location']}
+Remark: $remark
+IP Address: $ip
+Time: $time";
+
+logActivity(
+    $mysqli,
+    $username,
+    $role,
+    "STOCK OUT ASSET",
+    $description
+);
 
 // DELETE FROM INVENTORY
 $mysqli->query("DELETE FROM asset_inventory WHERE no=$id");
