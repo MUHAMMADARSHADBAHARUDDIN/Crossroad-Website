@@ -9,71 +9,99 @@ if(!isset($_SESSION['username'])){
 
 require_once "../includes/db_connect.php";
 require_once "../includes/activity_log.php";
+require_once "../includes/permissions.php";
 
-$role = $_SESSION['role'];
+if(!hasContractViewAccess($mysqli)){
+    die("Access denied");
+}
+
+$role = $_SESSION['role'] ?? "UNKNOWN";
 $username = $_SESSION['username'];
 
-$allowed = [
-    "Administrator",
-    "User (Project Coordinator)",
-    "User (Project Manager)"
-];
-
-if(!in_array($role, $allowed)){
-    header("Location: contracts.php");
-    exit();
-}
-
-/* GET ID */
 $id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 
-/* FETCH DATA */
-$stmt = $mysqli->prepare("SELECT * FROM project_inventory WHERE no = ?");
+if(!$id){
+    die("Invalid request");
+}
+
+$stmt = $mysqli->prepare("
+    SELECT *
+    FROM project_inventory
+    WHERE no = ?
+    LIMIT 1
+");
+
+if(!$stmt){
+    die("SQL Error: " . $mysqli->error);
+}
+
 $stmt->bind_param("i", $id);
 $stmt->execute();
-$row = $stmt->get_result()->fetch_assoc();
+
+$result = $stmt->get_result();
+$row = $result->fetch_assoc();
 
 if(!$row){
-    die("Contract not found.");
+    die("Contract not found");
 }
 
-/* OWNER CHECK */
-if($role == "User (Project Manager)" && $row['created_by'] !== $username){
-    header("Location: contracts.php");
-    exit();
-}
+$created_by = $row['created_by'] ?? "";
+$canEdit = hasContractEditAccess($mysqli, $created_by);
 
-/* UPDATE */
-if(isset($_POST['update'])){
+if(isset($_POST['submit'])){
 
-    $year_awarded = $_POST['year_awarded'];
-    $project_name = $_POST['project_name'];
-    $project_owner = $_POST['project_owner'];
-    $end_user = $_POST['end_user'];
-    $contract_no = $_POST['contract_no'];
-    $service = $_POST['service'];
-    $po_date = $_POST['po_date'];
-    $contract_start = $_POST['contract_start'];
-    $contract_end = $_POST['contract_end'];
-    $amount = $_POST['amount'];
+    if(!$canEdit){
+        die("Access denied");
+    }
 
-    $stmt = $mysqli->prepare("
+    $year_awarded = intval($_POST['year_awarded']);
+    $project_name = trim($_POST['project_name']);
+    $project_owner = trim($_POST['project_owner']);
+    $end_user = trim($_POST['end_user']);
+    $contract_no = trim($_POST['contract_no']);
+    $service = trim($_POST['service']);
+    $po_date = trim($_POST['po_date']);
+    $contract_start = trim($_POST['contract_start']);
+    $contract_end = trim($_POST['contract_end']);
+    $amount = floatval($_POST['amount']);
+
+    $today = date('Y-m-d');
+
+    if(empty($contract_end)){
+        $status = "Active";
+    }
+    elseif($contract_end < $today){
+        $status = "Closed";
+    }
+    elseif(strtotime($contract_end) <= strtotime("+30 days")){
+        $status = "Expiring";
+    }
+    else {
+        $status = "Active";
+    }
+
+    $updateStmt = $mysqli->prepare("
         UPDATE project_inventory SET
-        year_awarded=?,
-        project_name=?,
-        project_owner=?,
-        end_user=?,
-        contract_no=?,
-        service=?,
-        po_date=?,
-        contract_start=?,
-        contract_end=?,
-        amount=?
-        WHERE no=?
+            year_awarded = ?,
+            project_name = ?,
+            project_owner = ?,
+            end_user = ?,
+            contract_no = ?,
+            service = ?,
+            po_date = ?,
+            contract_start = ?,
+            contract_end = ?,
+            status = ?,
+            amount = ?
+        WHERE no = ?
     ");
 
-    $stmt->bind_param(
-        "issssssssdi",
+    if(!$updateStmt){
+        die("SQL Error: " . $mysqli->error);
+    }
+
+    $updateStmt->bind_param(
+        "isssssssssdi",
         $year_awarded,
         $project_name,
         $project_owner,
@@ -83,18 +111,19 @@ if(isset($_POST['update'])){
         $po_date,
         $contract_start,
         $contract_end,
+        $status,
         $amount,
         $id
     );
 
-$stmt->execute();
+    if(!$updateStmt->execute()){
+        die("Update Error: " . $updateStmt->error);
+    }
 
-/* 🔥 PUT YOUR LOG HERE (RIGHT AFTER SUCCESSFUL UPDATE) */
+    $ip = $_SERVER['REMOTE_ADDR'];
+    $time = date("Y-m-d H:i:s");
 
-$ip = $_SERVER['REMOTE_ADDR'];
-$time = date("Y-m-d H:i:s");
-
-$description = "User [$username] updated contract.
+    $description = "User [$username] updated contract.
 Contract No: $id
 
 OLD DATA:
@@ -108,6 +137,7 @@ OLD DATA:
 - Start Date: {$row['contract_start']}
 - End Date: {$row['contract_end']}
 - Amount: RM {$row['amount']}
+- Status: {$row['status']}
 
 NEW DATA:
 - Year Awarded: $year_awarded
@@ -120,21 +150,21 @@ NEW DATA:
 - Start Date: $contract_start
 - End Date: $contract_end
 - Amount: RM $amount
+- Status: $status
 
 IP Address: $ip
 Time: $time";
 
-logActivity(
-    $mysqli,
-    $username,
-    $role,
-    "UPDATE CONTRACT",
-    $description
-);
+    logActivity(
+        $mysqli,
+        $username,
+        $role,
+        "UPDATE CONTRACT",
+        $description
+    );
 
-/* THEN REDIRECT */
-header("Location: contracts.php");
-exit();
+    header("Location: contracts.php");
+    exit();
 }
 ?>
 
@@ -142,10 +172,11 @@ exit();
 <html>
 <head>
 
-<title>Edit Contract</title>
+<title><?= $canEdit ? 'Edit Contract' : 'View Contract' ?></title>
 
 <link rel="stylesheet" href="style.css">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
 <style>
 .form-card{
@@ -163,79 +194,72 @@ exit();
 <?php include "layout/header.php"; ?>
 <?php include "layout/sidebar.php"; ?>
 
-<div class="main">
+<div class="main" id="main">
 
-<h2 class="mb-4">Edit Contract</h2>
+<h2 class="mb-4"><?= $canEdit ? 'Edit Contract' : 'View Contract' ?></h2>
 
 <form method="POST" class="form-card">
 
 <div class="row g-3">
 
-<!-- LEFT -->
 <div class="col-md-6">
 
 <div class="form-floating">
-<input type="number" name="year_awarded" class="form-control"
-value="<?= $row['year_awarded']; ?>" required>
+<input type="number" name="no" class="form-control" value="<?= htmlspecialchars($row['no']) ?>" readonly>
+<label>No</label>
+</div>
+
+<div class="form-floating mt-3">
+<input type="number" name="year_awarded" class="form-control" value="<?= htmlspecialchars($row['year_awarded'] ?? '') ?>" <?= $canEdit ? '' : 'readonly' ?> required>
 <label>Year Awarded</label>
 </div>
 
 <div class="form-floating mt-3">
-<input type="text" name="project_name" class="form-control"
-value="<?= $row['project_name']; ?>" required>
+<input type="text" name="project_name" class="form-control" value="<?= htmlspecialchars($row['project_name'] ?? '') ?>" <?= $canEdit ? '' : 'readonly' ?> required>
 <label>Project Name</label>
 </div>
 
 <div class="form-floating mt-3">
-<input type="text" name="project_owner" class="form-control"
-value="<?= $row['project_owner']; ?>">
+<input type="text" name="project_owner" class="form-control" value="<?= htmlspecialchars($row['project_owner'] ?? '') ?>" <?= $canEdit ? '' : 'readonly' ?>>
 <label>Project Owner</label>
 </div>
 
 <div class="form-floating mt-3">
-<input type="text" name="end_user" class="form-control"
-value="<?= $row['end_user']; ?>">
+<input type="text" name="end_user" class="form-control" value="<?= htmlspecialchars($row['end_user'] ?? '') ?>" <?= $canEdit ? '' : 'readonly' ?>>
 <label>End User</label>
 </div>
 
 <div class="form-floating mt-3">
-<input type="text" name="contract_no" class="form-control"
-value="<?= $row['contract_no']; ?>">
+<input type="text" name="contract_no" class="form-control" value="<?= htmlspecialchars($row['contract_no'] ?? '') ?>" <?= $canEdit ? '' : 'readonly' ?>>
 <label>Contract No</label>
 </div>
 
 <div class="form-floating mt-3">
-<input type="text" name="service" class="form-control"
-value="<?= $row['service']; ?>">
+<input type="text" name="service" class="form-control" value="<?= htmlspecialchars($row['service'] ?? '') ?>" <?= $canEdit ? '' : 'readonly' ?>>
 <label>Service</label>
 </div>
 
 </div>
 
-<!-- RIGHT -->
 <div class="col-md-6">
 
 <div class="form-floating">
-<input type="date" name="po_date" class="form-control"
-value="<?= $row['po_date']; ?>">
+<input type="date" name="po_date" class="form-control" value="<?= htmlspecialchars($row['po_date'] ?? '') ?>" <?= $canEdit ? '' : 'readonly' ?>>
 <label>PO Date</label>
 </div>
 
 <div class="form-floating mt-3">
-<input type="date" name="contract_start" class="form-control"
-value="<?= $row['contract_start']; ?>">
+<input type="date" name="contract_start" class="form-control" value="<?= htmlspecialchars($row['contract_start'] ?? '') ?>" <?= $canEdit ? '' : 'readonly' ?>>
 <label>Start Date</label>
 </div>
 
 <div class="form-floating mt-3">
-<input type="date" name="contract_end" class="form-control"
-value="<?= $row['contract_end']; ?>">
+<input type="date" name="contract_end" class="form-control" value="<?= htmlspecialchars($row['contract_end'] ?? '') ?>" <?= $canEdit ? '' : 'readonly' ?>>
 <label>End Date</label>
 </div>
 
 <div class="form-floating mt-3">
-<input type="number" step="0.01" name="amount" class="form-control"
-value="<?= $row['amount']; ?>">
+<input type="number" step="0.01" name="amount" class="form-control" value="<?= htmlspecialchars($row['amount'] ?? '') ?>" <?= $canEdit ? '' : 'readonly' ?>>
 <label>Amount (RM)</label>
 </div>
 
@@ -243,15 +267,16 @@ value="<?= $row['amount']; ?>">
 
 </div>
 
-<!-- BUTTON -->
 <div class="d-flex justify-content-end gap-2 mt-4">
-
 <a href="contracts.php" class="btn btn-light px-4">Cancel</a>
 
-<button type="submit" name="update" class="btn btn-warning px-4">
+<?php if($canEdit): ?>
+<button type="submit" name="submit" class="btn btn-warning px-4">
 <i class="fa fa-save"></i> Update
 </button>
-
+<?php else: ?>
+<span class="badge bg-secondary align-self-center">View Only</span>
+<?php endif; ?>
 </div>
 
 </form>

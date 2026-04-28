@@ -2,48 +2,61 @@
 session_start();
 require_once "../includes/db_connect.php";
 require_once "../includes/activity_log.php";
+require_once "../includes/permissions.php";
 
 header('Content-Type: text/plain');
 
-$id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
-$remark = isset($_POST['remark']) ? $mysqli->real_escape_string($_POST['remark']) : "";
+if(!isset($_SESSION['username'])){
+    exit("No session");
+}
 
-$username = $_SESSION['username'] ?? '';
-$role = $_SESSION['role'] ?? '';
+if(!hasPermission($mysqli, "inventory_stockout")){
+    exit("access_denied");
+}
+
+$id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
+$remark = isset($_POST['remark']) ? trim($_POST['remark']) : "";
+
+$username = $_SESSION['username'];
+$role = $_SESSION['role'] ?? "UNKNOWN";
 
 if(!$id){
     exit("error");
 }
 
-// GET DATA FIRST
-$check = $mysqli->query("SELECT * FROM asset_inventory WHERE no=$id");
-$row = $check->fetch_assoc();
+$stmt = $mysqli->prepare("
+SELECT *
+FROM asset_inventory
+WHERE no = ?
+LIMIT 1
+");
+
+$stmt->bind_param("i", $id);
+$stmt->execute();
+$result = $stmt->get_result();
+$row = $result->fetch_assoc();
 
 if(!$row){
     exit("error");
 }
 
-$allowedRoles = ["Administrator", "System Admin", "User (Technical)"];
-
-if(!in_array($role, $allowedRoles)){
-    exit("access_denied");
-}
-
-// INSERT INTO HISTORY
-$mysqli->query("
+$insertStmt = $mysqli->prepare("
 INSERT INTO stock_out_history
 (part_number, serial_number, location, remark, stock_out_by)
-VALUES
-(
-    '".$row['part_number']."',
-    '".$row['serial_number']."',
-    '".$row['location']."',
-    '$remark',
-    '$username'
-)
+VALUES (?, ?, ?, ?, ?)
 ");
 
-// ACTIVITY LOG
+$insertStmt->bind_param(
+    "sssss",
+    $row['part_number'],
+    $row['serial_number'],
+    $row['location'],
+    $remark,
+    $username
+);
+
+$insertStmt->execute();
+
 $ip = $_SERVER['REMOTE_ADDR'];
 $time = date("Y-m-d H:i:s");
 
@@ -63,8 +76,13 @@ logActivity(
     $description
 );
 
-// DELETE FROM INVENTORY
-$mysqli->query("DELETE FROM asset_inventory WHERE no=$id");
+$deleteStmt = $mysqli->prepare("
+DELETE FROM asset_inventory
+WHERE no = ?
+");
+
+$deleteStmt->bind_param("i", $id);
+$deleteStmt->execute();
 
 echo "success";
 exit;

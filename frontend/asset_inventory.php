@@ -8,17 +8,26 @@ if(!isset($_SESSION['username'])){
 }
 
 require_once "../includes/db_connect.php";
+require_once "../includes/permissions.php";
 
-$role = $_SESSION['role'];
+if(!hasPermission($mysqli, "inventory_view")){
+    die("Access denied");
+}
+
+$role = $_SESSION['role'] ?? "UNKNOWN";
 $username = $_SESSION['username'];
+
+$canAdd = hasPermission($mysqli, "inventory_add");
 
 $search = "";
 
 if(isset($_GET['search'])){
-    $search = $mysqli->real_escape_string($_GET['search']);
+    $search = trim($_GET['search']);
 }
 
-$sql = "
+$searchLike = "%" . $search . "%";
+
+$stmt = $mysqli->prepare("
 SELECT
     part_number,
     brand,
@@ -28,14 +37,21 @@ SELECT
     MIN(created_by) AS created_by
 FROM asset_inventory
 WHERE
-    part_number LIKE '%$search%' OR
-    brand LIKE '%$search%' OR
-    description LIKE '%$search%' OR
-    serial_number LIKE '%$search%'
-GROUP BY part_number
-";
+    part_number LIKE ? OR
+    brand LIKE ? OR
+    description LIKE ? OR
+    serial_number LIKE ?
+GROUP BY part_number, brand, description
+ORDER BY part_number ASC
+");
 
-$result = $mysqli->query($sql);
+if(!$stmt){
+    die("SQL Error: " . $mysqli->error);
+}
+
+$stmt->bind_param("ssss", $searchLike, $searchLike, $searchLike, $searchLike);
+$stmt->execute();
+$result = $stmt->get_result();
 ?>
 
 <!DOCTYPE html>
@@ -61,12 +77,12 @@ $result = $mysqli->query($sql);
 
 <form method="GET" class="mb-3">
     <div class="input-group">
-        <input type="text" name="search" class="form-control" placeholder="Search..." value="<?php echo $search ?>">
+        <input type="text" name="search" class="form-control" placeholder="Search..." value="<?php echo htmlspecialchars($search); ?>">
         <button class="btn btn-warning"><i class="fa fa-search"></i></button>
     </div>
 </form>
 
-<?php if($role == "Administrator" || $role == "System Admin" || $role == "User (Technical)"): ?>
+<?php if($canAdd): ?>
 <a href="asset_add.php" class="btn btn-warning mb-3">
     <i class="fa fa-plus"></i> Stock Receive
 </a>
@@ -86,12 +102,12 @@ $result = $mysqli->query($sql);
 
 <?php while($row = $result->fetch_assoc()): ?>
 
-<tr onclick="viewSerial('<?php echo $row['part_number']; ?>')" style="cursor:pointer;">
+<tr onclick="viewSerial(<?= htmlspecialchars(json_encode($row['part_number'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>)" style="cursor:pointer;">
 
-<td><?php echo $row['part_number']; ?></td>
-<td><?php echo $row['brand']; ?></td>
-<td><?php echo $row['description']; ?></td>
-<td><?php echo $row['total_qty']; ?></td>
+<td><?php echo htmlspecialchars($row['part_number'] ?? ''); ?></td>
+<td><?php echo htmlspecialchars($row['brand'] ?? ''); ?></td>
+<td><?php echo htmlspecialchars($row['description'] ?? ''); ?></td>
+<td><?php echo htmlspecialchars($row['total_qty'] ?? '0'); ?></td>
 
 </tr>
 
@@ -102,7 +118,6 @@ $result = $mysqli->query($sql);
 
 </div>
 
-<!-- SERIAL MODAL -->
 <div class="modal fade" id="serialModal">
 <div class="modal-dialog modal-lg">
     <div class="modal-content">
@@ -118,7 +133,6 @@ $result = $mysqli->query($sql);
   </div>
 </div>
 
-<!-- CONFIRM MODAL -->
 <div class="modal fade" id="confirmModal">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -140,7 +154,7 @@ $result = $mysqli->query($sql);
     </div>
   </div>
 </div>
-<!-- REMARK MODAL -->
+
 <div class="modal fade" id="remarkModal">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -165,6 +179,7 @@ $result = $mysqli->query($sql);
     </div>
   </div>
 </div>
+
 <div class="modal fade" id="detailModal">
   <div class="modal-dialog">
     <div class="modal-content">
@@ -179,6 +194,7 @@ $result = $mysqli->query($sql);
     </div>
   </div>
 </div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
@@ -189,6 +205,7 @@ function viewSerial(part){
         modal.show();
     });
 }
+
 let selectedId = 0;
 
 function openRemarkModal(id, serial){
@@ -210,11 +227,32 @@ function submitStockOut(){
     {
         id: selectedId,
         remark: remark
-    }, function(){
-        location.reload();
+    }, function(data){
+        if(data.trim() === "success"){
+            location.reload();
+        }else{
+            alert(data);
+        }
     });
 }
-// NEW FUNCTION
+
+function deleteAssetDirect(id, serial){
+    if(!confirm("Delete asset serial " + serial + " permanently?\n\nThis will NOT go to Stock Out History.")){
+        return;
+    }
+
+    $.post("../backend/delete_asset_direct.php",
+    {
+        id: id
+    }, function(data){
+        if(data.trim() === "success"){
+            location.reload();
+        }else{
+            alert(data);
+        }
+    });
+}
+
 let deleteId = 0;
 
 function confirmDelete(id, serial){
@@ -227,10 +265,15 @@ function confirmDelete(id, serial){
 }
 
 function deleteSerial(){
-    $.post("../frontend/asset_delete.php", {id: deleteId}, function(){
-        location.reload();
+    $.post("../frontend/asset_delete.php", {id: deleteId}, function(data){
+        if(data.trim() === "success"){
+            location.reload();
+        }else{
+            alert(data);
+        }
     });
 }
+
 function viewDetail(id){
     $.post("../backend/get_asset_detail.php",{id:id},function(data){
         $("#detailContent").html(data);
@@ -240,6 +283,7 @@ function viewDetail(id){
     });
 }
 </script>
+
 <script>
 function toggleSidebar(){
     const sidebar = document.getElementById("sidebar");
@@ -251,5 +295,6 @@ function toggleSidebar(){
     btn.classList.toggle("active");
 }
 </script>
+
 </body>
 </html>

@@ -8,37 +8,43 @@ if(!isset($_SESSION['username'])){
 }
 
 require_once "../includes/db_connect.php";
+require_once "../includes/permissions.php";
 
-$role = $_SESSION['role'];
+if(!hasContractViewAccess($mysqli)){
+    die("Access denied");
+}
+
+$role = $_SESSION['role'] ?? "UNKNOWN";
 $username = $_SESSION['username'];
+
+$canAddContract = hasContractAddAccess($mysqli);
 
 $search = "";
 if(isset($_GET['search'])){
-    $search = $mysqli->real_escape_string($_GET['search']);
+    $search = trim($_GET['search']);
 }
 
-/* ✅ CENTRAL PERMISSION FUNCTION */
-function canManageContract($role, $username, $created_by){
-    return (
-        $role === "Administrator" ||
-        $role === "User (Project Coordinator)" ||
-        ($role === "User (Project Manager)" && $username === $created_by)
-    );
-}
+$searchLike = "%" . $search . "%";
 
-$sql = "
+$stmt = $mysqli->prepare("
 SELECT *
 FROM project_inventory
 WHERE
-    project_name LIKE '%$search%' OR
-    contract_no LIKE '%$search%' OR
-    year_awarded LIKE '%$search%' OR
-    project_owner LIKE '%$search%' OR
-    end_user LIKE '%$search%'
+    project_name LIKE ? OR
+    contract_no LIKE ? OR
+    year_awarded LIKE ? OR
+    project_owner LIKE ? OR
+    end_user LIKE ?
 ORDER BY no DESC
-";
+");
 
-$result = $mysqli->query($sql);
+if(!$stmt){
+    die("SQL Error: " . $mysqli->error);
+}
+
+$stmt->bind_param("sssss", $searchLike, $searchLike, $searchLike, $searchLike, $searchLike);
+$stmt->execute();
+$result = $stmt->get_result();
 ?>
 
 <!DOCTYPE html>
@@ -67,7 +73,7 @@ $result = $mysqli->query($sql);
 <form method="GET" class="mb-3">
     <div class="input-group">
         <input type="text" name="search" class="form-control"
-               placeholder="Search contracts..." value="<?= $search ?>">
+               placeholder="Search contracts..." value="<?= htmlspecialchars($search) ?>">
 
         <button class="btn btn-warning">
             <i class="fa fa-search"></i> Search
@@ -81,11 +87,7 @@ $result = $mysqli->query($sql);
     </div>
 </form>
 
-<?php if(
-    $role == "Administrator" ||
-    $role == "User (Project Coordinator)" ||
-    $role == "User (Project Manager)"
-): ?>
+<?php if($canAddContract): ?>
 <a href="contract_add.php" class="btn btn-warning mb-3">
     <i class="fa fa-plus"></i> Add Contract
 </a>
@@ -112,7 +114,7 @@ $result = $mysqli->query($sql);
 <?php while($row = $result->fetch_assoc()):
 
 $today = new DateTime();
-$endDate = !empty($row['contract_end']) ? new DateTime($row['contract_end']) : null;
+$endDate = !empty($row['contract_end']) && $row['contract_end'] !== "0000-00-00" ? new DateTime($row['contract_end']) : null;
 
 $auto_status = "Active";
 
@@ -127,14 +129,13 @@ if($endDate){
     }
 }
 
-/* SEARCH FILTER (STATUS INCLUDED) */
 if($search != ""){
     $match =
-        stripos($row['project_name'], $search) !== false ||
-        stripos($row['contract_no'], $search) !== false ||
-        stripos($row['year_awarded'], $search) !== false ||
-        stripos($row['project_owner'], $search) !== false ||
-        stripos($row['end_user'], $search) !== false ||
+        stripos($row['project_name'] ?? '', $search) !== false ||
+        stripos($row['contract_no'] ?? '', $search) !== false ||
+        stripos((string)$row['year_awarded'], $search) !== false ||
+        stripos($row['project_owner'] ?? '', $search) !== false ||
+        stripos($row['end_user'] ?? '', $search) !== false ||
         stripos($auto_status, $search) !== false;
 
     if(!$match){
@@ -142,31 +143,35 @@ if($search != ""){
     }
 }
 
-$created_by = $row['created_by'];
+$created_by = $row['created_by'] ?? "";
+
+$canEditThisContract = hasContractEditAccess($mysqli, $created_by);
+$canDeleteThisContract = hasContractDeleteAccess($mysqli, $created_by);
+$canUploadThisContract = hasContractUploadAccess($mysqli, $created_by);
 
 ?>
 
 <tr
-data-id="<?= $row['no']; ?>"
-data-year="<?= $row['year_awarded']; ?>"
-data-project="<?= htmlspecialchars($row['project_name']); ?>"
-data-owner="<?= htmlspecialchars($row['project_owner']); ?>"
-data-enduser="<?= htmlspecialchars($row['end_user']); ?>"
-data-contractno="<?= htmlspecialchars($row['contract_no']); ?>"
-data-service="<?= htmlspecialchars($row['service']); ?>"
-data-podate="<?= $row['po_date']; ?>"
-data-start="<?= $row['contract_start']; ?>"
-data-end="<?= $row['contract_end']; ?>"
-data-status="<?= $auto_status; ?>"
-data-amount="<?= $row['amount']; ?>"
-data-role="<?= $role; ?>"
-data-username="<?= $username; ?>"
+data-id="<?= htmlspecialchars($row['no']); ?>"
+data-year="<?= htmlspecialchars($row['year_awarded']); ?>"
+data-project="<?= htmlspecialchars($row['project_name'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
+data-owner="<?= htmlspecialchars($row['project_owner'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
+data-createdby="<?= htmlspecialchars($created_by, ENT_QUOTES, 'UTF-8'); ?>"
+data-canupload="<?= $canUploadThisContract ? '1' : '0'; ?>"
+data-enduser="<?= htmlspecialchars($row['end_user'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
+data-contractno="<?= htmlspecialchars($row['contract_no'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
+data-service="<?= htmlspecialchars($row['service'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
+data-podate="<?= htmlspecialchars($row['po_date'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
+data-start="<?= htmlspecialchars($row['contract_start'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
+data-end="<?= htmlspecialchars($row['contract_end'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
+data-status="<?= htmlspecialchars($auto_status, ENT_QUOTES, 'UTF-8'); ?>"
+data-amount="<?= htmlspecialchars($row['amount'] ?? '0', ENT_QUOTES, 'UTF-8'); ?>"
 >
 
-<td><?= $row['no']; ?></td>
-<td><?= $row['year_awarded']; ?></td>
-<td><?= $row['project_name']; ?></td>
-<td><?= $row['project_owner']; ?></td>
+<td><?= htmlspecialchars($row['no']); ?></td>
+<td><?= htmlspecialchars($row['year_awarded']); ?></td>
+<td><?= htmlspecialchars($row['project_name'] ?? ''); ?></td>
+<td><?= htmlspecialchars($row['project_owner'] ?? ''); ?></td>
 
 <td>
 <?php if($auto_status == "Closed"): ?>
@@ -178,28 +183,28 @@ data-username="<?= $username; ?>"
 <?php endif; ?>
 </td>
 
-<td><?= $row['contract_start']; ?></td>
-<td><?= $row['contract_end']; ?></td>
-<td>RM <?= number_format($row['amount'],2); ?></td>
+<td><?= htmlspecialchars($row['contract_start'] ?? ''); ?></td>
+<td><?= htmlspecialchars($row['contract_end'] ?? ''); ?></td>
+<td>RM <?= number_format((float)$row['amount'],2); ?></td>
 
 <td>
 
-<?php if(canManageContract($role, $username, $created_by)): ?>
-
+<?php if($canEditThisContract): ?>
     <a href="contract_edit.php?id=<?= $row['no']; ?>" class="btn btn-sm btn-primary">
         Edit
     </a>
+<?php endif; ?>
 
+<?php if($canDeleteThisContract): ?>
     <a href="../backend/contract_delete.php?id=<?= $row['no']; ?>"
        class="btn btn-sm btn-danger"
        onclick="return confirm('Delete this contract?')">
        Delete
     </a>
+<?php endif; ?>
 
-<?php else: ?>
-
+<?php if(!$canEditThisContract && !$canDeleteThisContract): ?>
     <span class="badge bg-secondary">View Only</span>
-
 <?php endif; ?>
 
 </td>
@@ -213,7 +218,6 @@ data-username="<?= $username; ?>"
 
 </div>
 
-<!-- MODAL -->
 <div class="modal fade" id="contractModal">
 <div class="modal-dialog modal-lg">
 <div class="modal-content border-0 shadow-lg rounded-4">
@@ -243,6 +247,7 @@ data-username="<?= $username; ?>"
 <div class="col-md-6"><b>End</b><div id="m_end"></div></div>
 <div class="col-md-6"><b>Status</b><div id="m_status"></div></div>
 <div class="col-md-6"><b>Amount</b><div id="m_amount"></div></div>
+<div class="col-md-6"><b>Created By</b><div id="m_createdby"></div></div>
 
 </div>
 
@@ -255,7 +260,7 @@ data-username="<?= $username; ?>"
 <form action="../backend/upload_contract.php" method="POST" enctype="multipart/form-data">
     <input type="hidden" name="contract_id" id="m_id">
     <div class="input-group">
-        <input type="file" name="file" class="form-control">
+        <input type="file" name="file" class="form-control" required>
         <button class="btn btn-warning">Upload</button>
     </div>
 </form>
@@ -292,6 +297,7 @@ $('#contractsTable tbody').on('click','tr',function(e){
 
     $('#m_project').text(row.data('project'));
     $('#m_owner').text(row.data('owner'));
+    $('#m_createdby').text(row.data('createdby') || '-');
     $('#m_year').text(row.data('year'));
     $('#m_enduser').text(row.data('enduser'));
     $('#m_contractno').text(row.data('contractno'));
@@ -325,21 +331,8 @@ $('#contractsTable tbody').on('click','tr',function(e){
         $('#m_amount').text("RM 0.00");
     }
 
-    // ROLE CONTROL (UPLOAD / VIEW)
-    let role = row.data('role');
-    let username = row.data('username');
-    let owner = row.data('owner');
-
-    let canUpload = false;
-
-    if(role === "Administrator" || role === "User (Project Coordinator)"){
-        canUpload = true;
-    }
-    else if(role === "User (Project Manager)" && username === owner){
-        canUpload = true;
-    }
-
-    $('#uploadSection').toggle(canUpload);
+    let canUploadThisContract = row.data('canupload') == 1;
+    $('#uploadSection').toggle(canUploadThisContract);
 
     $('#filesContainer').html("Loading...");
     $.post("../backend/get_contract_files.php",{id:id},function(data){
@@ -353,5 +346,16 @@ $('#contractsTable tbody').on('click','tr',function(e){
 });
 </script>
 
+<script>
+function toggleSidebar(){
+    const sidebar = document.getElementById("sidebar");
+    const main = document.querySelector(".main");
+    const btn = document.getElementById("menuBtn");
+
+    sidebar.classList.toggle("collapsed");
+    main.classList.toggle("expanded");
+    btn.classList.toggle("active");
+}
+</script>
 </body>
 </html>

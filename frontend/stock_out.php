@@ -1,37 +1,47 @@
 <?php
 session_start();
 require_once "../includes/db_connect.php";
+require_once "../includes/permissions.php";
 
 if(!isset($_SESSION['username'])){
     exit("No session");
 }
 
-$role = $_SESSION['role'];
-$username = $_SESSION['username'];
-
-// ✅ VIEW ONLY CONTROL (NO MORE ACCESS DENIED)
-$canEdit = in_array($role, ["Administrator","System Admin","User (Technical)"]);
-
-$search = "";
-if(isset($_GET['search'])){
-    $search = $mysqli->real_escape_string($_GET['search']);
+if(!hasPermission($mysqli, "inventory_view")){
+    die("Access denied");
 }
 
-// Fetch stock out history
-$sql = "
+$role = $_SESSION['role'] ?? "UNKNOWN";
+$username = $_SESSION['username'];
+$canDelete = hasPermission($mysqli, "inventory_delete");
+$search = "";
+if(isset($_GET['search'])){
+    $search = trim($_GET['search']);
+}
+
+$searchLike = "%" . $search . "%";
+
+$stmt = $mysqli->prepare("
 SELECT *
 FROM stock_out_history
-WHERE part_number LIKE '%$search%'
+WHERE part_number LIKE ?
 ORDER BY stock_out_date DESC
-";
+");
 
-$result = $mysqli->query($sql);
+if(!$stmt){
+    die("SQL Error: " . $mysqli->error);
+}
+
+$stmt->bind_param("s", $searchLike);
+$stmt->execute();
+
+$result = $stmt->get_result();
 ?>
 
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Stock Out History</title>
+    <title>Asset Stock Out History</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -42,13 +52,13 @@ $result = $mysqli->query($sql);
 <?php include "layout/sidebar.php"; ?>
 
 <div class="main">
-    <h2 class="mb-4">Stock Out History</h2>
+    <h2 class="mb-4">Asset Stock Out History</h2>
 
     <form method="GET" class="mb-3">
         <div class="input-group">
             <input type="text" name="search" class="form-control"
                    placeholder="Search by Part Number..."
-                   value="<?php echo $search ?>">
+                   value="<?php echo htmlspecialchars($search); ?>">
             <button class="btn btn-warning"><i class="fa fa-search"></i></button>
         </div>
     </form>
@@ -58,31 +68,47 @@ $result = $mysqli->query($sql);
         <tr>
             <th>Part Number</th>
             <th>Serial Number</th>
-            <th>Location</th>
             <th>Remark</th>
             <th>Stocked Out By</th>
             <th>Date</th>
+            <th>Action</th>
         </tr>
     </thead>
     <tbody>
-        <?php while($row = $result->fetch_assoc()): ?>
-            <tr>
-                <td><?= $row['part_number']; ?></td>
-                <td><?= $row['serial_number']; ?></td>
-                <td><?= $row['location']; ?></td>
-                <td><?= $row['remark']; ?></td>
-                <td><?= $row['stock_out_by']; ?></td>
-                <?php
-                $date = date("d/m/Y", strtotime($row['stock_out_date']));
-                $time = date("H:i:s", strtotime($row['stock_out_date']));
-                ?>
+        <?php if($result && $result->num_rows > 0): ?>
+            <?php while($row = $result->fetch_assoc()): ?>
+                <tr>
+                    <td><?= htmlspecialchars($row['part_number'] ?? ''); ?></td>
+                    <td><?= htmlspecialchars($row['serial_number'] ?? ''); ?></td>
+                    <td><?= htmlspecialchars($row['remark'] ?? ''); ?></td>
+                    <td><?= htmlspecialchars($row['stock_out_by'] ?? ''); ?></td>
+                    <?php
+                    $date = date("d/m/Y", strtotime($row['stock_out_date']));
+                    $time = date("H:i:s", strtotime($row['stock_out_date']));
+                    ?>
 
+                    <td>
+                        <?= $date ?><br>
+                        <small class="text-muted"><?= $time ?></small>
+                    </td>
                 <td>
-                    <?= $date ?><br>
-                    <small class="text-muted"><?= $time ?></small>
+                <?php if($canDelete): ?>
+                    <button
+                        class="btn btn-sm btn-danger"
+                        onclick="deleteStockOutHistory(<?= (int)$row['id']; ?>)">
+                        <i class="fa fa-trash"></i>
+                    </button>
+                <?php else: ?>
+                    <span class="badge bg-secondary">View Only</span>
+                <?php endif; ?>
                 </td>
+                </tr>
+            <?php endwhile; ?>
+        <?php else: ?>
+            <tr>
+                <td colspan="6" class="text-center">No records found</td>
             </tr>
-        <?php endwhile; ?>
+        <?php endif; ?>
     </tbody>
     </table>
 </div>
@@ -100,6 +126,28 @@ function toggleSidebar(){
     btn.classList.toggle("active");
 }
 </script>
+<script>
+function deleteStockOutHistory(id){
+    if(!confirm("Delete this stock out history record?")){
+        return;
+    }
 
+    fetch("../backend/delete_stockout_history.php", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: "id=" + encodeURIComponent(id)
+    })
+    .then(response => response.text())
+    .then(data => {
+        if(data.trim() === "success"){
+            location.reload();
+        }else{
+            alert(data);
+        }
+    });
+}
+</script>
 </body>
 </html>

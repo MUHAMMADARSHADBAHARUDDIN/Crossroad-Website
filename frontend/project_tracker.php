@@ -8,18 +8,17 @@ if(!isset($_SESSION['username'])){
 }
 
 require_once "../includes/db_connect.php";
+require_once "../includes/permissions.php";
 
-/* =========================
-   🔥 TOTAL PROJECTS
-========================= */
+if(!hasPermission($mysqli, "contracts_view")){
+    die("Access denied");
+}
+
 $total = $mysqli->query("
     SELECT COUNT(*) as total
     FROM project_inventory
 ")->fetch_assoc()['total'];
 
-/* =========================
-   🔥 STATUS
-========================= */
 $activeContracts = $mysqli->query("
 SELECT COUNT(*) as total
 FROM project_inventory
@@ -38,9 +37,6 @@ FROM project_inventory
 WHERE contract_end < CURDATE()
 ")->fetch_assoc()['total'];
 
-/* =========================
-   💰 TOTAL AMOUNT
-========================= */
 $totalAmount = 0;
 $result = $mysqli->query("SELECT amount FROM project_inventory");
 
@@ -49,9 +45,6 @@ while($row = $result->fetch_assoc()){
     $totalAmount += $amount;
 }
 
-/* =========================
-   💰 AMOUNT BY YEAR
-========================= */
 $yearAmountData = [];
 
 $yearAmountResult = $mysqli->query("
@@ -66,9 +59,6 @@ while($row = $yearAmountResult->fetch_assoc()){
     $yearAmountData[$year] = floatval($row['total']);
 }
 
-/* =========================
-   📈 BEST YEAR + GROWTH
-========================= */
 $bestYear = null;
 $bestValue = 0;
 
@@ -97,9 +87,6 @@ for($i = 1; $i < count($years); $i++){
     }
 }
 
-/* =========================
-   📊 PROJECTS BY YEAR
-========================= */
 $yearData = [];
 $yearResult = $mysqli->query("SELECT year_awarded FROM project_inventory");
 
@@ -175,14 +162,12 @@ body{
 
 </div>
 
-<!-- CLICKABLE TOTAL -->
 <div class="card-modern mb-4" style="cursor:pointer;" data-bs-toggle="modal" data-bs-target="#yearValueModal">
     <h5>Total Contract Value</h5>
     <h2 class="text-primary">RM <?= number_format($totalAmount,2) ?></h2>
     <small class="text-muted">Click to view yearly breakdown</small>
 </div>
 
-<!-- CHARTS -->
 <div class="row g-4">
 <div class="col-md-6">
 <div class="card-modern">
@@ -201,7 +186,6 @@ body{
 
 </div>
 
-<!-- MODAL -->
 <div class="modal fade" id="yearValueModal">
 <div class="modal-dialog modal-xl modal-dialog-centered">
 <div class="modal-content">
@@ -214,7 +198,7 @@ body{
 <div class="modal-body">
 
 <div class="alert alert-success text-center">
-🏆 Best Year: <strong><?= $bestYear ?></strong>
+🏆 Best Year: <strong><?= htmlspecialchars($bestYear) ?></strong>
 (RM <?= number_format($bestValue,2) ?>)
 </div>
 
@@ -226,11 +210,11 @@ body{
 <ul>
 <?php foreach($growthData as $g): ?>
 <li>
-<?= $g['from'] ?> → <?= $g['to'] ?>
+<?= htmlspecialchars($g['from']) ?> → <?= htmlspecialchars($g['to']) ?>
 <?php if($g['percent'] >= 0): ?>
-<span class="text-success">↑ +<?= $g['percent'] ?>%</span>
+<span class="text-success">↑ +<?= htmlspecialchars($g['percent']) ?>%</span>
 <?php else: ?>
-<span class="text-danger">↓ <?= $g['percent'] ?>%</span>
+<span class="text-danger">↓ <?= htmlspecialchars($g['percent']) ?>%</span>
 <?php endif; ?>
 </li>
 <?php endforeach; ?>
@@ -243,7 +227,7 @@ body{
 <tbody>
 <?php foreach($yearAmountData as $year => $amount): ?>
 <tr>
-<td><?= $year ?></td>
+<td><?= htmlspecialchars($year) ?></td>
 <td class="fw-bold text-primary">RM <?= number_format($amount,2) ?></td>
 </tr>
 <?php endforeach; ?>
@@ -292,6 +276,16 @@ document.getElementById('yearValueModal').addEventListener('shown.bs.modal', fun
 
 });
 </script>
+<script>
+function toggleSidebar(){
+    const sidebar = document.getElementById("sidebar");
+    const main = document.querySelector(".main");
+    const btn = document.getElementById("menuBtn");
 
+    sidebar.classList.toggle("collapsed");
+    main.classList.toggle("expanded");
+    btn.classList.toggle("active");
+}
+</script>
 </body>
 </html>

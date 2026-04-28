@@ -2,16 +2,17 @@
 session_start();
 require_once "../includes/db_connect.php";
 require_once "../includes/activity_log.php";
+require_once "../includes/permissions.php";
 
 if(!isset($_SESSION['username'])){
     header("Location: index.html");
     exit();
 }
 
-$role = $_SESSION['role'];
+$role = $_SESSION['role'] ?? "UNKNOWN";
 $username = $_SESSION['username'];
 
-if(!in_array($role, ["Administrator","System Admin","User (Technical)"])){
+if(!hasPermission($mysqli, "inventory_add")){
     header("Location: ../frontend/asset_inventory.php");
     exit();
 }
@@ -24,53 +25,77 @@ if(isset($_POST['add'])){
     $serial = trim($_POST['serial']);
     $brand = trim($_POST['brand']);
     $desc = trim($_POST['desc']);
-    $type = trim($_POST['type']);
     $location = trim($_POST['location']);
     $date = trim($_POST['date_received']);
 
-    // ✅ VALIDATION
     if($part == "" || $serial == ""){
         $error = "Part Number and Serial Number are required!";
     } else {
 
-        // ✅ CHECK DUPLICATE SERIAL
-        $check = $mysqli->query("SELECT * FROM asset_inventory WHERE serial_number='$serial'");
+        $checkStmt = $mysqli->prepare("
+            SELECT no
+            FROM asset_inventory
+            WHERE serial_number = ?
+            LIMIT 1
+        ");
+        $checkStmt->bind_param("s", $serial);
+        $checkStmt->execute();
+        $check = $checkStmt->get_result();
+
         if($check->num_rows > 0){
             $error = "Serial Number already exists!";
         } else {
 
-            // ✅ INSERT
-            $mysqli->query("
-            INSERT INTO asset_inventory
-            (part_number,serial_number,brand,description,location,date_received,created_by)
-            VALUES
-            ('$part','$serial','$brand','$desc','$location','$date','$username')
+            $stmt = $mysqli->prepare("
+                INSERT INTO asset_inventory
+                (part_number, serial_number, brand, description, location, date_received, created_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
             ");
 
-            // ✅ ACTIVITY LOG (PLACE HERE AFTER VARIABLES ARE DEFINED)
-            $ip = $_SERVER['REMOTE_ADDR'];
-            $time = date("Y-m-d H:i:s");
+            if(!$stmt){
+                die("SQL Error: " . $mysqli->error);
+            }
 
-            $description = "User [$username] added new asset (STOCK IN).
-            Part Number: $part
-            Serial Number: $serial
-            Brand: $brand
-            Description: $desc
-            Location: $location
-            Date Received: $date
-            IP Address: $ip
-            Time: $time";
-
-            logActivity(
-                $mysqli,
-                $username,
-                $role,
-                "STOCK IN ASSET",
-                $description
+            $stmt->bind_param(
+                "sssssss",
+                $part,
+                $serial,
+                $brand,
+                $desc,
+                $location,
+                $date,
+                $username
             );
 
-            header("Location: ../frontend/asset_inventory.php");
-            exit();
+            if($stmt->execute()){
+
+                $ip = $_SERVER['REMOTE_ADDR'];
+                $time = date("Y-m-d H:i:s");
+
+                $description = "User [$username] added new asset (STOCK IN).
+Part Number: $part
+Serial Number: $serial
+Brand: $brand
+Description: $desc
+Location: $location
+Date Received: $date
+IP Address: $ip
+Time: $time";
+
+                logActivity(
+                    $mysqli,
+                    $username,
+                    $role,
+                    "STOCK IN ASSET",
+                    $description
+                );
+
+                header("Location: ../frontend/asset_inventory.php");
+                exit();
+
+            } else {
+                $error = "Insert failed: " . $mysqli->error;
+            }
         }
     }
 }
@@ -97,7 +122,7 @@ if(isset($_POST['add'])){
     <div class="">
 
         <?php if($error != ""): ?>
-            <div class="alert alert-danger"><?php echo $error; ?></div>
+            <div class="alert alert-danger"><?php echo htmlspecialchars($error); ?></div>
         <?php endif; ?>
 
         <form method="POST">

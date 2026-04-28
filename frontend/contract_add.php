@@ -8,34 +8,31 @@ if(!isset($_SESSION['username'])){
 }
 
 require_once "../includes/db_connect.php";
-$created_by = $_SESSION['username'];
-$role = $_SESSION['role'];
+require_once "../includes/activity_log.php";
+require_once "../includes/permissions.php";
 
-$allowed = [
-    "Administrator",
-    "User (Project Coordinator)",
-    "User (Project Manager)"
-];
-
-if(!in_array($role,$allowed)){
+if(!hasContractAddAccess($mysqli)){
     header("Location: contracts.php");
     exit();
 }
 
+$created_by = $_SESSION['username'];
+$role = $_SESSION['role'] ?? "UNKNOWN";
+
 if(isset($_POST['submit'])){
 
-    $no = $_POST['no']; // 👈 NEW MANUAL ID
+    $no = intval($_POST['no']);
 
-    $year_awarded = $_POST['year_awarded'];
-    $project_name = $_POST['project_name'];
-    $project_owner = $_POST['project_owner'];
-    $end_user = $_POST['end_user'];
-    $contract_no = $_POST['contract_no'];
-    $service = $_POST['service'];
-    $po_date = $_POST['po_date'];
-    $contract_start = $_POST['contract_start'];
-    $contract_end = $_POST['contract_end'];
-    $amount = $_POST['amount'];
+    $year_awarded = intval($_POST['year_awarded']);
+    $project_name = trim($_POST['project_name']);
+    $project_owner = trim($_POST['project_owner']);
+    $end_user = trim($_POST['end_user']);
+    $contract_no = trim($_POST['contract_no']);
+    $service = trim($_POST['service']);
+    $po_date = trim($_POST['po_date']);
+    $contract_start = trim($_POST['contract_start']);
+    $contract_end = trim($_POST['contract_end']);
+    $amount = floatval($_POST['amount']);
 
     $today = date('Y-m-d');
 
@@ -50,6 +47,26 @@ if(isset($_POST['submit'])){
     }
     else {
         $status = "Active";
+    }
+
+    $checkStmt = $mysqli->prepare("
+        SELECT no
+        FROM project_inventory
+        WHERE no = ?
+        LIMIT 1
+    ");
+
+    if(!$checkStmt){
+        die("SQL Error: " . $mysqli->error);
+    }
+
+    $checkStmt->bind_param("i", $no);
+    $checkStmt->execute();
+    $checkResult = $checkStmt->get_result();
+
+    if($checkResult->num_rows > 0){
+        echo "<script>alert('Contract No already exists. Please use another No.'); window.history.back();</script>";
+        exit();
     }
 
     $stmt = $mysqli->prepare("
@@ -80,30 +97,30 @@ if(isset($_POST['submit'])){
         $created_by
     );
 
-    $stmt->execute();
-
-    require_once "../includes/activity_log.php";
+    if(!$stmt->execute()){
+        die("Insert Error: " . $stmt->error);
+    }
 
     $adminUser = $_SESSION['username'];
-    $adminRole = $_SESSION['role'];
+    $adminRole = $_SESSION['role'] ?? "UNKNOWN";
 
     $ip = $_SERVER['REMOTE_ADDR'];
     $time = date("Y-m-d H:i:s");
 
     $description = "User [$adminUser] created new contract.
-    Contract No: $no
-    Project Name: $project_name
-    Year Awarded: $year_awarded
-    Project Owner: $project_owner
-    End User: $end_user
-    Service: $service
-    PO Date: $po_date
-    Start Date: $contract_start
-    End Date: $contract_end
-    Amount: RM $amount
-    Status: $status
-    IP Address: $ip
-    Time: $time";
+Contract No: $no
+Project Name: $project_name
+Year Awarded: $year_awarded
+Project Owner: $project_owner
+End User: $end_user
+Service: $service
+PO Date: $po_date
+Start Date: $contract_start
+End Date: $contract_end
+Amount: RM $amount
+Status: $status
+IP Address: $ip
+Time: $time";
 
     logActivity(
         $mysqli,
@@ -152,7 +169,6 @@ if(isset($_POST['submit'])){
 
 <div class="row g-3">
 
-<!-- LEFT COLUMN -->
 <div class="col-md-6">
 
 <div class="form-floating">
@@ -192,7 +208,6 @@ if(isset($_POST['submit'])){
 
 </div>
 
-<!-- RIGHT COLUMN -->
 <div class="col-md-6">
 
 <div class="form-floating">
@@ -219,7 +234,6 @@ if(isset($_POST['submit'])){
 
 </div>
 
-<!-- BUTTON -->
 <div class="d-flex justify-content-end gap-2 mt-4">
 <a href="contracts.php" class="btn btn-light px-4">Cancel</a>
 <button type="submit" name="submit" class="btn btn-warning px-4">

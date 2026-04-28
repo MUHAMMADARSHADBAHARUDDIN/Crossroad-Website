@@ -2,14 +2,15 @@
 global $mysqli;
 session_start();
 require_once "../includes/db_connect.php";
+require_once "../includes/permissions.php";
 
 if(!isset($_SESSION['username'])){
     header("Location: index.html");
     exit();
 }
 
-if($_SESSION['role'] !== "Administrator"){
-    die("Access Denied");
+if(($_SESSION['role'] ?? '') !== "Administrator"){
+    die("Access denied.");
 }
 
 $latestResult = $mysqli->query("
@@ -52,7 +53,7 @@ $result = $mysqli->query("
 /* TABLE FIX */
 #logsTable {
     width: 100% !important;
-    table-layout: fixed; /* IMPORTANT */
+    table-layout: fixed;
 }
 
 /* FORCE TEXT WRAP */
@@ -134,7 +135,7 @@ $result = $mysqli->query("
 <div class="alert alert-info d-flex justify-content-between align-items-center">
     <div>
         <i class="fa fa-clock"></i>
-        <strong>Latest Activity:</strong> <?= $formattedTime ?>
+        <strong>Latest Activity:</strong> <?= htmlspecialchars($formattedTime) ?>
     </div>
 </div>
 
@@ -160,16 +161,16 @@ $result = $mysqli->query("
 <?php while($row = $result->fetch_assoc()): ?>
 
 <tr
-data-username="<?= htmlspecialchars($row['username']) ?>"
-data-role="<?= htmlspecialchars($row['role']) ?>"
-data-action="<?= htmlspecialchars($row['action_type']) ?>"
-data-description="<?= htmlspecialchars($row['description']) ?>"
+data-username="<?= htmlspecialchars($row['username'] ?? '') ?>"
+data-role="<?= htmlspecialchars($row['role'] ?? '') ?>"
+data-action="<?= htmlspecialchars($row['action_type'] ?? '') ?>"
+data-description="<?= htmlspecialchars($row['description'] ?? '') ?>"
 data-time="<?= date("d M Y, h:i A", strtotime($row['log_time'])) ?>"
 >
-<td><?= $row['username'] ?></td>
-<td><?= $row['role'] ?></td>
-<td><?= $row['action_type'] ?></td>
-<td><?= $row['description'] ?></td>
+<td><?= htmlspecialchars($row['username'] ?? '') ?></td>
+<td><?= htmlspecialchars($row['role'] ?? '') ?></td>
+<td><?= htmlspecialchars($row['action_type'] ?? '') ?></td>
+<td><?= nl2br($row['description'] ?? '') ?></td>
 <td><?= date("d M Y, h:i A", strtotime($row['log_time'])) ?></td>
 </tr>
 
@@ -201,7 +202,7 @@ $(document).ready(function(){
 
 let table = $('#logsTable').DataTable({
     pageLength: 10,
-    autoWidth: false, // IMPORTANT
+    autoWidth: false,
     dom:
         "<'dt-top d-flex justify-content-between align-items-center mb-3'<'dt-length'l><'dt-search'f>>" +
         "t" +
@@ -218,7 +219,11 @@ $('#logsTable tbody').on('click', 'tr', function(){
     let row = $(this);
     let description = row.data('description');
 
-    let points = description.split(/[,.;]/);
+    if(!description){
+        return;
+    }
+
+    let points = description.split(/[,.;\n]/);
     let listHTML = "";
 
     points.forEach(function(item){

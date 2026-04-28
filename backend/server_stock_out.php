@@ -2,47 +2,64 @@
 session_start();
 require_once "../includes/db_connect.php";
 require_once "../includes/activity_log.php";
+require_once "../includes/permissions.php";
 
-$id = $_POST['id'];
+header("Content-Type: text/plain");
 
-// 🔥 FIX: always define this safely
-$stockout_remark = isset($_POST['remark']) ? $_POST['remark'] : '';
+if(!isset($_SESSION['username'])){
+    exit("No session");
+}
+
+if(!hasPermission($mysqli, "inventory_stockout")){
+    exit("Access denied");
+}
+
+$id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
+$stockout_remark = isset($_POST['remark']) ? trim($_POST['remark']) : '';
 
 $username = $_SESSION['username'];
-$role = $_SESSION['role'];
+$role = $_SESSION['role'] ?? "UNKNOWN";
 
-$allowedRoles = ["Administrator", "System Admin", "User (Technical)"];
-
-if(!in_array($role, $allowedRoles)){
-    die("Access denied");
+if($id <= 0){
+    exit("Invalid ID");
 }
 
-// GET DATA FIRST
-$check = $mysqli->query("SELECT * FROM server_inventory WHERE no='$id'");
-$row = $check->fetch_assoc();
-
-if(!$row){
-    die("Record not found");
-}
-
-// INSERT INTO STOCK OUT HISTORY
-$mysqli->query("
-INSERT INTO server_stockout_history
-(server_name, machine_type, serial_number, location, status, remark, tester, stock_out_by)
-VALUES
-(
-    '".$row['server_name']."',
-    '".$row['machine_type']."',
-    '".$row['serial_number']."',
-    '".$row['location']."',
-    '".$row['status']."',
-    '$stockout_remark',
-    '".$row['tester']."',
-    '$username'
-)
+$stmt = $mysqli->prepare("
+SELECT *
+FROM server_inventory
+WHERE no = ?
+LIMIT 1
 ");
 
-// ACTIVITY LOG
+$stmt->bind_param("i", $id);
+$stmt->execute();
+$result = $stmt->get_result();
+$row = $result->fetch_assoc();
+
+if(!$row){
+    exit("Record not found");
+}
+
+$insertStmt = $mysqli->prepare("
+INSERT INTO server_stockout_history
+(server_name, machine_type, serial_number, location, status, remark, tester, stock_out_by)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+");
+
+$insertStmt->bind_param(
+    "ssssssss",
+    $row['server_name'],
+    $row['machine_type'],
+    $row['serial_number'],
+    $row['location'],
+    $row['status'],
+    $stockout_remark,
+    $row['tester'],
+    $username
+);
+
+$insertStmt->execute();
+
 $ip = $_SERVER['REMOTE_ADDR'];
 $time = date("Y-m-d H:i:s");
 
@@ -63,8 +80,13 @@ logActivity(
     $description
 );
 
-// DELETE FROM INVENTORY
-$mysqli->query("DELETE FROM server_inventory WHERE no='$id'");
+$deleteStmt = $mysqli->prepare("
+DELETE FROM server_inventory
+WHERE no = ?
+");
+
+$deleteStmt->bind_param("i", $id);
+$deleteStmt->execute();
 
 echo "success";
 ?>

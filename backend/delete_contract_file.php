@@ -1,24 +1,41 @@
 <?php
 session_start();
 require_once "../includes/db_connect.php";
-require_once "../includes/activity_log.php"; // ✅ ADD THIS
+require_once "../includes/activity_log.php";
+require_once "../includes/permissions.php";
 
-$role = $_SESSION['role'];
-$username = $_SESSION['username'];
-$id = intval($_GET['id']);
-
-function canManageContract($role, $username, $owner){
-    return (
-        $role === "Administrator" ||
-        $role === "User (Project Coordinator)" ||
-        ($role === "User (Project Manager)" && $username === $owner)
-    );
+if(!isset($_SESSION['username'])){
+    exit("No session");
 }
 
-// GET FILE INFO
-$stmt = $mysqli->prepare("SELECT file_name, uploaded_by FROM contract_files WHERE id=?");
+$role = $_SESSION['role'] ?? "UNKNOWN";
+$username = $_SESSION['username'];
+
+if(!isset($_GET['id'])){
+    exit("Invalid request");
+}
+
+$id = intval($_GET['id']);
+
+$stmt = $mysqli->prepare("
+    SELECT
+        cf.file_name,
+        cf.uploaded_by,
+        cf.contract_id,
+        pi.created_by AS contract_created_by
+    FROM contract_files cf
+    LEFT JOIN project_inventory pi ON cf.contract_id = pi.no
+    WHERE cf.id = ?
+    LIMIT 1
+");
+
+if(!$stmt){
+    die("Prepare failed: " . $mysqli->error);
+}
+
 $stmt->bind_param("i", $id);
 $stmt->execute();
+
 $result = $stmt->get_result();
 $file = $result->fetch_assoc();
 
@@ -26,12 +43,12 @@ if(!$file){
     die("File not found");
 }
 
-// PERMISSION CHECK
-if(!canManageContract($role, $username, $file['uploaded_by'])){
+$contractCreatedBy = $file['contract_created_by'] ?? "";
+
+if(!hasContractDeleteAccess($mysqli, $contractCreatedBy)){
     die("Access denied");
 }
 
-// DELETE FILE FROM SERVER
 $file_path = "../uploads/" . $file['file_name'];
 $fileDeleted = false;
 
@@ -39,8 +56,10 @@ if(file_exists($file_path)){
     $fileDeleted = unlink($file_path);
 }
 
-// DELETE DB RECORD
-$deleteStmt = $mysqli->prepare("DELETE FROM contract_files WHERE id=?");
+$deleteStmt = $mysqli->prepare("
+    DELETE FROM contract_files
+    WHERE id = ?
+");
 
 if($deleteStmt){
     $deleteStmt->bind_param("i", $id);
@@ -53,12 +72,13 @@ if($deleteStmt){
         $description = "User [$username] deleted contract file.
 File Name: {$file['file_name']}
 Uploaded By: {$file['uploaded_by']}
+Contract ID: {$file['contract_id']}
+Contract Created By: {$contractCreatedBy}
 File Deleted From Server: " . ($fileDeleted ? "YES" : "NO") . "
 File ID: $id
 IP Address: $ip
 Time: $time";
 
-        // ✅ LOG ONLY AFTER SUCCESS
         logActivity(
             $mysqli,
             $username,

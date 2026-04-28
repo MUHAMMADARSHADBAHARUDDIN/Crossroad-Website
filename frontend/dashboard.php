@@ -1,20 +1,23 @@
 <?php
 session_start();
 require_once "../includes/db_connect.php";
+require_once "../includes/permissions.php";
 
 if(!isset($_SESSION['username'])){
     header("Location: ../frontend/index.html");
     exit();
 }
 
-$role = $_SESSION['role'];
+$role = $_SESSION['role'] ?? "UNKNOWN";
 $username = $_SESSION['username'];
 
-$isExportAllowed = in_array($role, ["Administrator", "User (Technical)"]);
+$canViewContracts = hasPermission($mysqli, "contracts_view");
+$canViewInventory = hasPermission($mysqli, "inventory_view");
 
-// =====================
-// CONTRACT STATS
-// =====================
+/* Export permission uses Inventory Full Access */
+$isExportAllowed = hasPermission($mysqli, "inventory_export");
+
+/* CONTRACT STATS */
 $totalContracts = $mysqli->query("SELECT COUNT(*) as total FROM project_inventory")->fetch_assoc()['total'];
 
 $activeContracts = $mysqli->query("
@@ -32,26 +35,17 @@ SELECT COUNT(*) as total FROM project_inventory
 WHERE contract_end < CURDATE()
 ")->fetch_assoc()['total'];
 
-
-// =====================
-// ASSET STATS
-// =====================
-
-// TOTAL ASSETS (everything in asset_inventory)
+/* ASSET STATS */
 $totalDevices = $mysqli->query("
     SELECT COUNT(*) as total
     FROM asset_inventory
 ")->fetch_assoc()['total'];
 
-
-// TOTAL SERVERS (from server_inventory)
 $servers = $mysqli->query("
     SELECT COUNT(*) as total
     FROM server_inventory
 ")->fetch_assoc()['total'];
 
-
-// TOTAL STORAGE (from asset_inventory only)
 $storage = $mysqli->query("
     SELECT COUNT(*) as total
     FROM asset_inventory
@@ -84,7 +78,6 @@ $storage = $mysqli->query("
 
 <div class="main" id="main">
 
-<!-- BANNER -->
 <div class="banner mb-4">
     <h2><strong>Crossroad Solutions Inventory Management</strong></h2>
     <p>
@@ -92,9 +85,9 @@ $storage = $mysqli->query("
     </p>
 </div>
 
-<!-- QUICK ACCESS -->
 <div class="row g-3 mb-4">
 
+    <?php if($canViewContracts): ?>
     <div class="col-lg-4 col-md-6 col-12">
         <div class="card dashboard-card p-4 shadow-sm h-100">
             <h5><i class="fa fa-file-contract text-warning"></i> Contracts</h5>
@@ -102,7 +95,9 @@ $storage = $mysqli->query("
             <a href="contracts.php" class="btn btn-warning">Open</a>
         </div>
     </div>
+    <?php endif; ?>
 
+    <?php if($canViewInventory): ?>
     <div class="col-lg-4 col-md-6 col-12">
         <div class="card dashboard-card p-4 shadow-sm h-100">
             <h5><i class="fa fa-box text-warning"></i> Asset Inventory</h5>
@@ -110,7 +105,9 @@ $storage = $mysqli->query("
             <a href="asset_inventory.php" class="btn btn-warning">Open</a>
         </div>
     </div>
+    <?php endif; ?>
 
+    <?php if($canViewContracts): ?>
     <div class="col-lg-4 col-md-6 col-12">
         <div class="card dashboard-card p-4 shadow-sm h-100">
             <h5><i class="fa fa-chart-line text-warning"></i> Project Tracker</h5>
@@ -118,10 +115,11 @@ $storage = $mysqli->query("
             <a href="project_tracker.php" class="btn btn-warning">Open</a>
         </div>
     </div>
+    <?php endif; ?>
 
 </div>
 
-<!-- CONTRACT OVERVIEW -->
+<?php if($canViewContracts): ?>
 <h4>Contracts Overview</h4>
 
 <div class="row text-center mb-4">
@@ -155,10 +153,11 @@ $storage = $mysqli->query("
     </div>
 
 </div>
+<?php endif; ?>
 
 <div class="section-divider"></div>
 
-<!-- ASSET OVERVIEW -->
+<?php if($canViewInventory): ?>
 <h4>Asset Inventory Overview</h4>
 
 <div class="row text-center mb-4">
@@ -190,11 +189,11 @@ $storage = $mysqli->query("
         </div>
     </div>
 
-
+</div>
+<?php endif; ?>
 
 </div>
 
-</div>
 <div class="modal fade" id="exportModal">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -225,6 +224,7 @@ $storage = $mysqli->query("
     </div>
   </div>
 </div>
+
 <?php include "layout/footer.php"; ?>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
@@ -243,13 +243,12 @@ function toggleSidebar(){
 
 <script>
 let exportType = "";
-
 let isExportAllowed = <?= json_encode($isExportAllowed) ?>;
 
 function openExportModal(type){
 
     if(!isExportAllowed){
-        return; // 🚫 do nothing for unauthorized roles
+        return;
     }
 
     exportType = type;
@@ -262,6 +261,7 @@ function openExportModal(type){
 
     new bootstrap.Modal(document.getElementById('exportModal')).show();
 }
+
 function exportData(format){
 
     let url = "";
@@ -273,17 +273,15 @@ function exportData(format){
         url = "../backend/export_servers.php?format=" + format;
     }
 
-    // 🔥 OPEN IN NEW TAB (PDF & PRINT)
     if(format === "pdf" || format === "print"){
         window.open(url, "_blank");
     }
     else{
-        // Excel stays download (same tab)
         window.location.href = url;
     }
-
 }
 </script>
+
 <style>
 .clickable{
     cursor: pointer;
@@ -293,5 +291,6 @@ function exportData(format){
     cursor: not-allowed;
 }
 </style>
+
 </body>
 </html>

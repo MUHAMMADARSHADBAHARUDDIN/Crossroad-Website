@@ -2,13 +2,20 @@
 session_start();
 require_once "../includes/db_connect.php";
 require_once "../includes/activity_log.php";
+require_once "../includes/permissions.php";
 
 if(!isset($_SESSION['username'])){
     exit("No session");
 }
 
+
+if(!isset($_GET['id'])){
+    exit("Invalid request");
+}
+
 $id = intval($_GET['id']);
-$role = $_SESSION['role'];
+
+$role = $_SESSION['role'] ?? "UNKNOWN";
 $username = $_SESSION['username'];
 
 /* GET CONTRACT DATA */
@@ -17,6 +24,10 @@ $stmt = $mysqli->prepare("
     FROM project_inventory
     WHERE no = ?
 ");
+
+if(!$stmt){
+    exit("Prepare failed: " . $mysqli->error);
+}
 
 $stmt->bind_param("i", $id);
 $stmt->execute();
@@ -32,18 +43,17 @@ $created_by = $data['created_by'];
 $project_name = $data['project_name'];
 $project_owner = $data['project_owner'];
 
-/* PERMISSION CHECK */
-$allowed =
-    $role === "Administrator" ||
-    $role === "User (Project Coordinator)" ||
-    ($role === "User (Project Manager)" && $username === $created_by);
-
-if(!$allowed){
+if(!hasContractDeleteAccess($mysqli, $created_by)){
     exit("Access denied");
 }
 
 /* DELETE */
 $deleteStmt = $mysqli->prepare("DELETE FROM project_inventory WHERE no = ?");
+
+if(!$deleteStmt){
+    exit("Prepare failed: " . $mysqli->error);
+}
+
 $deleteStmt->bind_param("i", $id);
 
 if($deleteStmt->execute()){

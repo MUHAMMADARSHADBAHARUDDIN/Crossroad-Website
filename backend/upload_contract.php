@@ -2,6 +2,11 @@
 session_start();
 require_once "../includes/db_connect.php";
 require_once "../includes/activity_log.php";
+require_once "../includes/permissions.php";
+
+if(!isset($_SESSION['username'])){
+    die("No session");
+}
 
 if($_SERVER["REQUEST_METHOD"] === "POST"){
 
@@ -11,11 +16,36 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
 
     $contract_id = intval($_POST['contract_id']);
     $uploaded_by = $_SESSION['username'];
-    $role = $_SESSION['role'];
+    $role = $_SESSION['role'] ?? "UNKNOWN";
+
+    $contractStmt = $mysqli->prepare("
+        SELECT created_by
+        FROM project_inventory
+        WHERE no = ?
+        LIMIT 1
+    ");
+
+    if(!$contractStmt){
+        die("SQL Error: " . $mysqli->error);
+    }
+
+    $contractStmt->bind_param("i", $contract_id);
+    $contractStmt->execute();
+    $contractResult = $contractStmt->get_result();
+    $contractData = $contractResult->fetch_assoc();
+
+    if(!$contractData){
+        die("Contract not found");
+    }
+
+    $created_by = $contractData['created_by'] ?? "";
+
+    if(!hasContractUploadAccess($mysqli, $created_by)){
+        die("Access denied");
+    }
 
     $file = $_FILES['file'];
 
-    // VALIDATION
     if($file['error'] !== 0){
         die("File upload error");
     }
@@ -23,12 +53,10 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
     $file_name = time() . "_" . basename($file['name']);
     $target_path = "../uploads/" . $file_name;
 
-    // CREATE FOLDER IF NOT EXIST
     if(!is_dir("../uploads")){
         mkdir("../uploads", 0777, true);
     }
 
-    // MOVE FILE
     if(move_uploaded_file($file['tmp_name'], $target_path)){
 
         $stmt = $mysqli->prepare("
@@ -63,6 +91,7 @@ Time: $time";
             );
 
             echo "<script>alert('File uploaded successfully'); window.history.back();</script>";
+            exit();
 
         } else {
             echo "Execute Error: " . $stmt->error;

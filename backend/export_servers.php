@@ -1,13 +1,23 @@
 <?php
-require_once "../includes/db_connect.php";
-require_once "../includes/activity_log.php"; // ✅ ADD
+session_start();
 
-session_start(); // ✅ ADD
+require_once "../includes/db_connect.php";
+require_once "../includes/activity_log.php";
+require_once "../includes/permissions.php";
+
+/* ✅ SESSION CHECK */
+if(!isset($_SESSION['username'])){
+    die("No session");
+}
+
+/* ✅ EXPORT PERMISSION CHECK */
+if(!hasPermission($mysqli, "inventory_export")){
+    die("Access denied");
+}
 
 $format = $_GET['format'] ?? 'excel';
 
-/* ✅ SAFE SESSION */
-$username = $_SESSION['username'] ?? 'Unknown';
+$username = $_SESSION['username'];
 $role = $_SESSION['role'] ?? 'Unknown';
 
 $ip = $_SERVER['REMOTE_ADDR'];

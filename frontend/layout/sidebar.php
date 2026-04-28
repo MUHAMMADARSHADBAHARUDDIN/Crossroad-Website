@@ -1,73 +1,131 @@
 <?php
-global $role;
+global $mysqli;
 
-$current = basename($_SERVER['SCRIPT_NAME']);
-
-// ROLE CHECK FUNCTION
-function allow($roles, $role){
-    return in_array($role, $roles);
+if(session_status() === PHP_SESSION_NONE){
+    session_start();
 }
 
-// MENU CONFIG
+if(!isset($mysqli)){
+    require_once __DIR__ . "/../../includes/db_connect.php";
+}
+
+require_once __DIR__ . "/../../includes/permissions.php";
+
+$current = basename($_SERVER['SCRIPT_NAME']);
+$role = $_SESSION['role'] ?? "";
+$isRealAdmin = ($role === "Administrator");
+/*
+|--------------------------------------------------------------------------
+| MODULE PERMISSIONS
+|--------------------------------------------------------------------------
+| These follow checkbox/account permission.
+|--------------------------------------------------------------------------
+*/
+$canViewUsers = hasPermission($mysqli, "users_view");
+$canViewContracts = hasPermission($mysqli, "contracts_view");
+$canViewInventory = hasPermission($mysqli, "inventory_view");
+
 $menu = [
 
     "MAIN" => [
-        ["name"=>"Dashboard","icon"=>"fa-dashboard","link"=>"dashboard.php"],
-       // ["name"=>"My Home","icon"=>"fa-home","link"=>"myhome.php"],
+        [
+            "name" => "Dashboard",
+            "icon" => "fa-dashboard",
+            "link" => "dashboard.php",
+            "show" => true
+        ],
     ],
 
     "PRE-SALE" => [
-        ["name"=>"Contracts","icon"=>"fa-file-contract","link"=>"contracts.php"],
-        ["name"=>"Project Tracker","icon"=>"fa-chart-line","link"=>"project_tracker.php"],
+        [
+            "name" => "Contracts",
+            "icon" => "fa-file-contract",
+            "link" => "contracts.php",
+            "show" => $canViewContracts
+        ],
+        [
+            "name" => "Project Tracker",
+            "icon" => "fa-chart-line",
+            "link" => "project_tracker.php",
+            "show" => $canViewContracts
+        ],
     ],
 
     "TECHNICAL" => [
-        ["name"=>"Asset Inventory","icon"=>"fa-box","link"=>"asset_inventory.php"],
-
-        ["name"=>"Stock Out","icon"=>"fa-angle-right","link"=>"stock_out.php",
-            //"roles"=>["Administrator","System Admin","User (Technical)"],
-            "submenu"=>true
+        [
+            "name" => "Asset Inventory",
+            "icon" => "fa-box",
+            "link" => "asset_inventory.php",
+            "show" => $canViewInventory
         ],
 
-        ["name"=>"Server Inventory","icon"=>"fa-server","link"=>"server_inventory.php"],
+        [
+            "name" => "Stock Out",
+            "icon" => "fa-angle-right",
+            "link" => "stock_out.php",
+            "submenu" => true,
+            "show" => $canViewInventory
+        ],
 
-        ["name"=>"Stock Out","icon"=>"fa-angle-right","link"=>"server_stockout.php",
-          //  "roles"=>["Administrator","System Admin","User (Technical)"],
-            "submenu"=>true
+        [
+            "name" => "Server Inventory",
+            "icon" => "fa-server",
+            "link" => "server_inventory.php",
+            "show" => $canViewInventory
+        ],
+
+        [
+            "name" => "Stock Out",
+            "icon" => "fa-angle-right",
+            "link" => "server_stockout.php",
+            "submenu" => true,
+            "show" => $canViewInventory
+        ],
+    ],
+
+    "ADMIN" => [
+        [
+            "name" => "Manage Users",
+            "icon" => "fa-user-cog",
+            "link" => "manage_users.php",
+            "show" => $canViewUsers
+        ],
+        [
+            "name" => "Activity Tracker",
+            "icon" => "fa-history",
+            "link" => "tracking.php",
+            "show" => $isRealAdmin
         ],
     ],
 ];
-
-// ADMIN SECTION
-if($role === "Administrator"){
-    $menu["ADMIN"] = [
-        ["name"=>"Manage Users","icon"=>"fa-user-cog","link"=>"manage_users.php"],
-        ["name"=>"Activity Tracker","icon"=>"fa-history","link"=>"tracking.php"],
-    ];
-}
 ?>
 
 <div class="sidebar" id="sidebar">
 
 <?php foreach($menu as $section => $items): ?>
 
-    <div class="sidebar-section"><?= $section ?></div>
+    <?php
+    $visibleItems = array_filter($items, function($item){
+        return !empty($item['show']);
+    });
 
-    <?php foreach($items as $item): ?>
+    if(count($visibleItems) === 0){
+        continue;
+    }
+    ?>
+
+    <div class="sidebar-section"><?= htmlspecialchars($section) ?></div>
+
+    <?php foreach($visibleItems as $item): ?>
 
         <?php
-        // ROLE FILTER
-        if(isset($item['roles']) && !allow($item['roles'], $role)){
-            continue;
-        }
-
         $active = ($current == $item['link']) ? "active" : "";
         $submenu = isset($item['submenu']) ? "submenu" : "";
         ?>
 
-        <a href="<?= $item['link'] ?>" class="<?= $active ?> <?= $submenu ?>" title="<?= $item['name'] ?>">
-            <i class="fa <?= $item['icon'] ?>"></i>
-            <span><?= $item['name'] ?></span>
+        <a href="<?= htmlspecialchars($item['link']) ?>" class="<?= $active ?> <?= $submenu ?>" title="<?= htmlspecialchars($item['name']) ?>">
+            <i class="fa <?= htmlspecialchars($item['icon']) ?>"></i>
+            <span><?= htmlspecialchars($item['name']) ?></span>
         </a>
 
     <?php endforeach; ?>

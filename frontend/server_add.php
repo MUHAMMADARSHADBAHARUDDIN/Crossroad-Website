@@ -2,16 +2,17 @@
 session_start();
 require_once "../includes/db_connect.php";
 require_once "../includes/activity_log.php";
+require_once "../includes/permissions.php";
 
 if(!isset($_SESSION['username'])){
     header("Location: index.html");
     exit();
 }
 
-$role = $_SESSION['role'];
+$role = $_SESSION['role'] ?? "UNKNOWN";
 $username = $_SESSION['username'];
 
-if(!in_array($role, ["Administrator","System Admin","User (Technical)"])){
+if(!hasPermission($mysqli, "inventory_add")){
     header("Location: server_inventory.php");
     exit();
 }
@@ -34,44 +35,81 @@ if(isset($_POST['add'])){
         $error = "Server Name and Serial Number are required!";
     } else {
 
-        $check = $mysqli->query("SELECT * FROM server_inventory WHERE serial_number='$serial'");
+        $checkStmt = $mysqli->prepare("
+            SELECT no
+            FROM server_inventory
+            WHERE serial_number = ?
+            LIMIT 1
+        ");
+
+        if(!$checkStmt){
+            die("Prepare failed: " . $mysqli->error);
+        }
+
+        $checkStmt->bind_param("s", $serial);
+        $checkStmt->execute();
+        $check = $checkStmt->get_result();
+
         if($check->num_rows > 0){
             $error = "Serial Number already exists!";
         } else {
 
-            $mysqli->query("
-            INSERT INTO server_inventory
-            (server_name,serial_number,brand,machine_type,location,status,remark,date_testing,tester,created_by)
-            VALUES
-            ('$server','$serial','$brand','$machine','$location','$status','$remark','$date','$tester','$username')
+            $stmt = $mysqli->prepare("
+                INSERT INTO server_inventory
+                (server_name, serial_number, brand, machine_type, location, status, remark, date_testing, tester, created_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
 
-            $ip = $_SERVER['REMOTE_ADDR'];
-            $time = date("Y-m-d H:i:s");
+            if(!$stmt){
+                die("Prepare failed: " . $mysqli->error);
+            }
 
-            $description = "User [$username] added new server.
-            Server Name: $server
-            Serial Number: $serial
-            Brand: $brand
-            Machine Type: $machine
-            Location: $location
-            Status: $status
-            Tester: $tester
-            Date Testing: $date
-            Remark: $remark
-            IP Address: $ip
-            Time: $time";
-
-            logActivity(
-                $mysqli,
-                $username,
-                $role,
-                "ADD SERVER",
-                $description
+            $stmt->bind_param(
+                "ssssssssss",
+                $server,
+                $serial,
+                $brand,
+                $machine,
+                $location,
+                $status,
+                $remark,
+                $date,
+                $tester,
+                $username
             );
 
-            header("Location: server_inventory.php");
-            exit();
+            if($stmt->execute()){
+
+                $ip = $_SERVER['REMOTE_ADDR'];
+                $time = date("Y-m-d H:i:s");
+
+                $description = "User [$username] added new server.
+Server Name: $server
+Serial Number: $serial
+Brand: $brand
+Machine Type: $machine
+Location: $location
+Status: $status
+Tester: $tester
+Date Testing: $date
+Remark: $remark
+IP Address: $ip
+Time: $time";
+
+                logActivity(
+                    $mysqli,
+                    $username,
+                    $role,
+                    "ADD SERVER",
+                    $description
+                );
+
+                header("Location: server_inventory.php");
+                exit();
+
+            } else {
+                $error = "Insert failed: " . $mysqli->error;
+            }
         }
     }
 }
@@ -96,7 +134,7 @@ if(isset($_POST['add'])){
 <h2 class="mb-4">Add Server</h2>
 
 <?php if($error != ""): ?>
-<div class="alert alert-danger"><?= $error; ?></div>
+<div class="alert alert-danger"><?= htmlspecialchars($error); ?></div>
 <?php endif; ?>
 
 <form method="POST">

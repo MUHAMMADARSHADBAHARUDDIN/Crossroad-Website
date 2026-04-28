@@ -2,19 +2,47 @@
 session_start();
 require_once "../includes/db_connect.php";
 require_once "../includes/activity_log.php";
+require_once "../includes/permissions.php";
 
-$id = $_POST['id'];
+header('Content-Type: text/plain');
+
+if(!isset($_SESSION['username'])){
+    exit("No session");
+}
+
+if(!hasPermission($mysqli, "inventory_delete")){
+    exit("access_denied");
+}
+
+$id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
 $username = $_SESSION['username'];
-$role = $_SESSION['role'];
+$role = $_SESSION['role'] ?? "UNKNOWN";
 
-$check = $mysqli->query("SELECT * FROM asset_inventory WHERE no=$id");
+if(!$id){
+    exit("error");
+}
+
+$stmt = $mysqli->prepare("
+    SELECT *
+    FROM asset_inventory
+    WHERE no = ?
+    LIMIT 1
+");
+
+if(!$stmt){
+    exit("Prepare failed: " . $mysqli->error);
+}
+
+$stmt->bind_param("i", $id);
+$stmt->execute();
+
+$check = $stmt->get_result();
 $row = $check->fetch_assoc();
 
-if($role == "User (Technical)" && $row['created_by'] != $username){
-    die("Access denied");
+if(!$row){
+    exit("Asset not found");
 }
-// INSERT INTO ACTIVITY LOG
-$mysqli->query("
+
 $ip = $_SERVER['REMOTE_ADDR'];
 $time = date("Y-m-d H:i:s");
 
@@ -33,7 +61,21 @@ logActivity(
     "DELETE ASSET",
     $description
 );
-$mysqli->query("DELETE FROM asset_inventory WHERE no=$id");
 
-echo "success";
+$deleteStmt = $mysqli->prepare("
+    DELETE FROM asset_inventory
+    WHERE no = ?
+");
+
+if(!$deleteStmt){
+    exit("Prepare failed: " . $mysqli->error);
+}
+
+$deleteStmt->bind_param("i", $id);
+
+if($deleteStmt->execute()){
+    echo "success";
+} else {
+    echo "Delete failed: " . $mysqli->error;
+}
 ?>
