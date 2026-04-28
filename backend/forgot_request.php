@@ -55,14 +55,13 @@ if(isset($_POST['submit'])){
         $mail->isSMTP();
         $mail->Host       = 'smtp.gmail.com';
         $mail->SMTPAuth   = true;
-        $mail->Username   = 'crossroadinventory@gmail.com';   // ✅ YOUR SYSTEM EMAIL
-        $mail->Password   = 'iitrihnuejntcpkc';               // ✅ APP PASSWORD (NO SPACES)
+        $mail->Username   = 'crossroadinventory@gmail.com';
+        $mail->Password   = 'iitrihnuejntcpkc';
         $mail->SMTPSecure = 'tls';
         $mail->Port       = 587;
 
-        // DEBUG (REMOVE AFTER TESTING)
-        $mail->SMTPDebug = 2;
-        $mail->Debugoutput = 'html';
+        // DEBUG DISABLED
+        $mail->SMTPDebug = 0;
 
         // EMAIL DETAILS
         $mail->setFrom('crossroadinventory@gmail.com', 'Crossroad System');
@@ -116,54 +115,151 @@ if(isset($_POST['submit'])){
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Forgot Password</title>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
 <style>
 body{
-    display:flex;
-    justify-content:center;
-    align-items:center;
-    height:100vh;
-    background: url("../image/login_background.jpeg") no-repeat center center/cover;
-    font-family:Arial,sans-serif;
+    font-family: Arial, sans-serif;
+    height: 100vh;
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    overflow: hidden;
 }
-.box{
+
+body::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: url("../image/login_background.jpeg") no-repeat center center/cover;
+    filter: blur(0px);
+    z-index: -1;
+}
+
+.login-box{
     background:white;
     padding:30px;
-    border-radius:8px;
-    box-shadow:0 2px 8px rgba(0,0,0,0.3);
     width:350px;
+    border-radius:8px;
+    box-shadow:0 4px 10px rgba(0,0,0,0.5);
 }
+
+.logo-container {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.logo-text {
+    display: flex;
+    gap: 10px;
+    font-size: 24px;
+    font-weight: bold;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 0;
+}
+
+.logo-text span {
+    font-size: 16px;
+    text-align: left;
+}
+
+.logo {
+    width: 25px;
+    height: auto;
+}
+
+.page-title{
+    font-size:20px;
+    font-weight:bold;
+    margin-bottom:8px;
+    text-align:center;
+}
+
+.page-desc{
+    font-size:14px;
+    color:#666;
+    text-align:center;
+    margin-bottom:22px;
+}
+
+label{
+    font-size:14px;
+    font-weight:400;
+}
+
+input{
+    width:100%;
+    padding:10px;
+    margin-top:5px;
+    margin-bottom:20px;
+    border:1px solid #ccc;
+    border-radius:5px;
+    box-sizing:border-box;
+}
+
 button{
     width:100%;
     padding:10px;
     border:none;
     background:#ffc107;
     color:black;
+    font-size:16px;
     border-radius:5px;
     cursor:pointer;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    gap:8px;
 }
+
 button:hover{
     background:#edb100;
+}
+
+.back-login{
+    display:block;
+    text-align:center;
+    margin-top:15px;
+    font-size:14px;
+    color:#333;
+    text-decoration:none;
+}
+
+.back-login:hover{
+    text-decoration:underline;
+    color:#000;
 }
 </style>
 </head>
 
 <body>
-<div class="box">
-    <h3>Forgot Password</h3>
 
+<div class="login-box">
+    <h4 class="page-title">Forgot Password</h4>
+    <p class="page-desc">Enter your registered email to request password reset assistance.</p>
     <form method="POST">
         <label>Username</label>
-        <input type="email" name="email" class="form-control" required>
-            <!-- SMALL BACK LINK -->
-            <div class="mb-2">
-                <a href="../frontend/index.html" style="font-size: 14px; text-decoration: none;">
-                    Back to Login
-                </a>
-            </div>
-        <button name="submit" class="mt-3">Send Request</button>
+        <input type="email" name="email" required>
+<br>
+<br>
+        <button name="submit" type="submit">
+            <i class="fa-solid fa-paper-plane"></i> Send Request
+        </button>
+
+        <a href="../frontend/index.html" class="back-login">
+            <i class="fa-solid fa-arrow-left"></i> Back to Login
+        </a>
     </form>
+
 </div>
+
 </body>
 </html>

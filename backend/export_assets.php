@@ -5,12 +5,10 @@ require_once "../includes/db_connect.php";
 require_once "../includes/activity_log.php";
 require_once "../includes/permissions.php";
 
-/* ✅ SESSION CHECK */
 if(!isset($_SESSION['username'])){
     die("No session");
 }
 
-/* ✅ EXPORT PERMISSION CHECK */
 if(!hasPermission($mysqli, "inventory_export")){
     die("Access denied");
 }
@@ -23,13 +21,12 @@ $role = $_SESSION['role'] ?? 'Unknown';
 $ip = $_SERVER['REMOTE_ADDR'];
 $time = date("Y-m-d H:i:s");
 
-/* ✅ PREPARE DESCRIPTION (dynamic later) */
-
-// GET DATA
 $asset = $mysqli->query("SELECT * FROM asset_inventory");
 $stock = $mysqli->query("SELECT * FROM stock_out_history");
 
-// SIMPLE CSV (Excel OPENABLE)
+/* =======================
+   EXCEL
+======================= */
 if($format === "excel"){
 
     header("Content-Type: application/vnd.ms-excel");
@@ -38,13 +35,12 @@ if($format === "excel"){
     echo "
     <table border='1'>
         <tr style='background-color:#4CAF50; color:white;'>
-            <th colspan='6'>ASSET INVENTORY</th>
+            <th colspan='4'>ASSET INVENTORY</th>
         </tr>
         <tr style='background-color:#d9ead3;'>
             <th>Part Number</th>
             <th>Serial Number</th>
             <th>Brand</th>
-            <th>Location</th>
             <th>Quantity</th>
         </tr>
     ";
@@ -55,7 +51,6 @@ if($format === "excel"){
             <td>{$a['part_number']}</td>
             <td>{$a['serial_number']}</td>
             <td>{$a['brand']}</td>
-            <td>{$a['location']}</td>
             <td>{$a['quantity']}</td>
         </tr>
         ";
@@ -63,16 +58,14 @@ if($format === "excel"){
 
     echo "</table><br><br>";
 
-    // STOCK OUT TABLE
     echo "
     <table border='1'>
         <tr style='background-color:#c00000; color:white;'>
-            <th colspan='5'>STOCK OUT HISTORY</th>
+            <th colspan='4'>STOCK OUT HISTORY</th>
         </tr>
         <tr style='background-color:#f4cccc;'>
             <th>Part Number</th>
             <th>Serial</th>
-            <th>Location</th>
             <th>Remark</th>
             <th>Date</th>
         </tr>
@@ -83,7 +76,6 @@ if($format === "excel"){
         <tr>
             <td>{$s['part_number']}</td>
             <td>{$s['serial_number']}</td>
-            <td>{$s['location']}</td>
             <td>{$s['remark']}</td>
             <td>{$s['stock_out_date']}</td>
         </tr>
@@ -92,17 +84,17 @@ if($format === "excel"){
 
     echo "</table>";
 
-  $description = "User [$username] exported asset report (EXCEL).
-  IP Address: $ip
-  Time: $time";
+    $description = "User [$username] exported asset report (EXCEL).
+IP Address: $ip
+Time: $time";
 
-  logActivity($mysqli, $username, $role, "EXPORT EXCEL", $description);
-
-  exit();
+    logActivity($mysqli, $username, $role, "EXPORT EXCEL", $description);
+    exit();
 }
-// =======================
-// PDF FIX (NO OVERLAP)
-// =======================
+
+/* =======================
+   PDF
+======================= */
 if($format === "pdf"){
 
     require('../includes/fpdf/fpdf.php');
@@ -111,10 +103,10 @@ if($format === "pdf"){
         function Row($data, $widths){
             $nb = 0;
             for($i=0;$i<count($data);$i++){
-                $nb = max($nb, $this->NbLines($widths[$i],$data[$i]));
+                $nb = max($nb, $this->NbLines($widths[$i], $data[$i]));
             }
-            $h = 6 * $nb;
 
+            $h = 6 * $nb;
             $this->CheckPageBreak($h);
 
             for($i=0;$i<count($data);$i++){
@@ -122,35 +114,45 @@ if($format === "pdf"){
                 $x = $this->GetX();
                 $y = $this->GetY();
 
-                $this->Rect($x,$y,$w,$h);
-                $this->MultiCell($w,6,$data[$i],0);
-                $this->SetXY($x+$w,$y);
+                $this->Rect($x, $y, $w, $h);
+                $this->MultiCell($w, 6, $data[$i], 0);
+                $this->SetXY($x + $w, $y);
             }
+
             $this->Ln($h);
         }
 
         function CheckPageBreak($h){
-            if($this->GetY()+$h>$this->PageBreakTrigger)
+            if($this->GetY() + $h > $this->PageBreakTrigger){
                 $this->AddPage();
+            }
         }
 
-        function NbLines($w,$txt){
+        function NbLines($w, $txt){
             $cw = &$this->CurrentFont['cw'];
-            if($w==0)
-                $w = $this->w-$this->rMargin-$this->x;
-            $wmax = ($w-2*$this->cMargin)*1000/$this->FontSize;
-            $s = str_replace("\r",'',$txt);
+
+            if($w == 0){
+                $w = $this->w - $this->rMargin - $this->x;
+            }
+
+            $wmax = ($w - 2 * $this->cMargin) * 1000 / $this->FontSize;
+            $s = str_replace("\r", '', $txt);
             $nb = strlen($s);
-            if($nb>0 and $s[$nb-1]=="\n")
+
+            if($nb > 0 && $s[$nb - 1] == "\n"){
                 $nb--;
+            }
+
             $sep = -1;
             $i = 0;
             $j = 0;
             $l = 0;
             $nl = 1;
-            while($i<$nb){
+
+            while($i < $nb){
                 $c = $s[$i];
-                if($c=="\n"){
+
+                if($c == "\n"){
                     $i++;
                     $sep = -1;
                     $j = $i;
@@ -158,22 +160,31 @@ if($format === "pdf"){
                     $nl++;
                     continue;
                 }
-                if($c==' ')
+
+                if($c == ' '){
                     $sep = $i;
+                }
+
                 $l += $cw[$c];
-                if($l>$wmax){
-                    if($sep==-1){
-                        if($i==$j)
+
+                if($l > $wmax){
+                    if($sep == -1){
+                        if($i == $j){
                             $i++;
-                    } else
-                        $i = $sep+1;
+                        }
+                    } else {
+                        $i = $sep + 1;
+                    }
+
                     $sep = -1;
                     $j = $i;
                     $l = 0;
                     $nl++;
-                } else
+                } else {
                     $i++;
+                }
             }
+
             return $nl;
         }
     }
@@ -185,9 +196,9 @@ if($format === "pdf"){
     $pdf->Cell(0,10,'ASSET INVENTORY',0,1,'C');
 
     $pdf->SetFont('Arial','B',9);
-    $widths = [25,35,25,25,40,15];
+    $widths = [45, 55, 45, 25];
 
-    $pdf->Row(['Part No','Serial','Brand','Location','Qty'], $widths);
+    $pdf->Row(['Part No', 'Serial', 'Brand', 'Qty'], $widths);
 
     $pdf->SetFont('Arial','',8);
 
@@ -196,7 +207,6 @@ if($format === "pdf"){
             $a['part_number'],
             $a['serial_number'],
             $a['brand'],
-            $a['location'],
             $a['quantity']
         ], $widths);
     }
@@ -207,9 +217,9 @@ if($format === "pdf"){
     $pdf->Cell(0,10,'STOCK OUT HISTORY',0,1,'C');
 
     $pdf->SetFont('Arial','B',9);
-    $widths2 = [25,35,40,45,35];
+    $widths2 = [40, 50, 65, 35];
 
-    $pdf->Row(['Part No','Serial','Location','Remark','Date'], $widths2);
+    $pdf->Row(['Part No', 'Serial', 'Remark', 'Date'], $widths2);
 
     $pdf->SetFont('Arial','',8);
 
@@ -217,7 +227,6 @@ if($format === "pdf"){
         $pdf->Row([
             $s['part_number'],
             $s['serial_number'],
-            $s['location'],
             $s['remark'],
             $s['stock_out_date']
         ], $widths2);
@@ -226,23 +235,21 @@ if($format === "pdf"){
     $pdf->Output();
 
     $description = "User [$username] exported asset report (PDF).
-    IP Address: $ip
-    Time: $time";
+IP Address: $ip
+Time: $time";
 
     logActivity($mysqli, $username, $role, "EXPORT PDF", $description);
-
     exit();
 }
 
-// =======================
-// PRINT FIX (NO OVERLAP)
-// =======================
-
+/* =======================
+   PRINT
+======================= */
 if($format === "print"){
 ?>
 <html>
 <head>
-    <title>Print Report</title>
+    <title>Print Asset Report</title>
     <style>
         body { font-family: Arial; }
         table {
@@ -266,12 +273,12 @@ if($format === "print"){
 <body onload="window.print()">
 
 <h2>ASSET INVENTORY</h2>
+
 <table>
 <tr>
     <th>Part Number</th>
     <th>Serial</th>
     <th>Brand</th>
-    <th>Location</th>
     <th>Qty</th>
 </tr>
 
@@ -280,18 +287,17 @@ if($format === "print"){
     <td><?= $a['part_number'] ?></td>
     <td><?= $a['serial_number'] ?></td>
     <td><?= $a['brand'] ?></td>
-    <td><?= $a['location'] ?></td>
     <td><?= $a['quantity'] ?></td>
 </tr>
 <?php } ?>
 </table>
 
 <h2>STOCK OUT HISTORY</h2>
+
 <table>
 <tr>
     <th>Part Number</th>
     <th>Serial</th>
-    <th>Location</th>
     <th>Remark</th>
     <th>Date</th>
 </tr>
@@ -300,23 +306,21 @@ if($format === "print"){
 <tr>
     <td><?= $s['part_number'] ?></td>
     <td><?= $s['serial_number'] ?></td>
-    <td><?= $s['location'] ?></td>
     <td><?= $s['remark'] ?></td>
     <td><?= $s['stock_out_date'] ?></td>
 </tr>
 <?php } ?>
-
 </table>
 
 </body>
 </html>
 <?php
+
 $description = "User [$username] printed asset report.
 IP Address: $ip
 Time: $time";
 
 logActivity($mysqli, $username, $role, "PRINT REPORT", $description);
-
 exit();
 }
 ?>
