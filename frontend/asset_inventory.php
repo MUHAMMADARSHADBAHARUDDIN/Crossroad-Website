@@ -32,6 +32,7 @@ SELECT
     part_number,
     brand,
     description,
+    GROUP_CONCAT(serial_number SEPARATOR ' ') AS serial_numbers,
     MAX(date_received) AS date_received,
     COUNT(*) AS total_qty,
     MIN(created_by) AS created_by
@@ -75,10 +76,21 @@ $result = $stmt->get_result();
 
 <h2 class="mb-4">Asset Inventory</h2>
 
-<form method="GET" class="mb-3">
+<form method="GET" class="mb-3" onsubmit="return false;">
     <div class="input-group">
-        <input type="text" name="search" class="form-control" placeholder="Search..." value="<?php echo htmlspecialchars($search); ?>">
-        <button class="btn btn-warning"><i class="fa fa-search"></i></button>
+        <input
+            type="text"
+            id="liveAssetSearch"
+            name="search"
+            class="form-control"
+            placeholder="Search asset..."
+            value="<?php echo htmlspecialchars($search); ?>"
+            autocomplete="off"
+        >
+
+        <button type="button" class="btn btn-warning">
+            <i class="fa fa-search"></i>
+        </button>
     </div>
 </form>
 
@@ -88,7 +100,7 @@ $result = $stmt->get_result();
 </a>
 <?php endif; ?>
 
-<table class="table table-striped table-hover">
+<table class="table table-striped table-hover" id="assetInventoryTable">
 <thead>
 <tr>
     <th>Part Number</th>
@@ -102,7 +114,23 @@ $result = $stmt->get_result();
 
 <?php while($row = $result->fetch_assoc()): ?>
 
-<tr onclick="viewSerial(<?= htmlspecialchars(json_encode($row['part_number'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>)" style="cursor:pointer;">
+<tr
+data-search="<?=
+htmlspecialchars(
+    strtolower(
+        ($row['part_number'] ?? '') . ' ' .
+        ($row['brand'] ?? '') . ' ' .
+        ($row['description'] ?? '') . ' ' .
+        ($row['serial_numbers'] ?? '') . ' ' .
+        ($row['total_qty'] ?? '')
+    ),
+    ENT_QUOTES,
+    'UTF-8'
+);
+?>"
+onclick="viewSerial(<?= htmlspecialchars(json_encode($row['part_number'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>)"
+style="cursor:pointer;"
+>
 
 <td><?php echo htmlspecialchars($row['part_number'] ?? ''); ?></td>
 <td><?php echo htmlspecialchars($row['brand'] ?? ''); ?></td>
@@ -282,6 +310,32 @@ function viewDetail(id){
         modal.show();
     });
 }
+</script>
+
+<script>
+const liveAssetSearch = document.getElementById("liveAssetSearch");
+const clearAssetSearch = document.getElementById("clearAssetSearch");
+
+function filterAssetTable(){
+    const keyword = liveAssetSearch.value.toLowerCase().trim();
+    const rows = document.querySelectorAll("#assetInventoryTable tbody tr[data-search]");
+
+    rows.forEach(row => {
+        const text = row.dataset.search || "";
+        row.style.display = text.includes(keyword) ? "" : "none";
+    });
+}
+
+liveAssetSearch.addEventListener("input", filterAssetTable);
+
+clearAssetSearch.addEventListener("click", function(){
+    liveAssetSearch.value = "";
+    filterAssetTable();
+
+    if(window.location.search){
+        window.location.href = "asset_inventory.php";
+    }
+});
 </script>
 
 <script>

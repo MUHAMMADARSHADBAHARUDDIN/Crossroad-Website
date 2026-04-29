@@ -32,6 +32,7 @@ SELECT
     server_name,
     machine_type,
     brand,
+    GROUP_CONCAT(serial_number SEPARATOR ' ') AS serial_numbers,
     COUNT(*) AS total_qty,
     SUM(CASE WHEN status = 'Okay' THEN 1 ELSE 0 END) AS ok_qty,
     SUM(CASE WHEN status = 'Faulty' THEN 1 ELSE 0 END) AS faulty_qty
@@ -83,10 +84,22 @@ $result = $stmt->get_result();
 
 <h2 class="mb-4">Server Inventory</h2>
 
-<form method="GET" class="mb-3">
+<form method="GET" class="mb-3" onsubmit="return false;">
     <div class="input-group">
-        <input type="text" name="search" class="form-control" placeholder="Search..." value="<?= htmlspecialchars($search) ?>">
-        <button class="btn btn-warning"><i class="fa fa-search"></i></button>
+        <input
+            type="text"
+            id="liveServerSearch"
+            name="search"
+            class="form-control"
+            placeholder="Search server..."
+            value="<?= htmlspecialchars($search) ?>"
+            autocomplete="off"
+        >
+
+        <button type="button" class="btn btn-warning">
+            <i class="fa fa-search"></i>
+        </button>
+
     </div>
 </form>
 
@@ -96,7 +109,7 @@ $result = $stmt->get_result();
 </a>
 <?php endif; ?>
 
-<table class="table table-striped table-hover">
+<table class="table table-striped table-hover" id="serverInventoryTable">
 <thead>
 <tr>
     <th>Server Name</th>
@@ -111,7 +124,36 @@ $result = $stmt->get_result();
 
 <?php while($row = $result->fetch_assoc()): ?>
 
-<tr onclick="viewServer(<?= htmlspecialchars(json_encode($row['server_name'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>, <?= htmlspecialchars(json_encode($row['machine_type'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>)" style="cursor:pointer;">
+<?php
+$statusSearchText = "";
+
+if(($row['ok_qty'] ?? 0) > 0){
+    $statusSearchText .= " okay";
+}
+
+if(($row['faulty_qty'] ?? 0) > 0){
+    $statusSearchText .= " faulty";
+}
+?>
+
+<tr
+data-search="<?=
+htmlspecialchars(
+    strtolower(
+        ($row['server_name'] ?? '') . ' ' .
+        ($row['machine_type'] ?? '') . ' ' .
+        ($row['brand'] ?? '') . ' ' .
+        ($row['serial_numbers'] ?? '') . ' ' .
+        $statusSearchText . ' ' .
+        ($row['total_qty'] ?? '')
+    ),
+    ENT_QUOTES,
+    'UTF-8'
+);
+?>"
+onclick="viewServer(<?= htmlspecialchars(json_encode($row['server_name'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>, <?= htmlspecialchars(json_encode($row['machine_type'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>)"
+style="cursor:pointer;"
+>
 
 <td><?= htmlspecialchars($row['server_name'] ?? ''); ?></td>
 <td><?= htmlspecialchars($row['machine_type'] ?? ''); ?></td>
@@ -232,6 +274,7 @@ function submitServerStockOut(){
         }
     });
 }
+
 function deleteServerDirect(id, serial){
     if(!confirm("Delete server serial " + serial + " permanently?\n\nThis will NOT go to Server Stock Out History.")){
         return;
@@ -255,6 +298,32 @@ function viewServerDetail(id){
         new bootstrap.Modal(document.getElementById('serverDetailModal')).show();
     });
 }
+</script>
+
+<script>
+const liveServerSearch = document.getElementById("liveServerSearch");
+const clearServerSearch = document.getElementById("clearServerSearch");
+
+function filterServerTable(){
+    const keyword = liveServerSearch.value.toLowerCase().trim();
+    const rows = document.querySelectorAll("#serverInventoryTable tbody tr[data-search]");
+
+    rows.forEach(row => {
+        const text = row.dataset.search || "";
+        row.style.display = text.includes(keyword) ? "" : "none";
+    });
+}
+
+liveServerSearch.addEventListener("input", filterServerTable);
+
+clearServerSearch.addEventListener("click", function(){
+    liveServerSearch.value = "";
+    filterServerTable();
+
+    if(window.location.search){
+        window.location.href = "server_inventory.php";
+    }
+});
 </script>
 
 <script>

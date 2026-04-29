@@ -59,18 +59,25 @@ $result = $stmt->get_result();
 
     <h2 class="mb-4">Server Stock Out History</h2>
 
-    <form method="GET" class="mb-3">
+    <form method="GET" class="mb-3" onsubmit="return false;">
         <div class="input-group">
-            <input type="text" name="search" class="form-control"
-                   placeholder="Search by Server Name / Serial..."
-                   value="<?php echo htmlspecialchars($search); ?>">
-            <button class="btn btn-warning">
+            <input
+                type="text"
+                id="liveServerStockOutSearch"
+                name="search"
+                class="form-control"
+                placeholder="Search by Server Name / Serial / Status..."
+                value="<?php echo htmlspecialchars($search); ?>"
+                autocomplete="off"
+            >
+
+            <button type="button" class="btn btn-warning">
                 <i class="fa fa-search"></i>
             </button>
         </div>
     </form>
 
-    <table class="table table-striped table-hover">
+    <table class="table table-striped table-hover" id="serverStockOutTable">
     <thead>
         <tr>
             <th>Server Name</th>
@@ -89,7 +96,24 @@ $result = $stmt->get_result();
 
     <?php if($result && $result->num_rows > 0): ?>
         <?php while($row = $result->fetch_assoc()): ?>
-        <tr>
+        <tr
+        data-search="<?=
+        htmlspecialchars(
+            strtolower(
+                ($row['server_name'] ?? '') . ' ' .
+                ($row['machine_type'] ?? '') . ' ' .
+                ($row['serial_number'] ?? '') . ' ' .
+                ($row['status'] ?? '') . ' ' .
+                ($row['remark'] ?? '') . ' ' .
+                ($row['tester'] ?? '') . ' ' .
+                ($row['stock_out_by'] ?? '') . ' ' .
+                ($row['stock_out_date'] ?? '')
+            ),
+            ENT_QUOTES,
+            'UTF-8'
+        );
+        ?>"
+        >
             <td><?php echo htmlspecialchars($row['server_name'] ?? ''); ?></td>
             <td><?php echo htmlspecialchars($row['machine_type'] ?? ''); ?></td>
             <td><?php echo htmlspecialchars($row['serial_number'] ?? ''); ?></td>
@@ -114,17 +138,17 @@ $result = $stmt->get_result();
                 <?= $date ?><br>
                 <small class="text-muted"><?= $time ?></small>
             </td>
-        <td>
-        <?php if($canDelete): ?>
-            <button
-                class="btn btn-sm btn-danger"
-                onclick="deleteServerStockOutHistory(<?= (int)$row['id']; ?>)">
-                <i class="fa fa-trash"></i>
-            </button>
-        <?php else: ?>
-            <span class="badge bg-secondary">View Only</span>
-        <?php endif; ?>
-        </td>
+            <td>
+            <?php if($canDelete): ?>
+                <button
+                    class="btn btn-sm btn-danger"
+                    onclick="deleteServerStockOutHistory(<?= (int)$row['id']; ?>)">
+                    <i class="fa fa-trash"></i>
+                </button>
+            <?php else: ?>
+                <span class="badge bg-secondary">View Only</span>
+            <?php endif; ?>
+            </td>
         </tr>
         <?php endwhile; ?>
     <?php else: ?>
@@ -151,6 +175,7 @@ function toggleSidebar(){
     btn.classList.toggle("active");
 }
 </script>
+
 <script>
 function deleteServerStockOutHistory(id){
     if(!confirm("Delete this server stock out history record?")){
@@ -174,5 +199,32 @@ function deleteServerStockOutHistory(id){
     });
 }
 </script>
+
+<script>
+const liveServerStockOutSearch = document.getElementById("liveServerStockOutSearch");
+const clearServerStockOutSearch = document.getElementById("clearServerStockOutSearch");
+
+function filterServerStockOutTable(){
+    const keyword = liveServerStockOutSearch.value.toLowerCase().trim();
+    const rows = document.querySelectorAll("#serverStockOutTable tbody tr[data-search]");
+
+    rows.forEach(row => {
+        const text = row.dataset.search || "";
+        row.style.display = text.includes(keyword) ? "" : "none";
+    });
+}
+
+liveServerStockOutSearch.addEventListener("input", filterServerStockOutTable);
+
+clearServerStockOutSearch.addEventListener("click", function(){
+    liveServerStockOutSearch.value = "";
+    filterServerStockOutTable();
+
+    if(window.location.search){
+        window.location.href = "server_stockout.php";
+    }
+});
+</script>
+
 </body>
 </html>

@@ -10,7 +10,6 @@ if(!isset($_SESSION['username'])){
 include("../includes/db_connect.php");
 require_once "../includes/permissions.php";
 
-
 if(!hasPermission($mysqli, "users_view")){
     die("Access denied.");
 }
@@ -18,6 +17,15 @@ if(!hasPermission($mysqli, "users_view")){
 $canAddUser = hasPermission($mysqli, "users_add");
 $canEditUser = hasPermission($mysqli, "users_edit");
 $canDeleteUser = hasPermission($mysqli, "users_delete");
+
+/* ✅ SEARCH FIX */
+$search = "";
+
+if(isset($_GET['search'])){
+    $search = trim($_GET['search']);
+}
+
+$searchLike = "%" . $search . "%";
 
 $permissionGroups = [
     "users" => [
@@ -121,11 +129,21 @@ $allFullPermissions = getAllPermissionValues($permissionGroups);
 $accounts = [];
 
 /* ✅ NORMAL USERS */
-$userResult = $mysqli->query("
+$userStmt = $mysqli->prepare("
     SELECT username, email, role
     FROM user
+    WHERE username LIKE ?
+       OR email LIKE ?
     ORDER BY username ASC
 ");
+
+if(!$userStmt){
+    die("SQL Error: " . $mysqli->error);
+}
+
+$userStmt->bind_param("ss", $searchLike, $searchLike);
+$userStmt->execute();
+$userResult = $userStmt->get_result();
 
 if($userResult){
     while($row = $userResult->fetch_assoc()){
@@ -137,11 +155,21 @@ if($userResult){
 
 /* ✅ REAL ADMINISTRATOR TABLE */
 /* ❌ NO system_admin TABLE HERE */
-$administratorResult = $mysqli->query("
+$administratorStmt = $mysqli->prepare("
     SELECT username, email
     FROM administrator
+    WHERE username LIKE ?
+       OR email LIKE ?
     ORDER BY username ASC
 ");
+
+if(!$administratorStmt){
+    die("SQL Error: " . $mysqli->error);
+}
+
+$administratorStmt->bind_param("ss", $searchLike, $searchLike);
+$administratorStmt->execute();
+$administratorResult = $administratorStmt->get_result();
 
 if($administratorResult){
     while($row = $administratorResult->fetch_assoc()){
@@ -370,6 +398,24 @@ html, body{
 <i class="fa fa-user-cog"></i> Manage Users
 </h2>
 
+<form method="GET" class="mb-3" onsubmit="return false;">
+    <div class="input-group">
+        <input
+            type="text"
+            id="liveUserSearch"
+            name="search"
+            class="form-control"
+            placeholder="Search by username or email..."
+            value="<?= htmlspecialchars($search) ?>"
+            autocomplete="off"
+        >
+
+        <button type="button" class="btn btn-warning">
+            <i class="fa fa-search"></i> Search
+        </button>
+    </div>
+</form>
+
 <?php if($canAddUser): ?>
 <button class="btn btn-warning mb-3" data-bs-toggle="modal" data-bs-target="#addUserModal">
 <i class="fa fa-user-plus"></i> Add User
@@ -466,17 +512,17 @@ if(in_array("inventory_full", $permissions, true)){
         $inventoryLabels[] = "Edit";
     }
 
-if(in_array("inventory_stockout", $permissions, true)){
-    $inventoryLabels[] = "Stock Out";
-}
+    if(in_array("inventory_stockout", $permissions, true)){
+        $inventoryLabels[] = "Stock Out";
+    }
 
-if(in_array("inventory_delete", $permissions, true)){
-    $inventoryLabels[] = "Delete";
-}
+    if(in_array("inventory_delete", $permissions, true)){
+        $inventoryLabels[] = "Delete";
+    }
 
-if(in_array("inventory_export", $permissions, true)){
-    $inventoryLabels[] = "Export";
-}
+    if(in_array("inventory_export", $permissions, true)){
+        $inventoryLabels[] = "Export";
+    }
 
     if(!empty($inventoryLabels)){
         $permissionText[] = "Inventory: " . implode(", ", $inventoryLabels);
@@ -959,6 +1005,38 @@ function toggleAddPassword(){
         icon.classList.replace("fa-eye-slash","fa-eye");
     }
 }
+
+const liveUserSearch = document.getElementById("liveUserSearch");
+const clearUserSearch = document.getElementById("clearUserSearch");
+
+function filterUserTable(){
+    const keyword = liveUserSearch.value.toLowerCase().trim();
+    const rows = document.querySelectorAll(".user-table tbody tr[data-username]");
+
+    rows.forEach(row => {
+        const username = (row.dataset.username || "").toLowerCase();
+        const email = (row.dataset.email || "").toLowerCase();
+        const role = (row.dataset.role || "").toLowerCase();
+
+        const match =
+            username.includes(keyword) ||
+            email.includes(keyword) ||
+            role.includes(keyword);
+
+        row.style.display = match ? "" : "none";
+    });
+}
+
+liveUserSearch.addEventListener("input", filterUserTable);
+
+clearUserSearch.addEventListener("click", function(){
+    liveUserSearch.value = "";
+    filterUserTable();
+
+    if(window.history.replaceState){
+        window.history.replaceState({}, document.title, "manage_users.php");
+    }
+});
 </script>
 
 </body>

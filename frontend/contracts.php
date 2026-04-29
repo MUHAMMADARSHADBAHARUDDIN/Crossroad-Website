@@ -70,20 +70,21 @@ $result = $stmt->get_result();
 
 <h2 class="mb-3">Contracts</h2>
 
-<form method="GET" class="mb-3">
+<form method="GET" class="mb-3" onsubmit="return false;">
     <div class="input-group">
-        <input type="text" name="search" class="form-control"
-               placeholder="Search contracts..." value="<?= htmlspecialchars($search) ?>">
+        <input
+            type="text"
+            id="liveContractSearch"
+            name="search"
+            class="form-control"
+            placeholder="Search contracts..."
+            value="<?= htmlspecialchars($search) ?>"
+            autocomplete="off"
+        >
 
-        <button class="btn btn-warning">
+        <button type="button" class="btn btn-warning">
             <i class="fa fa-search"></i> Search
         </button>
-
-        <?php if($search): ?>
-        <a href="contracts.php" class="btn btn-secondary">
-            Reset
-        </a>
-        <?php endif; ?>
     </div>
 </form>
 
@@ -281,9 +282,23 @@ data-amount="<?= htmlspecialchars($row['amount'] ?? '0', ENT_QUOTES, 'UTF-8'); ?
 <script>
 $(document).ready(function(){
 
-$('#contractsTable').DataTable({
+let contractsTable = $('#contractsTable').DataTable({
     pageLength: 10,
-    searching: false
+    searching: true,
+    dom: "rtip"
+});
+
+$("#liveContractSearch").on("input", function(){
+    contractsTable.search(this.value).draw();
+});
+
+$("#clearContractSearch").on("click", function(){
+    $("#liveContractSearch").val("");
+    contractsTable.search("").draw();
+
+    if(window.location.search){
+        window.location.href = "contracts.php";
+    }
 });
 
 $('#contractsTable tbody').on('click','tr',function(e){
