@@ -2,6 +2,7 @@
 session_start();
 require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
+require_once "../includes/search_helper.php";
 
 if(!isset($_SESSION['username'])){
     exit("No session");
@@ -16,17 +17,35 @@ $username = $_SESSION['username'];
 $canDelete = hasPermission($mysqli, "inventory_delete");
 
 $search = "";
+
 if(isset($_GET['search'])){
     $search = trim($_GET['search']);
 }
 
-$searchLike = "%" . $search . "%";
+$params = [];
+$types = "";
+
+$whereSql = buildCommaSearchWhere(
+    $search,
+    [
+        "server_name",
+        "machine_type",
+        "serial_number",
+        "location",
+        "status",
+        "remark",
+        "tester",
+        "stock_out_by",
+        "stock_out_date"
+    ],
+    $params,
+    $types
+);
 
 $stmt = $mysqli->prepare("
 SELECT *
 FROM server_stockout_history
-WHERE server_name LIKE ?
-   OR serial_number LIKE ?
+$whereSql
 ORDER BY stock_out_date DESC
 ");
 
@@ -34,9 +53,11 @@ if(!$stmt){
     die("SQL Error: " . $mysqli->error);
 }
 
-$stmt->bind_param("ss", $searchLike, $searchLike);
-$stmt->execute();
+if(!empty($params)){
+    $stmt->bind_param($types, ...$params);
+}
 
+$stmt->execute();
 $result = $stmt->get_result();
 ?>
 

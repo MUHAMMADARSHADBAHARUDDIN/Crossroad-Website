@@ -134,6 +134,7 @@ $userStmt = $mysqli->prepare("
     FROM user
     WHERE username LIKE ?
        OR email LIKE ?
+       OR role LIKE ?
     ORDER BY username ASC
 ");
 
@@ -141,7 +142,7 @@ if(!$userStmt){
     die("SQL Error: " . $mysqli->error);
 }
 
-$userStmt->bind_param("ss", $searchLike, $searchLike);
+$userStmt->bind_param("sss", $searchLike, $searchLike, $searchLike);
 $userStmt->execute();
 $userResult = $userStmt->get_result();
 
@@ -153,13 +154,14 @@ if($userResult){
     }
 }
 
-/* ✅ REAL ADMINISTRATOR TABLE */
-/* ❌ NO system_admin TABLE HERE */
+/* ✅ ADMINISTRATOR TABLE */
+/* ✅ account_type = administrator, but display_role = real job role */
 $administratorStmt = $mysqli->prepare("
-    SELECT username, email
+    SELECT username, email, role
     FROM administrator
     WHERE username LIKE ?
        OR email LIKE ?
+       OR role LIKE ?
     ORDER BY username ASC
 ");
 
@@ -167,15 +169,19 @@ if(!$administratorStmt){
     die("SQL Error: " . $mysqli->error);
 }
 
-$administratorStmt->bind_param("ss", $searchLike, $searchLike);
+$administratorStmt->bind_param("sss", $searchLike, $searchLike, $searchLike);
 $administratorStmt->execute();
 $administratorResult = $administratorStmt->get_result();
 
 if($administratorResult){
     while($row = $administratorResult->fetch_assoc()){
         $row['account_type'] = "administrator";
-        $row['role'] = "Administrator";
-        $row['display_role'] = "Administrator";
+
+        if(empty($row['role'])){
+            $row['role'] = "Administrator";
+        }
+
+        $row['display_role'] = $row['role'];
         $accounts[] = $row;
     }
 }
@@ -405,7 +411,7 @@ html, body{
             id="liveUserSearch"
             name="search"
             class="form-control"
-            placeholder="Search by username or email..."
+            placeholder="Search by username, email, or role..."
             value="<?= htmlspecialchars($search) ?>"
             autocomplete="off"
         >
@@ -545,7 +551,7 @@ data-permission-detail="<?= $permissionDetailJson ?>"
 
 <td data-label="Role">
 <?php if($row['account_type'] === "administrator"): ?>
-    <span class="badge badge-admin">Administrator</span>
+    <span class="badge badge-admin"><?= htmlspecialchars($row['display_role']) ?></span>
 <?php else: ?>
     <span class="badge badge-user"><?= htmlspecialchars($row['display_role']) ?></span>
 <?php endif; ?>
@@ -813,7 +819,7 @@ Password must contain at least 8 characters, 1 uppercase letter, and 1 symbol.
     <option value="Admin Executive">Admin Executive</option>
 </select>
 <div class="form-text">
-If all modules are Full Access, this account becomes Administrator automatically.
+If all modules are Full Access, this account becomes Administrator automatically, but this role/title will stay the same.
 </div>
 </div>
 
@@ -933,7 +939,6 @@ document.querySelectorAll(".editUserBtn").forEach(button => {
             }
         });
 
-        /* ✅ FIX: if old role / administrator role is not inside dropdown, add it automatically */
         if(!foundRole && displayRole !== ""){
             const newOption = new Option(displayRole, displayRole, true, true);
             roleSelect.add(newOption);
@@ -1027,16 +1032,20 @@ function filterUserTable(){
     });
 }
 
-liveUserSearch.addEventListener("input", filterUserTable);
+if(liveUserSearch){
+    liveUserSearch.addEventListener("input", filterUserTable);
+}
 
-clearUserSearch.addEventListener("click", function(){
-    liveUserSearch.value = "";
-    filterUserTable();
+if(clearUserSearch){
+    clearUserSearch.addEventListener("click", function(){
+        liveUserSearch.value = "";
+        filterUserTable();
 
-    if(window.history.replaceState){
-        window.history.replaceState({}, document.title, "manage_users.php");
-    }
-});
+        if(window.history.replaceState){
+            window.history.replaceState({}, document.title, "manage_users.php");
+        }
+    });
+}
 </script>
 
 </body>

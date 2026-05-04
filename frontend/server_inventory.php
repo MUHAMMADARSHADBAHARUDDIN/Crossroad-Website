@@ -2,6 +2,7 @@
 session_start();
 require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
+require_once "../includes/search_helper.php";
 
 if(!isset($_SESSION['username'])){
     header("Location: index.html");
@@ -18,39 +19,43 @@ $username = $_SESSION['username'];
 $canAdd = hasPermission($mysqli, "inventory_add");
 
 $search = "";
+
 if(isset($_GET['search'])){
     $search = trim($_GET['search']);
 }
 
-$isOkay = stripos($search, 'okay') !== false;
-$isFaulty = stripos($search, 'faulty') !== false;
+$params = [];
+$types = "";
 
-$searchLike = "%" . $search . "%";
+$whereSql = buildCommaSearchWhere(
+    $search,
+    [
+        "server_name",
+        "machine_type",
+        "brand",
+        "serial_number",
+        "location",
+        "status",
+        "tester",
+        "date_testing"
+    ],
+    $params,
+    $types
+);
 
 $sql = "
 SELECT
     server_name,
     machine_type,
     brand,
-    GROUP_CONCAT(serial_number SEPARATOR ' ') AS serial_numbers,
     COUNT(*) AS total_qty,
     SUM(CASE WHEN status = 'Okay' THEN 1 ELSE 0 END) AS ok_qty,
     SUM(CASE WHEN status = 'Faulty' THEN 1 ELSE 0 END) AS faulty_qty
 FROM server_inventory
-WHERE
-    server_name LIKE ? OR
-    machine_type LIKE ? OR
-    brand LIKE ? OR
-    serial_number LIKE ?
+$whereSql
 GROUP BY server_name, machine_type, brand
+ORDER BY server_name ASC
 ";
-
-if($isOkay){
-    $sql .= " HAVING ok_qty > 0";
-}
-else if($isFaulty){
-    $sql .= " HAVING faulty_qty > 0";
-}
 
 $stmt = $mysqli->prepare($sql);
 
@@ -58,9 +63,11 @@ if(!$stmt){
     die("SQL Error: " . $mysqli->error);
 }
 
-$stmt->bind_param("ssss", $searchLike, $searchLike, $searchLike, $searchLike);
-$stmt->execute();
+if(!empty($params)){
+    $stmt->bind_param($types, ...$params);
+}
 
+$stmt->execute();
 $result = $stmt->get_result();
 ?>
 

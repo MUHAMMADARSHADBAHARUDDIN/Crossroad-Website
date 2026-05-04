@@ -9,6 +9,7 @@ if(!isset($_SESSION['username'])){
 
 require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
+require_once "../includes/search_helper.php";
 
 if(!hasPermission($mysqli, "inventory_view")){
     die("Access denied");
@@ -25,23 +26,22 @@ if(isset($_GET['search'])){
     $search = trim($_GET['search']);
 }
 
-$searchLike = "%" . $search . "%";
-
+/*
+    ✅ LIVE SEARCH FIX
+    Do NOT filter SQL here.
+    Load all grouped asset rows first, then JavaScript filters instantly without refresh.
+    GROUP_CONCAT is added so live search can also find serial numbers.
+*/
 $stmt = $mysqli->prepare("
 SELECT
     part_number,
     brand,
     description,
-    GROUP_CONCAT(serial_number SEPARATOR ' ') AS serial_numbers,
     MAX(date_received) AS date_received,
     COUNT(*) AS total_qty,
-    MIN(created_by) AS created_by
+    MIN(created_by) AS created_by,
+    GROUP_CONCAT(serial_number SEPARATOR ' ') AS serial_numbers
 FROM asset_inventory
-WHERE
-    part_number LIKE ? OR
-    brand LIKE ? OR
-    description LIKE ? OR
-    serial_number LIKE ?
 GROUP BY part_number, brand, description
 ORDER BY part_number ASC
 ");
@@ -50,7 +50,6 @@ if(!$stmt){
     die("SQL Error: " . $mysqli->error);
 }
 
-$stmt->bind_param("ssss", $searchLike, $searchLike, $searchLike, $searchLike);
 $stmt->execute();
 $result = $stmt->get_result();
 ?>
@@ -83,7 +82,7 @@ $result = $stmt->get_result();
             id="liveAssetSearch"
             name="search"
             class="form-control"
-            placeholder="Search asset..."
+            placeholder="Search... Example: dell, storage"
             value="<?php echo htmlspecialchars($search); ?>"
             autocomplete="off"
         >
@@ -114,20 +113,20 @@ $result = $stmt->get_result();
 
 <?php while($row = $result->fetch_assoc()): ?>
 
-<tr
-data-search="<?=
-htmlspecialchars(
-    strtolower(
-        ($row['part_number'] ?? '') . ' ' .
-        ($row['brand'] ?? '') . ' ' .
-        ($row['description'] ?? '') . ' ' .
-        ($row['serial_numbers'] ?? '') . ' ' .
-        ($row['total_qty'] ?? '')
-    ),
-    ENT_QUOTES,
-    'UTF-8'
+<?php
+$searchText = strtolower(
+    ($row['part_number'] ?? '') . ' ' .
+    ($row['brand'] ?? '') . ' ' .
+    ($row['description'] ?? '') . ' ' .
+    ($row['serial_numbers'] ?? '') . ' ' .
+    ($row['created_by'] ?? '') . ' ' .
+    ($row['date_received'] ?? '') . ' ' .
+    ($row['total_qty'] ?? '')
 );
-?>"
+?>
+
+<tr
+data-search="<?= htmlspecialchars($searchText, ENT_QUOTES, 'UTF-8'); ?>"
 onclick="viewSerial(<?= htmlspecialchars(json_encode($row['part_number'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>)"
 style="cursor:pointer;"
 >
@@ -140,6 +139,10 @@ style="cursor:pointer;"
 </tr>
 
 <?php endwhile; ?>
+
+<tr id="noAssetResultRow" style="display:none;">
+    <td colspan="4" class="text-center text-muted">No records found</td>
+</tr>
 
 </tbody>
 </table>
@@ -313,17 +316,62 @@ function viewDetail(id){
 </script>
 
 <script>
+/*
+    ✅ LIVE SEARCH WITHOUT REFRESH
+    Supports normal search:
+    dell
+
+    Supports comma search:
+    dell, storage
+
+    Meaning:
+    row must contain "dell" AND "storage"
+*/
 const liveAssetSearch = document.getElementById("liveAssetSearch");
 const clearAssetSearch = document.getElementById("clearAssetSearch");
+const noAssetResultRow = document.getElementById("noAssetResultRow");
 
 function filterAssetTable(){
     const keyword = liveAssetSearch.value.toLowerCase().trim();
+    const terms = keyword
+        .split(",")
+        .map(term => term.trim())
+        .filter(term => term !== "");
+
     const rows = document.querySelectorAll("#assetInventoryTable tbody tr[data-search]");
+
+    let visibleCount = 0;
 
     rows.forEach(row => {
         const text = row.dataset.search || "";
-        row.style.display = text.includes(keyword) ? "" : "none";
+
+        let match = true;
+
+        terms.forEach(term => {
+            if(!text.includes(term)){
+                match = false;
+            }
+        });
+
+        if(match){
+            row.style.display = "";
+            visibleCount++;
+        }else{
+            row.style.display = "none";
+        }
     });
+
+    noAssetResultRow.style.display = visibleCount === 0 ? "" : "none";
+
+    let newUrl = "asset_inventory.php";
+
+    if(keyword !== ""){
+        newUrl += "?search=" + encodeURIComponent(liveAssetSearch.value.trim());
+    }
+
+    if(window.history.replaceState){
+        window.history.replaceState({}, document.title, newUrl);
+    }
 }
 
 liveAssetSearch.addEventListener("input", filterAssetTable);
@@ -332,9 +380,13 @@ clearAssetSearch.addEventListener("click", function(){
     liveAssetSearch.value = "";
     filterAssetTable();
 
-    if(window.location.search){
-        window.location.href = "asset_inventory.php";
+    if(window.history.replaceState){
+        window.history.replaceState({}, document.title, "asset_inventory.php");
     }
+});
+
+document.addEventListener("DOMContentLoaded", function(){
+    filterAssetTable();
 });
 </script>
 

@@ -9,10 +9,6 @@ if(!isset($_SESSION['username']) || !isset($_SESSION['role'])){
     die("No session");
 }
 
-if(($_SESSION['role'] ?? '') !== "Administrator"){
-    die("Access denied.");
-}
-
 if(!hasPermission($mysqli, "users_add")){
     die("Access denied.");
 }
@@ -89,16 +85,44 @@ function saveUserPermissions($mysqli, $username, $accountType, $permissions)
     }
 }
 
+function usernameExists($mysqli, $username)
+{
+    $stmt = $mysqli->prepare("
+        SELECT username FROM user WHERE username = ?
+        UNION
+        SELECT username FROM administrator WHERE username = ?
+    ");
+    $stmt->bind_param("ss", $username, $username);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    return $result && $result->num_rows > 0;
+}
+
+function emailExists($mysqli, $email)
+{
+    $stmt = $mysqli->prepare("
+        SELECT email FROM user WHERE email = ?
+        UNION
+        SELECT email FROM administrator WHERE email = ?
+    ");
+    $stmt->bind_param("ss", $email, $email);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    return $result && $result->num_rows > 0;
+}
+
 if($_SERVER["REQUEST_METHOD"] === "POST"){
 
-    $username = trim($_POST["username"] ?? "");
-    $email = trim($_POST["email"] ?? "");
-    $password = trim($_POST["password"] ?? "");
-    $role = trim($_POST["role"] ?? "");
+    $username = trim($_POST['username'] ?? "");
+    $email = trim($_POST['email'] ?? "");
+    $password = trim($_POST['password'] ?? "");
+    $role = trim($_POST['role'] ?? "");
     $permissions = selectedPermissions();
 
-    if($username === "" || $email === "" || $password === ""){
-        die("Username, email and password are required.");
+    if($username === "" || $email === "" || $password === "" || $role === ""){
+        die("Please fill in all required fields.");
     }
 
     if(strlen($password) < 8){
@@ -113,96 +137,97 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
         die("Password must include at least one symbol.");
     }
 
-    $checkStmt = $mysqli->prepare("
-        SELECT username FROM user WHERE username = ? OR email = ?
-        UNION
-        SELECT username FROM administrator WHERE username = ? OR email = ?
-        UNION
-        SELECT username FROM system_admin WHERE username = ? OR email = ?
-        LIMIT 1
-    ");
+    if(usernameExists($mysqli, $username)){
+        die("Username already exists.");
+    }
 
-    $checkStmt->bind_param(
-        "ssssss",
-        $username,
-        $email,
-        $username,
-        $email,
-        $username,
-        $email
-    );
-
-    $checkStmt->execute();
-    $checkResult = $checkStmt->get_result();
-
-    if($checkResult->num_rows > 0){
-        die("Username or email already exists.");
+    if(emailExists($mysqli, $email)){
+        die("Email already exists.");
     }
 
     $hashed_password = password_hash($password, PASSWORD_DEFAULT);
 
-    $isAdministrator = isFullAdministratorAccess($permissions);
+    $adminUser = $_SESSION['username'];
+    $adminRole = $_SESSION['role'];
 
-    if($isAdministrator){
+    $becomeAdministrator = isFullAdministratorAccess($permissions);
 
-        $accountType = "administrator";
+    if($becomeAdministrator){
 
+        /*
+            ✅ Full access means account type is administrator.
+            ✅ But role stays as selected role, for example Founder/Director.
+        */
         $stmt = $mysqli->prepare("
-            INSERT INTO administrator (username, email, password)
-            VALUES (?, ?, ?)
+            INSERT INTO administrator (username, email, role, password)
+            VALUES (?, ?, ?, ?)
         ");
 
-        $stmt->bind_param("sss", $username, $email, $hashed_password);
+        if(!$stmt){
+            die("SQL Error: " . $mysqli->error);
+        }
+
+        $stmt->bind_param("ssss", $username, $email, $role, $hashed_password);
+        $stmt->execute();
+
+        /*
+            Administrator accounts do not need user_permissions rows
+            because they are treated as full access automatically.
+        */
+        $deletePerm = $mysqli->prepare("
+            DELETE FROM user_permissions
+            WHERE username = ?
+        ");
+        $deletePerm->bind_param("s", $username);
+        $deletePerm->execute();
+
+        $accountType = "administrator";
+        $actionNote = "Created as Administrator account because all modules were set to Full Access. Role/title saved as: $role";
 
     } else {
-
-        $accountType = "user";
 
         $stmt = $mysqli->prepare("
             INSERT INTO user (username, email, password, role)
             VALUES (?, ?, ?, ?)
         ");
 
-        $stmt->bind_param("ssss", $username, $email, $hashed_password, $role);
-    }
-
-    if($stmt->execute()){
-
-        if($accountType === "user"){
-            saveUserPermissions($mysqli, $username, $accountType, $permissions);
+        if(!$stmt){
+            die("SQL Error: " . $mysqli->error);
         }
 
-        $adminUser = $_SESSION['username'];
-        $adminRole = $_SESSION['role'];
-        $ip = $_SERVER['REMOTE_ADDR'];
-        $time = date("Y-m-d H:i:s");
+        $stmt->bind_param("ssss", $username, $email, $hashed_password, $role);
+        $stmt->execute();
 
-        $createdRoleText = ($accountType === "administrator") ? "Administrator" : $role;
+        saveUserPermissions($mysqli, $username, "user", $permissions);
 
-        $description = "Admin [$adminUser] created new account.
-New Username: $username
+        $accountType = "user";
+        $actionNote = "Created as normal user account. Role/title saved as: $role";
+    }
+
+    $ip = $_SERVER['REMOTE_ADDR'];
+    $time = date("Y-m-d H:i:s");
+
+    $description = "Admin [$adminUser] created user account.
+Username: $username
 Email: $email
-Role: $createdRoleText
+Role/Title: $role
 Account Type: $accountType
+Details: $actionNote
 IP Address: $ip
 Time: $time";
 
-        logActivity(
-            $mysqli,
-            $adminUser,
-            $adminRole,
-            "ADD USER",
-            $description
-        );
+    logActivity(
+        $mysqli,
+        $adminUser,
+        $adminRole,
+        "ADD USER",
+        $description
+    );
 
-        echo "<script>
-        alert('User added successfully');
-        window.location.href='../frontend/manage_users.php';
-        </script>";
-        exit();
-
-    } else {
-        echo "Error: " . $stmt->error;
-    }
+    echo "<script>
+    alert('User created successfully');
+    window.location.href='../frontend/manage_users.php';
+    </script>";
+    exit();
 }
 ?>

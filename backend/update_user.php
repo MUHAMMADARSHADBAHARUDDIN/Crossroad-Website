@@ -9,10 +9,6 @@ if(!isset($_SESSION['username']) || !isset($_SESSION['role'])){
     die("No session");
 }
 
-if(($_SESSION['role'] ?? '') !== "Administrator"){
-    die("Access denied.");
-}
-
 if(!hasPermission($mysqli, "users_edit")){
     die("Access denied.");
 }
@@ -40,8 +36,9 @@ function saveUserPermissions($mysqli, $username, $accountType, $permissions)
     $deleteStmt = $mysqli->prepare("
         DELETE FROM user_permissions
         WHERE username = ?
+        AND account_type = ?
     ");
-    $deleteStmt->bind_param("s", $username);
+    $deleteStmt->bind_param("ss", $username, $accountType);
     $deleteStmt->execute();
 
     if(empty($permissions)){
@@ -88,7 +85,7 @@ function saveUserPermissions($mysqli, $username, $accountType, $permissions)
     }
 }
 
-function deleteUserPermissions($mysqli, $username)
+function deleteAllPermissionsForUsername($mysqli, $username)
 {
     $stmt = $mysqli->prepare("
         DELETE FROM user_permissions
@@ -98,66 +95,86 @@ function deleteUserPermissions($mysqli, $username)
     $stmt->execute();
 }
 
-function updateUsernameReferences($mysqli, $oldUsername, $newUsername)
+function getCurrentAccount($mysqli, $username, $accountType)
 {
-    if($oldUsername === $newUsername){
-        return;
+    if($accountType === "administrator"){
+        $stmt = $mysqli->prepare("
+            SELECT username, email, password, role
+            FROM administrator
+            WHERE username = ?
+            LIMIT 1
+        ");
+    } else {
+        $stmt = $mysqli->prepare("
+            SELECT username, email, password, role
+            FROM user
+            WHERE username = ?
+            LIMIT 1
+        ");
     }
 
-    $tables = [
-        ["project_inventory", "created_by"],
-        ["asset_inventory", "created_by"],
-        ["server_inventory", "created_by"],
-        ["contract_files", "uploaded_by"],
-        ["contract_documents", "uploaded_by"],
-        ["stock_out_history", "stock_out_by"],
-        ["server_stockout_history", "stock_out_by"]
-    ];
+    $stmt->bind_param("s", $username);
+    $stmt->execute();
 
-    foreach($tables as $item){
-        $table = $item[0];
-        $column = $item[1];
-
-        $sql = "UPDATE `$table` SET `$column` = ? WHERE `$column` = ?";
-        $stmt = $mysqli->prepare($sql);
-
-        if($stmt){
-            $stmt->bind_param("ss", $newUsername, $oldUsername);
-            $stmt->execute();
-        }
-    }
+    $result = $stmt->get_result();
+    return $result ? $result->fetch_assoc() : null;
 }
 
-function duplicateAccountExists($mysqli, $newUsername, $newEmail, $oldUsername, $oldAccountType)
+function usernameExistsElsewhere($mysqli, $newUsername, $oldUsername, $oldAccountType)
 {
-    $checks = [
-        "user" => "SELECT username, email FROM `user` WHERE username = ? OR email = ?",
-        "administrator" => "SELECT username, email FROM administrator WHERE username = ? OR email = ?",
-        "system_admin" => "SELECT username, email FROM system_admin WHERE username = ? OR email = ?"
-    ];
+    $stmt = $mysqli->prepare("
+        SELECT 'user' AS account_type, username
+        FROM user
+        WHERE username = ?
 
-    foreach($checks as $type => $sql){
-        $stmt = $mysqli->prepare($sql);
+        UNION ALL
 
-        if(!$stmt){
+        SELECT 'administrator' AS account_type, username
+        FROM administrator
+        WHERE username = ?
+    ");
+
+    $stmt->bind_param("ss", $newUsername, $newUsername);
+    $stmt->execute();
+
+    $result = $stmt->get_result();
+
+    while($row = $result->fetch_assoc()){
+        if($row['username'] === $oldUsername && $row['account_type'] === $oldAccountType){
             continue;
         }
 
-        $stmt->bind_param("ss", $newUsername, $newEmail);
-        $stmt->execute();
+        return true;
+    }
 
-        $result = $stmt->get_result();
+    return false;
+}
 
-        while($row = $result->fetch_assoc()){
-            $foundUsername = $row['username'];
-            $foundEmail = $row['email'];
+function emailExistsElsewhere($mysqli, $newEmail, $oldUsername, $oldAccountType)
+{
+    $stmt = $mysqli->prepare("
+        SELECT 'user' AS account_type, username, email
+        FROM user
+        WHERE email = ?
 
-            if($type === $oldAccountType && $foundUsername === $oldUsername){
-                continue;
-            }
+        UNION ALL
 
-            return true;
+        SELECT 'administrator' AS account_type, username, email
+        FROM administrator
+        WHERE email = ?
+    ");
+
+    $stmt->bind_param("ss", $newEmail, $newEmail);
+    $stmt->execute();
+
+    $result = $stmt->get_result();
+
+    while($row = $result->fetch_assoc()){
+        if($row['username'] === $oldUsername && $row['account_type'] === $oldAccountType){
+            continue;
         }
+
+        return true;
     }
 
     return false;
@@ -165,16 +182,17 @@ function duplicateAccountExists($mysqli, $newUsername, $newEmail, $oldUsername, 
 
 if($_SERVER["REQUEST_METHOD"] === "POST"){
 
-    $oldUsername = trim($_POST['old_username'] ?? $_POST['username'] ?? "");
-    $oldAccountType = trim($_POST['old_account_type'] ?? $_POST['account_type'] ?? "");
+    $oldUsername = trim($_POST['old_username'] ?? "");
+    $oldAccountType = trim($_POST['old_account_type'] ?? "");
 
     $newUsername = trim($_POST['username'] ?? "");
     $newEmail = trim($_POST['email'] ?? "");
     $newRole = trim($_POST['role'] ?? "");
     $password = trim($_POST['password'] ?? "");
+
     $permissions = selectedPermissions();
 
-    if($oldUsername === "" || $oldAccountType === "" || $newUsername === "" || $newEmail === ""){
+    if($oldUsername === "" || $oldAccountType === "" || $newUsername === "" || $newEmail === "" || $newRole === ""){
         die("Invalid request.");
     }
 
@@ -182,18 +200,18 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
         die("Invalid account type.");
     }
 
-    $adminUser = $_SESSION['username'];
-    $adminRole = $_SESSION['role'];
+    $currentAccount = getCurrentAccount($mysqli, $oldUsername, $oldAccountType);
 
-    $becomeAdministrator = isFullAdministratorAccess($permissions);
-    $newAccountType = $becomeAdministrator ? "administrator" : "user";
-
-    if($oldAccountType === "administrator" && $oldUsername === $adminUser && $newAccountType !== "administrator"){
-        die("You cannot remove your own administrator access.");
+    if(!$currentAccount){
+        die("User not found.");
     }
 
-    if(duplicateAccountExists($mysqli, $newUsername, $newEmail, $oldUsername, $oldAccountType)){
-        die("Username or email already exists.");
+    if(usernameExistsElsewhere($mysqli, $newUsername, $oldUsername, $oldAccountType)){
+        die("Username already exists.");
+    }
+
+    if(emailExistsElsewhere($mysqli, $newEmail, $oldUsername, $oldAccountType)){
+        die("Email already exists.");
     }
 
     if($password !== ""){
@@ -209,108 +227,115 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
             die("Password must include at least one symbol.");
         }
 
-        $newPasswordHash = password_hash($password, PASSWORD_DEFAULT);
-    }
-
-    if($oldAccountType === "administrator"){
-        $fetchStmt = $mysqli->prepare("
-            SELECT username, email, password
-            FROM administrator
-            WHERE username = ?
-            LIMIT 1
-        ");
+        $finalPassword = password_hash($password, PASSWORD_DEFAULT);
     } else {
-        $fetchStmt = $mysqli->prepare("
-            SELECT username, email, password, role
-            FROM `user`
-            WHERE username = ?
-            LIMIT 1
-        ");
+        $finalPassword = $currentAccount['password'];
     }
 
-    $fetchStmt->bind_param("s", $oldUsername);
-    $fetchStmt->execute();
-    $fetchResult = $fetchStmt->get_result();
-    $oldData = $fetchResult->fetch_assoc();
+    $adminUser = $_SESSION['username'];
+    $adminRole = $_SESSION['role'];
 
-    if(!$oldData){
-        die("Account not found.");
-    }
+    $becomeAdministrator = isFullAdministratorAccess($permissions);
 
-    $finalPassword = ($password !== "") ? $newPasswordHash : $oldData['password'];
+    /*
+        ✅ Full access means administrator table.
+        ✅ Role/title stays as selected role.
+    */
 
-    $mysqli->begin_transaction();
+    if($becomeAdministrator){
 
-    try{
-
-        if($oldAccountType === "user" && $newAccountType === "user"){
+        if($oldAccountType === "administrator"){
 
             $stmt = $mysqli->prepare("
-                UPDATE `user`
-                SET username = ?, email = ?, password = ?, role = ?
+                UPDATE administrator
+                SET username = ?,
+                    email = ?,
+                    role = ?,
+                    password = ?
                 WHERE username = ?
             ");
-            $stmt->bind_param("sssss", $newUsername, $newEmail, $finalPassword, $newRole, $oldUsername);
+
+            if(!$stmt){
+                die("SQL Error: " . $mysqli->error);
+            }
+
+            $stmt->bind_param(
+                "sssss",
+                $newUsername,
+                $newEmail,
+                $newRole,
+                $finalPassword,
+                $oldUsername
+            );
+
             $stmt->execute();
 
-            deleteUserPermissions($mysqli, $oldUsername);
-            saveUserPermissions($mysqli, $newUsername, "user", $permissions);
+            deleteAllPermissionsForUsername($mysqli, $oldUsername);
+            deleteAllPermissionsForUsername($mysqli, $newUsername);
 
-            updateUsernameReferences($mysqli, $oldUsername, $newUsername);
+            $finalAccountType = "administrator";
+            $actionNote = "Updated Administrator account. Role/title saved as: $newRole";
 
-            $actionNote = "Updated normal user account.";
-
-        } elseif($oldAccountType === "user" && $newAccountType === "administrator"){
+        } else {
 
             $insertAdmin = $mysqli->prepare("
-                INSERT INTO administrator (username, email, password)
-                VALUES (?, ?, ?)
+                INSERT INTO administrator (username, email, role, password)
+                VALUES (?, ?, ?, ?)
             ");
-            $insertAdmin->bind_param("sss", $newUsername, $newEmail, $finalPassword);
+
+            if(!$insertAdmin){
+                die("SQL Error: " . $mysqli->error);
+            }
+
+            $insertAdmin->bind_param(
+                "ssss",
+                $newUsername,
+                $newEmail,
+                $newRole,
+                $finalPassword
+            );
+
             $insertAdmin->execute();
 
             $deleteUser = $mysqli->prepare("
-                DELETE FROM `user`
+                DELETE FROM user
                 WHERE username = ?
             ");
             $deleteUser->bind_param("s", $oldUsername);
             $deleteUser->execute();
 
-            deleteUserPermissions($mysqli, $oldUsername);
-            deleteUserPermissions($mysqli, $newUsername);
+            deleteAllPermissionsForUsername($mysqli, $oldUsername);
+            deleteAllPermissionsForUsername($mysqli, $newUsername);
 
-            updateUsernameReferences($mysqli, $oldUsername, $newUsername);
+            $finalAccountType = "administrator";
+            $actionNote = "User converted to Administrator because all modules were set to Full Access. Role/title saved as: $newRole";
+        }
 
-            $actionNote = "Converted user to Administrator because all modules are Full Access.";
+    } else {
 
-        } elseif($oldAccountType === "administrator" && $newAccountType === "administrator"){
+        if($oldAccountType === "administrator"){
 
-            $stmt = $mysqli->prepare("
-                UPDATE administrator
-                SET username = ?, email = ?, password = ?
-                WHERE username = ?
-            ");
-            $stmt->bind_param("ssss", $newUsername, $newEmail, $finalPassword, $oldUsername);
-            $stmt->execute();
-
-            deleteUserPermissions($mysqli, $oldUsername);
-            deleteUserPermissions($mysqli, $newUsername);
-
-            updateUsernameReferences($mysqli, $oldUsername, $newUsername);
-
-            if($oldUsername === $adminUser){
-                $_SESSION['username'] = $newUsername;
-            }
-
-            $actionNote = "Updated administrator account.";
-
-        } elseif($oldAccountType === "administrator" && $newAccountType === "user"){
-
+            /*
+                If admin account no longer has full access,
+                move it back to normal user table.
+            */
             $insertUser = $mysqli->prepare("
-                INSERT INTO `user` (username, email, password, role)
+                INSERT INTO user (username, email, password, role)
                 VALUES (?, ?, ?, ?)
             ");
-            $insertUser->bind_param("ssss", $newUsername, $newEmail, $finalPassword, $newRole);
+
+            if(!$insertUser){
+                die("SQL Error: " . $mysqli->error);
+            }
+
+            $insertUser->bind_param(
+                "ssss",
+                $newUsername,
+                $newEmail,
+                $finalPassword,
+                $newRole
+            );
+
             $insertUser->execute();
 
             $deleteAdmin = $mysqli->prepare("
@@ -320,42 +345,61 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
             $deleteAdmin->bind_param("s", $oldUsername);
             $deleteAdmin->execute();
 
-            deleteUserPermissions($mysqli, $oldUsername);
+            deleteAllPermissionsForUsername($mysqli, $oldUsername);
             saveUserPermissions($mysqli, $newUsername, "user", $permissions);
 
-            updateUsernameReferences($mysqli, $oldUsername, $newUsername);
+            $finalAccountType = "user";
+            $actionNote = "Administrator converted back to normal user because Full Access was removed. Role/title saved as: $newRole";
 
-            $actionNote = "Converted administrator to normal user.";
+        } else {
+
+            $stmt = $mysqli->prepare("
+                UPDATE user
+                SET username = ?,
+                    email = ?,
+                    role = ?,
+                    password = ?
+                WHERE username = ?
+            ");
+
+            if(!$stmt){
+                die("SQL Error: " . $mysqli->error);
+            }
+
+            $stmt->bind_param(
+                "sssss",
+                $newUsername,
+                $newEmail,
+                $newRole,
+                $finalPassword,
+                $oldUsername
+            );
+
+            $stmt->execute();
+
+            deleteAllPermissionsForUsername($mysqli, $oldUsername);
+            saveUserPermissions($mysqli, $newUsername, "user", $permissions);
+
+            $finalAccountType = "user";
+            $actionNote = "Updated normal user account. Role/title saved as: $newRole";
         }
+    }
 
-        $mysqli->commit();
-
-    } catch(Exception $e){
-        $mysqli->rollback();
-        die("Update failed: " . $e->getMessage());
+    if($oldUsername === $_SESSION['username']){
+        $_SESSION['username'] = $newUsername;
     }
 
     $ip = $_SERVER['REMOTE_ADDR'];
     $time = date("Y-m-d H:i:s");
 
-    $oldRoleText = $oldData['role'] ?? "Administrator";
-
     $description = "Admin [$adminUser] updated user account.
-
-OLD DATA:
-Username: $oldUsername
-Email: {$oldData['email']}
-Role: $oldRoleText
-Account Type: $oldAccountType
-
-NEW DATA:
-Username: $newUsername
+Old Username: $oldUsername
+New Username: $newUsername
 Email: $newEmail
-Role: " . ($newAccountType === "administrator" ? "Administrator" : $newRole) . "
-Account Type: $newAccountType
-
+Role/Title: $newRole
+Original Account Type: $oldAccountType
+Final Account Type: $finalAccountType
 Details: $actionNote
-Password Changed: " . ($password !== "" ? "YES" : "NO") . "
 IP Address: $ip
 Time: $time";
 
