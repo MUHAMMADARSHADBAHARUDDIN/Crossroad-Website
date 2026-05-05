@@ -8,8 +8,78 @@ if(!isset($_SESSION['username'])){
     exit();
 }
 
-$role = $_SESSION['role'];
-$username = $_SESSION['username'];
+$role = $_SESSION['role'] ?? "";
+$username = $_SESSION['username'] ?? "";
+
+/* =========================================================
+   NICKNAME DISPLAY
+   - Shows short name instead of full username
+   - Example:
+     Muhammad Arshad Bin Baharuddin => Arshad
+     Mohd Fazdlan Bin Mohamad Rashid => Fazdlan
+     Nur Shafiqa Binti Zulkefli => Shafiqa
+     Wan Nur Azlin Binti Mohd Ghazali => Azlin
+========================================================= */
+function getNickname($fullName){
+    $fullName = trim($fullName);
+
+    if($fullName === ""){
+        return "User";
+    }
+
+    $parts = preg_split('/\s+/', $fullName);
+
+    if(count($parts) === 1){
+        return $parts[0];
+    }
+
+    /*
+        ✅ IMPORTANT:
+        Keep all words lowercase because we compare using strtolower().
+        Add more names here if you want to skip them.
+    */
+    $skipFirstNames = [
+        "muhammad",
+        "muhamad",
+        "mohammad",
+        "mohamad",
+        "mohd",
+        "ahmad",
+        "nur",
+        "wan",
+        "siti",
+        "syed",
+        "sharifah",
+        "tengku",
+        "nik"
+    ];
+
+    /*
+        ✅ This will skip multiple front names.
+        Example:
+        Wan Nur Azlin Binti Mohd Ghazali
+        - skip Wan
+        - skip Nur
+        - show Azlin
+    */
+    foreach($parts as $part){
+        $cleanPart = strtolower(trim($part));
+
+        if($cleanPart === ""){
+            continue;
+        }
+
+        if(in_array($cleanPart, $skipFirstNames, true)){
+            continue;
+        }
+
+        return $part;
+    }
+
+    return $parts[0];
+}
+
+$nickname = getNickname($username);
 ?>
 
 <!DOCTYPE html>
@@ -53,13 +123,9 @@ $username = $_SESSION['username'];
 
     <div class="d-flex align-items-center gap-3">
 
-<span class="badge bg-warning text-dark">
-<?php echo $role; ?>
-</span>
-
         <span>
-<i class="fa fa-user"></i> <?php echo $username; ?>
-</span>
+            <i class="fa fa-user"></i> <?= htmlspecialchars($nickname) ?>
+        </span>
 
         <a href="logout.php" class="btn btn-outline-light btn-sm">
             Logout

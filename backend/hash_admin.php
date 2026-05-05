@@ -3,9 +3,9 @@
 include("../includes/db_connect.php");
 
 // Admin details
-$username = "Arshad";           // replace with your admin username
+$username = "Nur Iman Bin Hazahlan";           // replace with your admin username
 $password = "1111";              // current plain password
-$email    = "ars466928@gmail.com";  // admin email
+$email    = "iman@crossroad.my";  // admin email
 
 // Hash the password
 $hashed_password = password_hash($password, PASSWORD_DEFAULT);

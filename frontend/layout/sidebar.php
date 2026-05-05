@@ -53,7 +53,7 @@ $menu = [
 
     "TECHNICAL" => [
         [
-            "name" => "Asset Inventory",
+            "name" => "Parts Inventory",
             "icon" => "fa-box",
             "link" => "asset_inventory.php",
             "show" => $canViewInventory
@@ -68,7 +68,7 @@ $menu = [
         ],
 
         [
-            "name" => "Server Inventory",
+            "name" => "Asset Inventory",
             "icon" => "fa-server",
             "link" => "server_inventory.php",
             "show" => $canViewInventory

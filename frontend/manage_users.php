@@ -185,6 +185,11 @@ if($administratorResult){
         $accounts[] = $row;
     }
 }
+
+/* ✅ FINAL SORT: ALPHABETICAL BY USERNAME, IGNORE ACCOUNT TYPE / ROLE */
+usort($accounts, function($a, $b){
+    return strcasecmp($a['username'] ?? '', $b['username'] ?? '');
+});
 ?>
 
 <!DOCTYPE html>

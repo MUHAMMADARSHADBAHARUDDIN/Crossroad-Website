@@ -66,10 +66,27 @@ if(isset($_POST['submit'])){
         // EMAIL DETAILS
         $mail->setFrom('crossroadinventory@gmail.com', 'Crossroad System');
 
+        /*
+        =========================
+        MAIN EMAIL RECEIVER
+        =========================
+        This is needed as the main "To" receiver.
+        All administrators will be CC below.
+        */
+        $mail->addAddress('crossroadinventory@gmail.com', 'Crossroad System');
+
         // =========================
-        // GET ADMIN EMAIL(S)
+        // GET ADMIN EMAIL(S) AS CC
+        // EXCLUDE fazdlan@crossroad.my
         // =========================
-        $stmt = $mysqli->prepare("SELECT email FROM administrator");
+        $excludedAdminEmail = "fazdlan@crossroad.my";
+
+        $stmt = $mysqli->prepare("
+            SELECT email
+            FROM administrator
+            WHERE email IS NOT NULL
+            AND email != ''
+        ");
 
         if(!$stmt){
             die("SQL Error: " . $mysqli->error);
@@ -79,16 +96,35 @@ if(isset($_POST['submit'])){
         $stmt->bind_result($admin_email);
 
         $hasAdmin = false;
+        $addedEmails = [];
 
         while($stmt->fetch()){
-            $mail->addAddress($admin_email);
+
+            $admin_email_clean = strtolower(trim($admin_email));
+
+            if($admin_email_clean === ""){
+                continue;
+            }
+
+            // Skip Fazdlan account
+            if($admin_email_clean === strtolower($excludedAdminEmail)){
+                continue;
+            }
+
+            // Avoid duplicate CC
+            if(in_array($admin_email_clean, $addedEmails, true)){
+                continue;
+            }
+
+            $mail->addCC($admin_email_clean);
+            $addedEmails[] = $admin_email_clean;
             $hasAdmin = true;
         }
 
         $stmt->close();
 
         if(!$hasAdmin){
-            die("No administrator email found in database");
+            die("No administrator email found in database after excluding fazdlan@crossroad.my");
         }
 
         // =========================
@@ -245,11 +281,14 @@ button:hover{
 <div class="login-box">
     <h4 class="page-title">Forgot Password</h4>
     <p class="page-desc">Enter your registered email to request password reset assistance.</p>
+
     <form method="POST">
-        <label>Username</label>
+        <label>Email</label>
         <input type="email" name="email" required>
-<br>
-<br>
+
+        <br>
+        <br>
+
         <button name="submit" type="submit">
             <i class="fa-solid fa-paper-plane"></i> Send Request
         </button>

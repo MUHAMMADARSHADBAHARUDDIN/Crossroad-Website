@@ -246,8 +246,29 @@ body{
 new Chart(document.getElementById('statusChart'), {
     type:'doughnut',
     data:{
-        labels:["Active","Expiring","Expired"],
-        datasets:[{data:[<?= $activeContracts ?>,<?= $expiringContracts ?>,<?= $expiredContracts ?>]}]
+        labels:["Active","Expiring Soon","Closed"],
+        datasets:[{
+            data:[<?= $activeContracts ?>,<?= $expiringContracts ?>,<?= $expiredContracts ?>],
+            backgroundColor:[
+                '#198754',
+                '#ffc107',
+                '#dc3545'
+            ],
+            borderColor:[
+                '#ffffff',
+                '#ffffff',
+                '#ffffff'
+            ],
+            borderWidth:2,
+            hoverOffset:8
+        }]
+    },
+    options:{
+        plugins:{
+            legend:{
+                position:'bottom'
+            }
+        }
     }
 });
 
@@ -255,7 +276,18 @@ new Chart(document.getElementById('yearChart'), {
     type:'bar',
     data:{
         labels:<?= json_encode(array_keys($yearData)) ?>,
-        datasets:[{data:<?= json_encode(array_values($yearData)) ?>}]
+        datasets:[{
+            label:'Total Project',
+            data:<?= json_encode(array_values($yearData)) ?>
+        }]
+    },
+    options:{
+        plugins:{
+            legend:{
+                display:true,
+                position:'bottom'
+            }
+        }
     }
 });
 
@@ -269,13 +301,23 @@ document.getElementById('yearValueModal').addEventListener('shown.bs.modal', fun
         data:{
             labels:<?= json_encode(array_keys($yearAmountData)) ?>,
             datasets:[{
+                label:'Total Earning',
                 data:<?= json_encode(array_values($yearAmountData)) ?>
             }]
+        },
+        options:{
+            plugins:{
+                legend:{
+                    display:true,
+                    position:'bottom'
+                }
+            }
         }
     });
 
 });
 </script>
+
 <script>
 function toggleSidebar(){
     const sidebar = document.getElementById("sidebar");
@@ -287,5 +329,6 @@ function toggleSidebar(){
     btn.classList.toggle("active");
 }
 </script>
+
 </body>
 </html>

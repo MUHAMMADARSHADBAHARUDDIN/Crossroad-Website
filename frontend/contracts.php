@@ -283,7 +283,7 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
         if($canEditThisContract){
             $actionsHtml .= '
                 <a href="contract_edit.php?id=' . contractEscape($row['no']) . '"
-                   class="btn btn-sm btn-primary">
+                   class="btn btn-sm btn-primary contract-action-btn">
                     Edit
                 </a>
             ';
@@ -292,7 +292,7 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
         if($canDeleteThisContract){
             $actionsHtml .= '
                 <a href="../backend/contract_delete.php?id=' . contractEscape($row['no']) . '"
-                   class="btn btn-sm btn-danger"
+                   class="btn btn-sm btn-danger contract-action-btn"
                    onclick="return confirm(\'Delete this contract?\')">
                     Delete
                 </a>
@@ -364,12 +364,162 @@ if(isset($_GET['search'])){
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
 
 <style>
+html,
+body{
+    overflow-x:hidden !important;
+}
+
+.main{
+    max-width:100%;
+    overflow-x:hidden !important;
+}
+
+/* ✅ RESPONSIVE CONTRACT PAGE */
+.contract-page-wrap{
+    width:100%;
+    max-width:100%;
+}
+
+.contract-search-card{
+    background:#fff;
+    border-radius:14px;
+    padding:14px;
+    box-shadow:0 4px 14px rgba(0,0,0,0.06);
+    margin-bottom:14px;
+}
+
+.contract-table-card{
+    background:#fff;
+    border-radius:14px;
+    box-shadow:0 4px 14px rgba(0,0,0,0.06);
+    padding:0;
+    overflow:hidden;
+}
+
+.contract-table-responsive{
+    width:100%;
+    max-width:100%;
+    overflow-x:hidden !important;
+}
+
+/* ✅ DESKTOP TABLE BALANCE */
+#contractsTable{
+    width:100% !important;
+    table-layout:fixed;
+    margin-bottom:0 !important;
+}
+
+#contractsTable thead{
+    background:#212529;
+    color:#fff;
+}
+
+#contractsTable th,
+#contractsTable td{
+    vertical-align:middle;
+    white-space:normal !important;
+    overflow-wrap:anywhere;
+    word-break:break-word;
+    font-size:14px;
+}
+
+#contractsTable th:nth-child(1),
+#contractsTable td:nth-child(1){
+    width:6%;
+}
+
+#contractsTable th:nth-child(2),
+#contractsTable td:nth-child(2){
+    width:7%;
+}
+
+#contractsTable th:nth-child(3),
+#contractsTable td:nth-child(3){
+    width:24%;
+}
+
+#contractsTable th:nth-child(4),
+#contractsTable td:nth-child(4){
+    width:17%;
+}
+
+#contractsTable th:nth-child(5),
+#contractsTable td:nth-child(5){
+    width:11%;
+}
+
+#contractsTable th:nth-child(6),
+#contractsTable td:nth-child(6){
+    width:9%;
+}
+
+#contractsTable th:nth-child(7),
+#contractsTable td:nth-child(7){
+    width:9%;
+}
+
+#contractsTable th:nth-child(8),
+#contractsTable td:nth-child(8){
+    width:10%;
+}
+
+#contractsTable th:nth-child(9),
+#contractsTable td:nth-child(9){
+    width:10%;
+}
+
 #contractsTable tbody tr{
     cursor:pointer;
+    transition:0.2s ease;
 }
 
 #contractsTable tbody tr:hover{
-    background:#f8fbff;
+    background:#fff3cd !important;
+    transform:scale(1.003);
+}
+
+.contract-action-btn{
+    margin:2px;
+    white-space:nowrap;
+}
+
+#contractsTable td:nth-child(9){
+    line-height:2;
+}
+
+/* ✅ DATATABLE FOOTER DYNAMIC */
+#contractsTable_wrapper{
+    width:100%;
+    max-width:100%;
+    overflow-x:hidden !important;
+}
+
+#contractsTable_wrapper .dataTables_info{
+    padding:14px 16px !important;
+    font-size:14px;
+    color:#6c757d;
+}
+
+#contractsTable_wrapper .dataTables_paginate{
+    padding:10px 16px !important;
+}
+
+#contractsTable_wrapper .pagination{
+    flex-wrap:wrap;
+    justify-content:flex-end;
+    gap:4px;
+}
+
+#contractsTable_wrapper .page-link{
+    border-radius:8px;
+    border:none;
+    margin:1px;
+}
+
+#contractsTable_wrapper .page-item.active .page-link{
+    background:#ffc107;
+    color:#000;
+    font-weight:600;
 }
 
 /* ✅ ONLY STATUS HEADER FILTER IS CLICKABLE */
@@ -378,7 +528,7 @@ if(isset($_GET['search'])){
     display:inline-flex;
     align-items:center;
     gap:5px;
-    color:#0d6efd;
+    color:#ffc107;
 }
 
 .header-filter:hover{
@@ -424,6 +574,167 @@ if(isset($_GET['search'])){
     padding:8px 10px;
     margin-bottom:12px;
 }
+
+.processing-text{
+    font-size:14px;
+    color:#0d6efd;
+}
+
+/* ✅ TABLET */
+@media(max-width: 1200px){
+    #contractsTable th,
+    #contractsTable td{
+        font-size:13px;
+        padding:9px 7px;
+    }
+
+    .contract-action-btn{
+        display:inline-block;
+        margin-bottom:4px;
+    }
+}
+
+/* ✅ MOBILE: TABLE BECOMES CARD STYLE */
+@media(max-width: 768px){
+
+    .main{
+        padding-left:14px !important;
+        padding-right:14px !important;
+    }
+
+    .contract-search-card{
+        padding:12px;
+    }
+
+    .contract-search-card .input-group{
+        flex-direction:column;
+        gap:8px;
+    }
+
+    .contract-search-card .input-group input,
+    .contract-search-card .input-group button{
+        width:100%;
+        border-radius:8px !important;
+    }
+
+    .contract-table-card{
+        background:transparent;
+        box-shadow:none;
+        overflow:visible;
+    }
+
+    #contractsTable,
+    #contractsTable thead,
+    #contractsTable tbody,
+    #contractsTable th,
+    #contractsTable td,
+    #contractsTable tr{
+        display:block;
+        width:100% !important;
+    }
+
+    #contractsTable thead{
+        display:none;
+    }
+
+    #contractsTable{
+        table-layout:auto;
+        border-collapse:separate !important;
+        border-spacing:0 12px !important;
+    }
+
+    #contractsTable tbody tr{
+        background:#fff;
+        border:1px solid #e5e7eb;
+        border-radius:14px;
+        padding:12px;
+        margin-bottom:12px;
+        box-shadow:0 4px 14px rgba(0,0,0,0.06);
+        transform:none !important;
+    }
+
+    #contractsTable tbody tr:hover{
+        background:#fff8e1 !important;
+        transform:none !important;
+    }
+
+    #contractsTable td{
+        border:none !important;
+        border-bottom:1px solid #f1f1f1 !important;
+        padding:9px 2px !important;
+        max-width:100% !important;
+        font-size:14px;
+    }
+
+    #contractsTable td:last-child{
+        border-bottom:none !important;
+    }
+
+    #contractsTable td::before{
+        content:attr(data-label);
+        display:block;
+        font-weight:700;
+        color:#555;
+        margin-bottom:3px;
+        font-size:12px;
+        text-transform:uppercase;
+        letter-spacing:0.3px;
+    }
+
+    #contractsTable td:nth-child(3){
+        font-size:15px;
+        font-weight:600;
+        color:#212529;
+    }
+
+    #contractsTable td:nth-child(9){
+        display:flex;
+        flex-wrap:wrap;
+        gap:6px;
+        align-items:center;
+    }
+
+    #contractsTable td:nth-child(9)::before{
+        flex:0 0 100%;
+        width:100%;
+    }
+
+    .contract-action-btn{
+        flex:1 1 auto;
+        min-width:80px;
+        margin:0;
+    }
+
+    #contractsTable_wrapper .dataTables_info,
+    #contractsTable_wrapper .dataTables_paginate{
+        width:100%;
+        text-align:center !important;
+        padding:8px !important;
+    }
+
+    #contractsTable_wrapper .pagination{
+        justify-content:center;
+    }
+}
+
+/* ✅ VERY SMALL PHONE */
+@media(max-width: 430px){
+    h2{
+        font-size:22px;
+    }
+
+    .contract-filter-hint{
+        font-size:12px;
+    }
+
+    #contractsTable td{
+        font-size:13px;
+    }
+
+    .modal-dialog{
+        margin:10px;
+    }
+}
 </style>
 </head>
 
@@ -434,9 +745,12 @@ if(isset($_GET['search'])){
 
 <div class="main">
 
+<div class="contract-page-wrap">
+
 <h2 class="mb-3">Contracts</h2>
 
-<form method="GET" class="mb-2" onsubmit="return false;">
+<div class="">
+<form method="GET" class="mb-0" onsubmit="return false;">
     <div class="input-group">
         <input
             type="text"
@@ -454,8 +768,9 @@ if(isset($_GET['search'])){
     </div>
 </form>
 
-<div class="contract-filter-hint mb-2">
-    Use comma to search multiple terms, example: <b>2026, active</b>. Click the blue Status header to filter status.
+<div class="contract-filter-hint mt-2">
+    Use comma to search multiple terms, example: <b>2026, active</b>. Click the yellow Status header to filter status.
+</div>
 </div>
 
 <div id="activeFilterBox" class="active-filter-box"></div>
@@ -466,7 +781,10 @@ if(isset($_GET['search'])){
 </a>
 <?php endif; ?>
 
-<table id="contractsTable" class="table table-hover table-striped">
+<div class="contract-table-card">
+<div class="contract-table-responsive">
+
+<table id="contractsTable" class="table table-hover table-striped align-middle">
 
 <thead>
 <tr>
@@ -491,6 +809,11 @@ if(isset($_GET['search'])){
 <tbody></tbody>
 
 </table>
+
+</div>
+</div>
+
+</div>
 
 </div>
 
@@ -575,12 +898,18 @@ $(document).ready(function(){
         processing: true,
         serverSide: true,
         pageLength: 10,
+        autoWidth: false,
         searching: true,
         search: {
             search: initialSearch
         },
         order: [[0, "desc"]],
-        dom: "rtip",
+        dom:
+            "t" +
+            "<'contract-dt-footer d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3'ip>",
+        language: {
+            processing: "<span class='processing-text'><i class='fa fa-spinner fa-spin'></i> Loading contracts...</span>"
+        },
         ajax: {
             url: "contracts.php",
             type: "GET",
@@ -590,18 +919,19 @@ $(document).ready(function(){
             }
         },
         columns: [
-            { data: "no" },
-            { data: "year" },
-            { data: "project_name" },
-            { data: "owner" },
-            { data: "status" },
-            { data: "start" },
-            { data: "end" },
-            { data: "amount" },
+            { data: "no", className: "contract-col-no" },
+            { data: "year", className: "contract-col-year" },
+            { data: "project_name", className: "contract-col-project" },
+            { data: "owner", className: "contract-col-owner" },
+            { data: "status", className: "contract-col-status" },
+            { data: "start", className: "contract-col-start" },
+            { data: "end", className: "contract-col-end" },
+            { data: "amount", className: "contract-col-amount" },
             {
                 data: "actions",
                 orderable: false,
-                searchable: false
+                searchable: false,
+                className: "contract-col-actions"
             }
         ],
         createdRow: function(row, data){
@@ -619,8 +949,26 @@ $(document).ready(function(){
             $(row).attr("data-end", data.meta.end);
             $(row).attr("data-status", data.meta.status);
             $(row).attr("data-amount", data.meta.amount);
+
+            $("td:eq(0)", row).attr("data-label", "No");
+            $("td:eq(1)", row).attr("data-label", "Year");
+            $("td:eq(2)", row).attr("data-label", "Project Name");
+            $("td:eq(3)", row).attr("data-label", "Owner");
+            $("td:eq(4)", row).attr("data-label", "Status");
+            $("td:eq(5)", row).attr("data-label", "Start");
+            $("td:eq(6)", row).attr("data-label", "End");
+            $("td:eq(7)", row).attr("data-label", "Amount");
+            $("td:eq(8)", row).attr("data-label", "Actions");
         }
     });
+
+    function adjustContractTable(){
+        setTimeout(function(){
+            contractsTable.columns.adjust();
+        }, 150);
+    }
+
+    $(window).on("resize", adjustContractTable);
 
     function updateActiveFilterBox(){
         let filters = [];
@@ -783,6 +1131,7 @@ $(document).ready(function(){
     });
 
     updateActiveFilterBox();
+    adjustContractTable();
 
 });
 </script>
