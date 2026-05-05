@@ -24,25 +24,14 @@ if(isset($_GET['search'])){
     $search = trim($_GET['search']);
 }
 
-$params = [];
-$types = "";
-
-$whereSql = buildCommaSearchWhere(
-    $search,
-    [
-        "server_name",
-        "machine_type",
-        "brand",
-        "serial_number",
-        "location",
-        "status",
-        "tester",
-        "date_testing"
-    ],
-    $params,
-    $types
-);
-
+/*
+    ✅ SAME STYLE AS ASSET INVENTORY / STOCK OUT
+    - No page refresh while searching
+    - DataTables pagination
+    - Comma search supported
+    - No left/right scrollbar
+    - Search also includes serial, location, tester, status, date testing
+*/
 $sql = "
 SELECT
     server_name,
@@ -50,9 +39,13 @@ SELECT
     brand,
     COUNT(*) AS total_qty,
     SUM(CASE WHEN status = 'Okay' THEN 1 ELSE 0 END) AS ok_qty,
-    SUM(CASE WHEN status = 'Faulty' THEN 1 ELSE 0 END) AS faulty_qty
+    SUM(CASE WHEN status = 'Faulty' THEN 1 ELSE 0 END) AS faulty_qty,
+    GROUP_CONCAT(serial_number SEPARATOR ' ') AS serial_numbers,
+    GROUP_CONCAT(location SEPARATOR ' ') AS locations,
+    GROUP_CONCAT(status SEPARATOR ' ') AS statuses,
+    GROUP_CONCAT(tester SEPARATOR ' ') AS testers,
+    GROUP_CONCAT(date_testing SEPARATOR ' ') AS testing_dates
 FROM server_inventory
-$whereSql
 GROUP BY server_name, machine_type, brand
 ORDER BY server_name ASC
 ";
@@ -61,10 +54,6 @@ $stmt = $mysqli->prepare($sql);
 
 if(!$stmt){
     die("SQL Error: " . $mysqli->error);
-}
-
-if(!empty($params)){
-    $stmt->bind_param($types, ...$params);
 }
 
 $stmt->execute();
@@ -77,9 +66,105 @@ $result = $stmt->get_result();
 <title>Server Inventory</title>
 
 <link rel="stylesheet" href="style.css">
+
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+
 <script src="https://code.jquery.com/jquery-3.7.1.js"></script>
+
+<style>
+html, body{
+    overflow-x:hidden !important;
+}
+
+.main{
+    overflow-x:hidden !important;
+    max-width:100%;
+}
+
+.table-responsive{
+    overflow-x:hidden !important;
+    width:100%;
+}
+
+#serverInventoryTable{
+    width:100% !important;
+    table-layout:fixed;
+}
+
+#serverInventoryTable th,
+#serverInventoryTable td{
+    white-space:normal !important;
+    word-break:break-word;
+    overflow-wrap:anywhere;
+    vertical-align:middle;
+}
+
+#serverInventoryTable tbody tr{
+    cursor:pointer;
+}
+
+#serverInventoryTable tbody tr:hover{
+    background:#fff3cd !important;
+}
+
+#serverInventoryTable_wrapper{
+    width:100%;
+    overflow-x:hidden !important;
+}
+
+#serverInventoryTable_wrapper .row{
+    margin-left:0 !important;
+    margin-right:0 !important;
+}
+
+#serverInventoryTable_wrapper .dataTables_length{
+    padding-left:0;
+}
+
+#serverInventoryTable_wrapper .dataTables_info{
+    padding-top:0;
+    font-size:14px;
+    color:#6c757d;
+}
+
+#serverInventoryTable_wrapper .dataTables_paginate{
+    padding-top:0;
+}
+
+#serverInventoryTable_wrapper .page-item .page-link{
+    border-radius:8px;
+    margin:0 3px;
+    border:none;
+}
+
+#serverInventoryTable_wrapper .page-item.active .page-link{
+    background-color:#ffc107;
+    color:#000;
+}
+
+.server-search-hint{
+    font-size:13px;
+    color:#6c757d;
+    margin-top:-8px;
+    margin-bottom:15px;
+}
+
+@media(max-width:768px){
+    #serverInventoryTable_wrapper .server-bottom-row{
+        gap:10px;
+    }
+
+    #serverInventoryTable_wrapper .dataTables_info,
+    #serverInventoryTable_wrapper .dataTables_paginate{
+        text-align:left !important;
+        justify-content:flex-start !important;
+    }
+}
+</style>
+
 </head>
 
 <body>
@@ -91,14 +176,14 @@ $result = $stmt->get_result();
 
 <h2 class="mb-4">Server Inventory</h2>
 
-<form method="GET" class="mb-3" onsubmit="return false;">
+<form method="GET" class="mb-2" onsubmit="return false;">
     <div class="input-group">
         <input
             type="text"
             id="liveServerSearch"
             name="search"
             class="form-control"
-            placeholder="Search server..."
+            placeholder="Search server... Example: Dell, Okay"
             value="<?= htmlspecialchars($search) ?>"
             autocomplete="off"
         >
@@ -106,7 +191,6 @@ $result = $stmt->get_result();
         <button type="button" class="btn btn-warning">
             <i class="fa fa-search"></i>
         </button>
-
     </div>
 </form>
 
@@ -115,6 +199,8 @@ $result = $stmt->get_result();
     <i class="fa fa-plus"></i> Add Server
 </a>
 <?php endif; ?>
+
+<div class="table-responsive">
 
 <table class="table table-striped table-hover" id="serverInventoryTable">
 <thead>
@@ -135,36 +221,36 @@ $result = $stmt->get_result();
 $statusSearchText = "";
 
 if(($row['ok_qty'] ?? 0) > 0){
-    $statusSearchText .= " okay";
+    $statusSearchText .= " okay active";
 }
 
 if(($row['faulty_qty'] ?? 0) > 0){
     $statusSearchText .= " faulty";
 }
+
+$searchText = strtolower(
+    ($row['server_name'] ?? '') . ' ' .
+    ($row['machine_type'] ?? '') . ' ' .
+    ($row['brand'] ?? '') . ' ' .
+    ($row['serial_numbers'] ?? '') . ' ' .
+    ($row['locations'] ?? '') . ' ' .
+    ($row['statuses'] ?? '') . ' ' .
+    ($row['testers'] ?? '') . ' ' .
+    ($row['testing_dates'] ?? '') . ' ' .
+    $statusSearchText . ' ' .
+    ($row['total_qty'] ?? '')
+);
 ?>
 
 <tr
-data-search="<?=
-htmlspecialchars(
-    strtolower(
-        ($row['server_name'] ?? '') . ' ' .
-        ($row['machine_type'] ?? '') . ' ' .
-        ($row['brand'] ?? '') . ' ' .
-        ($row['serial_numbers'] ?? '') . ' ' .
-        $statusSearchText . ' ' .
-        ($row['total_qty'] ?? '')
-    ),
-    ENT_QUOTES,
-    'UTF-8'
-);
-?>"
+data-search="<?= htmlspecialchars($searchText, ENT_QUOTES, 'UTF-8'); ?>"
 onclick="viewServer(<?= htmlspecialchars(json_encode($row['server_name'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>, <?= htmlspecialchars(json_encode($row['machine_type'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>)"
-style="cursor:pointer;"
 >
 
 <td><?= htmlspecialchars($row['server_name'] ?? ''); ?></td>
 <td><?= htmlspecialchars($row['machine_type'] ?? ''); ?></td>
 <td><?= htmlspecialchars($row['brand'] ?? ''); ?></td>
+
 <td>
     <?php if($row['ok_qty'] > 0): ?>
         <span class="badge bg-success"><?= htmlspecialchars($row['ok_qty']) ?> Okay</span>
@@ -174,6 +260,7 @@ style="cursor:pointer;"
         <span class="badge bg-danger"><?= htmlspecialchars($row['faulty_qty']) ?> Faulty</span>
     <?php endif; ?>
 </td>
+
 <td><?= htmlspecialchars($row['total_qty']); ?></td>
 
 </tr>
@@ -182,6 +269,8 @@ style="cursor:pointer;"
 
 </tbody>
 </table>
+
+</div>
 
 </div>
 
@@ -241,6 +330,9 @@ style="cursor:pointer;"
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
 
 <script>
 function viewServer(name, type){
@@ -308,32 +400,6 @@ function viewServerDetail(id){
 </script>
 
 <script>
-const liveServerSearch = document.getElementById("liveServerSearch");
-const clearServerSearch = document.getElementById("clearServerSearch");
-
-function filterServerTable(){
-    const keyword = liveServerSearch.value.toLowerCase().trim();
-    const rows = document.querySelectorAll("#serverInventoryTable tbody tr[data-search]");
-
-    rows.forEach(row => {
-        const text = row.dataset.search || "";
-        row.style.display = text.includes(keyword) ? "" : "none";
-    });
-}
-
-liveServerSearch.addEventListener("input", filterServerTable);
-
-clearServerSearch.addEventListener("click", function(){
-    liveServerSearch.value = "";
-    filterServerTable();
-
-    if(window.location.search){
-        window.location.href = "server_inventory.php";
-    }
-});
-</script>
-
-<script>
 function toggleSidebar(){
     const sidebar = document.getElementById("sidebar");
     const main = document.querySelector(".main");
@@ -343,6 +409,93 @@ function toggleSidebar(){
     main.classList.toggle("expanded");
     btn.classList.toggle("active");
 }
+</script>
+
+<script>
+let serverInventoryTable;
+
+/*
+    ✅ DATATABLE PAGINATION + LIVE SEARCH
+    - No page refresh
+    - No left/right scrollbar
+    - Info bottom left
+    - Page numbers bottom right
+    - Comma search supported
+*/
+$.fn.dataTable.ext.search.push(function(settings, data, dataIndex){
+    if(settings.nTable.id !== "serverInventoryTable"){
+        return true;
+    }
+
+    const input = document.getElementById("liveServerSearch");
+    const keyword = input ? input.value.toLowerCase().trim() : "";
+
+    if(keyword === ""){
+        return true;
+    }
+
+    const terms = keyword
+        .split(",")
+        .map(term => term.trim())
+        .filter(term => term !== "");
+
+    const rowNode = settings.aoData[dataIndex].nTr;
+    const searchText = rowNode ? (rowNode.getAttribute("data-search") || "") : "";
+
+    for(let i = 0; i < terms.length; i++){
+        if(!searchText.includes(terms[i])){
+            return false;
+        }
+    }
+
+    return true;
+});
+
+$(document).ready(function(){
+
+    serverInventoryTable = $("#serverInventoryTable").DataTable({
+        pageLength: 10,
+        lengthMenu: [10, 25, 50, 100],
+        ordering: true,
+        searching: true,
+        autoWidth: false,
+        scrollX: false,
+        order: [[0, "asc"]],
+        dom:
+            "<'row mb-2 align-items-center'<'col-md-6'l>>" +
+            "rt" +
+            "<'row mt-3 align-items-center server-bottom-row'<'col-md-6'i><'col-md-6 d-flex justify-content-end'p>>",
+        language: {
+            zeroRecords: "No records found",
+            lengthMenu: "Show _MENU_ entries",
+            info: "Showing _START_ to _END_ of _TOTAL_ server records"
+        },
+        columnDefs: [
+            { width: "26%", targets: 0 },
+            { width: "22%", targets: 1 },
+            { width: "18%", targets: 2 },
+            { width: "22%", targets: 3 },
+            { width: "12%", targets: 4 }
+        ]
+    });
+
+    $("#liveServerSearch").on("input", function(){
+        serverInventoryTable.draw();
+
+        let keyword = this.value.trim();
+        let newUrl = "server_inventory.php";
+
+        if(keyword !== ""){
+            newUrl += "?search=" + encodeURIComponent(keyword);
+        }
+
+        if(window.history.replaceState){
+            window.history.replaceState({}, document.title, newUrl);
+        }
+    });
+
+    serverInventoryTable.draw();
+});
 </script>
 
 </body>

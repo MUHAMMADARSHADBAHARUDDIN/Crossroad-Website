@@ -27,11 +27,14 @@ if(isset($_GET['search'])){
 }
 
 /*
-    ✅ LIVE SEARCH FIX
-    Do NOT filter SQL here.
-    Load all grouped asset rows first, then JavaScript filters instantly without refresh.
-    GROUP_CONCAT is added so live search can also find serial numbers.
+    ✅ TABLE PAGINATION FIX
+    - DataTables handles next page / previous page
+    - Live search works without refresh
+    - Comma search supported: dell, storage
 */
+
+$mysqli->query("SET SESSION group_concat_max_len = 100000");
+
 $stmt = $mysqli->prepare("
 SELECT
     part_number,
@@ -63,7 +66,100 @@ $result = $stmt->get_result();
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+
 <script src="https://code.jquery.com/jquery-3.7.1.js"></script>
+
+<style>
+html, body{
+    overflow-x:hidden !important;
+}
+
+.main{
+    overflow-x:hidden !important;
+    max-width:100%;
+}
+
+.table-responsive{
+    overflow-x:hidden !important;
+    width:100%;
+}
+
+#assetInventoryTable{
+    width:100% !important;
+    table-layout:fixed;
+}
+
+#assetInventoryTable th,
+#assetInventoryTable td{
+    white-space:normal !important;
+    word-break:break-word;
+    overflow-wrap:anywhere;
+    vertical-align:middle;
+}
+
+#assetInventoryTable tbody tr{
+    cursor:pointer;
+}
+
+#assetInventoryTable tbody tr:hover{
+    background:#fff3cd !important;
+}
+
+#assetInventoryTable_wrapper{
+    width:100%;
+    overflow-x:hidden !important;
+}
+
+#assetInventoryTable_wrapper .row{
+    margin-left:0 !important;
+    margin-right:0 !important;
+}
+
+#assetInventoryTable_wrapper .dataTables_length{
+    padding-left:0;
+}
+
+#assetInventoryTable_wrapper .dataTables_info{
+    padding-top:0;
+    font-size:14px;
+    color:#6c757d;
+}
+
+#assetInventoryTable_wrapper .dataTables_paginate{
+    padding-top:0;
+}
+
+#assetInventoryTable_wrapper .page-item .page-link{
+    border-radius:8px;
+    margin:0 3px;
+    border:none;
+}
+
+#assetInventoryTable_wrapper .page-item.active .page-link{
+    background-color:#ffc107;
+    color:#000;
+}
+
+.asset-search-hint{
+    font-size:13px;
+    color:#6c757d;
+    margin-top:-8px;
+    margin-bottom:15px;
+}
+
+@media(max-width:768px){
+    #assetInventoryTable_wrapper .asset-bottom-row{
+        gap:10px;
+    }
+
+    #assetInventoryTable_wrapper .dataTables_info,
+    #assetInventoryTable_wrapper .dataTables_paginate{
+        text-align:left !important;
+        justify-content:flex-start !important;
+    }
+}
+</style>
 </head>
 
 <body>
@@ -75,7 +171,7 @@ $result = $stmt->get_result();
 
 <h2 class="mb-4">Asset Inventory</h2>
 
-<form method="GET" class="mb-3" onsubmit="return false;">
+<form method="GET" class="mb-2" onsubmit="return false;">
     <div class="input-group">
         <input
             type="text"
@@ -99,6 +195,7 @@ $result = $stmt->get_result();
 </a>
 <?php endif; ?>
 
+<div class="table-responsive">
 <table class="table table-striped table-hover" id="assetInventoryTable">
 <thead>
 <tr>
@@ -128,7 +225,6 @@ $searchText = strtolower(
 <tr
 data-search="<?= htmlspecialchars($searchText, ENT_QUOTES, 'UTF-8'); ?>"
 onclick="viewSerial(<?= htmlspecialchars(json_encode($row['part_number'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>)"
-style="cursor:pointer;"
 >
 
 <td><?php echo htmlspecialchars($row['part_number'] ?? ''); ?></td>
@@ -140,12 +236,9 @@ style="cursor:pointer;"
 
 <?php endwhile; ?>
 
-<tr id="noAssetResultRow" style="display:none;">
-    <td colspan="4" class="text-center text-muted">No records found</td>
-</tr>
-
 </tbody>
 </table>
+</div>
 
 </div>
 
@@ -227,6 +320,9 @@ style="cursor:pointer;"
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
 
 <script>
 function viewSerial(part){
@@ -316,77 +412,86 @@ function viewDetail(id){
 </script>
 
 <script>
+let assetTable;
+
 /*
-    ✅ LIVE SEARCH WITHOUT REFRESH
-    Supports normal search:
-    dell
-
-    Supports comma search:
-    dell, storage
-
-    Meaning:
-    row must contain "dell" AND "storage"
+    ✅ DATATABLE PAGINATION + LIVE SEARCH
+    - No left/right scrollbar
+    - Info shows bottom left
+    - Page number shows bottom right
+    - Comma search supported
 */
-const liveAssetSearch = document.getElementById("liveAssetSearch");
-const clearAssetSearch = document.getElementById("clearAssetSearch");
-const noAssetResultRow = document.getElementById("noAssetResultRow");
+$.fn.dataTable.ext.search.push(function(settings, data, dataIndex){
+    if(settings.nTable.id !== "assetInventoryTable"){
+        return true;
+    }
 
-function filterAssetTable(){
-    const keyword = liveAssetSearch.value.toLowerCase().trim();
+    const input = document.getElementById("liveAssetSearch");
+    const keyword = input ? input.value.toLowerCase().trim() : "";
+
+    if(keyword === ""){
+        return true;
+    }
+
     const terms = keyword
         .split(",")
         .map(term => term.trim())
         .filter(term => term !== "");
 
-    const rows = document.querySelectorAll("#assetInventoryTable tbody tr[data-search]");
+    const rowNode = settings.aoData[dataIndex].nTr;
+    const searchText = rowNode ? (rowNode.getAttribute("data-search") || "") : "";
 
-    let visibleCount = 0;
+    for(let i = 0; i < terms.length; i++){
+        if(!searchText.includes(terms[i])){
+            return false;
+        }
+    }
 
-    rows.forEach(row => {
-        const text = row.dataset.search || "";
+    return true;
+});
 
-        let match = true;
+$(document).ready(function(){
 
-        terms.forEach(term => {
-            if(!text.includes(term)){
-                match = false;
-            }
-        });
+    assetTable = $("#assetInventoryTable").DataTable({
+        pageLength: 10,
+        lengthMenu: [10, 25, 50, 100],
+        ordering: true,
+        searching: true,
+        autoWidth: false,
+        scrollX: false,
+        dom:
+            "<'row mb-2 align-items-center'<'col-md-6'l>>" +
+            "rt" +
+            "<'row mt-3 align-items-center asset-bottom-row'<'col-md-6'i><'col-md-6 d-flex justify-content-end'p>>",
+        language: {
+            zeroRecords: "No records found",
+            lengthMenu: "Show _MENU_ entries",
+            info: "Showing _START_ to _END_ of _TOTAL_ assets"
+        },
+        columnDefs: [
+            { width: "20%", targets: 0 },
+            { width: "18%", targets: 1 },
+            { width: "47%", targets: 2 },
+            { width: "15%", targets: 3 }
+        ]
+    });
 
-        if(match){
-            row.style.display = "";
-            visibleCount++;
-        }else{
-            row.style.display = "none";
+    $("#liveAssetSearch").on("input", function(){
+        assetTable.draw();
+
+        let keyword = this.value.trim();
+        let newUrl = "asset_inventory.php";
+
+        if(keyword !== ""){
+            newUrl += "?search=" + encodeURIComponent(keyword);
+        }
+
+        if(window.history.replaceState){
+            window.history.replaceState({}, document.title, newUrl);
         }
     });
 
-    noAssetResultRow.style.display = visibleCount === 0 ? "" : "none";
-
-    let newUrl = "asset_inventory.php";
-
-    if(keyword !== ""){
-        newUrl += "?search=" + encodeURIComponent(liveAssetSearch.value.trim());
-    }
-
-    if(window.history.replaceState){
-        window.history.replaceState({}, document.title, newUrl);
-    }
-}
-
-liveAssetSearch.addEventListener("input", filterAssetTable);
-
-clearAssetSearch.addEventListener("click", function(){
-    liveAssetSearch.value = "";
-    filterAssetTable();
-
-    if(window.history.replaceState){
-        window.history.replaceState({}, document.title, "asset_inventory.php");
-    }
-});
-
-document.addEventListener("DOMContentLoaded", function(){
-    filterAssetTable();
+    assetTable.draw();
 });
 </script>
 

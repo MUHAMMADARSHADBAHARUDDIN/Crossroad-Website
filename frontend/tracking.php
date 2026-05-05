@@ -85,6 +85,24 @@ function buildTrackingSearchWhere($search, &$params, &$types){
     return "";
 }
 
+function cleanLogIds($idsRaw){
+    if(!is_array($idsRaw)){
+        $idsRaw = explode(",", (string)$idsRaw);
+    }
+
+    $ids = [];
+
+    foreach($idsRaw as $id){
+        $id = (int)$id;
+
+        if($id > 0){
+            $ids[] = $id;
+        }
+    }
+
+    return array_values(array_unique($ids));
+}
+
 /* =========================
    DELETE SINGLE LOG AJAX
 ========================= */
@@ -158,6 +176,168 @@ Time: $time";
 }
 
 /* =========================
+   DELETE MULTIPLE LOGS AJAX
+========================= */
+if($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST['action'] ?? '') === "delete_selected_logs"){
+
+    header("Content-Type: text/plain");
+
+    $ids = cleanLogIds($_POST['ids'] ?? []);
+
+    if(empty($ids)){
+        exit("No logs selected");
+    }
+
+    $placeholders = implode(",", array_fill(0, count($ids), "?"));
+    $types = str_repeat("i", count($ids));
+
+    $checkStmt = $mysqli->prepare("
+        SELECT id, username, role, action_type, log_time
+        FROM activity_logs
+        WHERE id IN ($placeholders)
+        ORDER BY id ASC
+    ");
+
+    if(!$checkStmt){
+        exit("Prepare failed: " . $mysqli->error);
+    }
+
+    bindTrackingParams($checkStmt, $types, $ids);
+    $checkStmt->execute();
+    $checkResult = $checkStmt->get_result();
+
+    $existingLogs = [];
+    $existingIds = [];
+
+    while($row = $checkResult->fetch_assoc()){
+        $existingLogs[] = $row;
+        $existingIds[] = (int)$row['id'];
+    }
+
+    if(empty($existingIds)){
+        exit("Selected logs not found");
+    }
+
+    $deletePlaceholders = implode(",", array_fill(0, count($existingIds), "?"));
+    $deleteTypes = str_repeat("i", count($existingIds));
+
+    $deleteStmt = $mysqli->prepare("
+        DELETE FROM activity_logs
+        WHERE id IN ($deletePlaceholders)
+    ");
+
+    if(!$deleteStmt){
+        exit("Prepare failed: " . $mysqli->error);
+    }
+
+    bindTrackingParams($deleteStmt, $deleteTypes, $existingIds);
+
+    if($deleteStmt->execute()){
+
+        $deletedCount = $deleteStmt->affected_rows;
+        $ip = $_SERVER['REMOTE_ADDR'];
+        $time = date("Y-m-d H:i:s");
+
+        $idPreview = implode(", ", array_slice($existingIds, 0, 50));
+
+        if(count($existingIds) > 50){
+            $idPreview .= " ...";
+        }
+
+        $description = "Admin [$username] deleted multiple activity logs.
+Deleted Count: $deletedCount
+Deleted Log IDs: $idPreview
+IP Address: $ip
+Time: $time";
+
+        logActivity(
+            $mysqli,
+            $username,
+            $role,
+            "DELETE MULTIPLE ACTIVITY LOGS",
+            $description
+        );
+
+        exit("success|$deletedCount");
+    }
+
+    exit("Delete failed: " . $mysqli->error);
+}
+
+/* =========================
+   DELETE OLD LOGS AJAX
+========================= */
+if($_SERVER["REQUEST_METHOD"] === "POST" && ($_POST['action'] ?? '') === "delete_old_logs"){
+
+    header("Content-Type: text/plain");
+
+    $days = isset($_POST['days']) ? (int)$_POST['days'] : 0;
+    $allowedDays = [30, 60, 90];
+
+    if(!in_array($days, $allowedDays, true)){
+        exit("Invalid day option");
+    }
+
+    $cutoffDate = date("Y-m-d H:i:s", strtotime("-$days days"));
+
+    $countStmt = $mysqli->prepare("
+        SELECT COUNT(*) AS total
+        FROM activity_logs
+        WHERE log_time < ?
+    ");
+
+    if(!$countStmt){
+        exit("Prepare failed: " . $mysqli->error);
+    }
+
+    $countStmt->bind_param("s", $cutoffDate);
+    $countStmt->execute();
+    $countResult = $countStmt->get_result();
+    $deleteCount = (int)$countResult->fetch_assoc()['total'];
+
+    if($deleteCount <= 0){
+        exit("success|0");
+    }
+
+    $deleteStmt = $mysqli->prepare("
+        DELETE FROM activity_logs
+        WHERE log_time < ?
+    ");
+
+    if(!$deleteStmt){
+        exit("Prepare failed: " . $mysqli->error);
+    }
+
+    $deleteStmt->bind_param("s", $cutoffDate);
+
+    if($deleteStmt->execute()){
+
+        $deletedCount = $deleteStmt->affected_rows;
+        $ip = $_SERVER['REMOTE_ADDR'];
+        $time = date("Y-m-d H:i:s");
+
+        $description = "Admin [$username] deleted old activity logs.
+Delete Rule: Older than $days days
+Cutoff Date: $cutoffDate
+Deleted Count: $deletedCount
+IP Address: $ip
+Time: $time";
+
+        logActivity(
+            $mysqli,
+            $username,
+            $role,
+            "DELETE OLD ACTIVITY LOGS",
+            $description
+        );
+
+        exit("success|$deletedCount");
+    }
+
+    exit("Delete failed: " . $mysqli->error);
+}
+
+/* =========================
    AJAX SERVER-SIDE DATATABLE
 ========================= */
 if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
@@ -192,7 +372,8 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
         2 => "role",
         3 => "action_type",
         4 => "description",
-        5 => "log_time"
+        5 => "log_time",
+        6 => "id"
     ];
 
     $orderBy = "log_time DESC";
@@ -283,6 +464,7 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
     while($row = $result->fetch_assoc()){
 
         $descriptionRaw = $row['description'] ?? "";
+
         $descriptionShort = mb_strlen($descriptionRaw) > 160
             ? mb_substr($descriptionRaw, 0, 160) . "..."
             : $descriptionRaw;
@@ -290,6 +472,14 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
         $formattedTime = !empty($row['log_time'])
             ? date("d M Y, h:i A", strtotime($row['log_time']))
             : "-";
+
+        $selectHtml = '
+            <input
+                type="checkbox"
+                class="form-check-input log-row-check"
+                data-id="' . trackingEscape($row['id']) . '"
+                onclick="event.stopPropagation();">
+        ';
 
         $actionsHtml = '
             <button
@@ -302,7 +492,7 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
         ';
 
         $data[] = [
-            "id" => trackingEscape($row['id']),
+            "select" => $selectHtml,
             "username" => trackingEscape($row['username']),
             "role" => trackingEscape($row['role']),
             "action" => trackingEscape($row['action_type']),
@@ -432,6 +622,83 @@ if(isset($_GET['search'])){
     font-size:14px;
     color:#0d6efd;
 }
+
+.activity-toolbar{
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:15px;
+}
+
+.activity-toolbar-left,
+.activity-toolbar-right{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    align-items:center;
+}
+
+.activity-toolbar-right{
+    flex-wrap:nowrap;
+}
+
+.old-delete-group{
+    width:auto;
+    min-width:390px;
+    flex-wrap:nowrap;
+}
+
+.old-delete-group .form-select{
+    min-width:190px;
+}
+
+.old-delete-group .btn{
+    white-space:nowrap;
+}
+
+.selected-count-badge{
+    background:#eef2ff;
+    color:#1d4ed8;
+    border:1px solid #bfdbfe;
+    padding:6px 10px;
+    border-radius:20px;
+    font-size:13px;
+    font-weight:600;
+}
+
+#logsTable th:first-child,
+#logsTable td:first-child{
+    width:45px !important;
+    text-align:center;
+}
+
+#logsTable th:last-child,
+#logsTable td:last-child{
+    width:90px !important;
+    text-align:center;
+}
+
+@media(max-width:768px){
+    .activity-toolbar{
+        align-items:flex-start;
+    }
+
+    .activity-toolbar-left,
+    .activity-toolbar-right{
+        width:100%;
+    }
+
+    .old-delete-group{
+        width:100%;
+        min-width:0;
+    }
+
+    .old-delete-group .form-select{
+        min-width:0;
+    }
+}
 </style>
 
 </head>
@@ -444,6 +711,7 @@ if(isset($_GET['search'])){
 <div class="main" id="main">
 
 <h2 style="margin-bottom:20px;">Activity Tracking</h2>
+
 <form method="GET" class="mb-2" onsubmit="return false;">
     <div class="input-group">
         <input
@@ -462,9 +730,6 @@ if(isset($_GET['search'])){
     </div>
 </form>
 
-<div class="activity-filter-hint mb-2">
-    Use comma to search multiple terms. Example: <b>login, admin</b> or <b>contract, delete</b>.
-</div>
 <div class="alert alert-info d-flex justify-content-between align-items-center">
     <div>
         <i class="fa fa-clock"></i>
@@ -473,6 +738,35 @@ if(isset($_GET['search'])){
 </div>
 
 <div id="activeFilterBox" class="active-filter-box"></div>
+
+<div class="activity-toolbar">
+
+    <div class="activity-toolbar-left">
+        <span class="selected-count-badge">
+            Selected: <span id="selectedLogCount">0</span>
+        </span>
+
+        <button type="button" class="btn btn-danger btn-sm" id="deleteSelectedLogsBtn" disabled>
+            <i class="fa fa-trash"></i> Delete Selected
+        </button>
+    </div>
+
+    <div class="activity-toolbar-right">
+        <div class="input-group input-group-sm old-delete-group">
+            <select class="form-select" id="deleteOldDays">
+                <option value="">Delete old logs...</option>
+                <option value="30">Older than 30 days</option>
+                <option value="60">Older than 60 days</option>
+                <option value="90">Older than 90 days</option>
+            </select>
+
+            <button type="button" class="btn btn-outline-danger" id="deleteOldLogsBtn">
+                <i class="fa fa-calendar-xmark"></i> Delete Old Logs
+            </button>
+        </div>
+    </div>
+
+</div>
 
 <div class="card shadow-sm">
 <div class="card-body p-0">
@@ -483,6 +777,9 @@ if(isset($_GET['search'])){
 
 <thead>
 <tr>
+    <th>
+        <input type="checkbox" class="form-check-input" id="selectAllVisibleLogs">
+    </th>
     <th>Username</th>
     <th>Role</th>
     <th>Action</th>
@@ -514,6 +811,7 @@ $(document).ready(function(){
 
     let initialSearch = <?= json_encode($initialSearch) ?>;
     let typingTimer = null;
+    let selectedLogIds = new Set();
 
     let table = $('#logsTable').DataTable({
         processing: true,
@@ -539,6 +837,11 @@ $(document).ready(function(){
             }
         },
         columns: [
+            {
+                data: "select",
+                orderable: false,
+                searchable: false
+            },
             { data: "username" },
             { data: "role" },
             { data: "action" },
@@ -549,8 +852,38 @@ $(document).ready(function(){
                 orderable: false,
                 searchable: false
             }
-        ]
+        ],
+        drawCallback: function(){
+            syncVisibleCheckboxes();
+        }
     });
+
+    function updateSelectedCount(){
+        let count = selectedLogIds.size;
+
+        $("#selectedLogCount").text(count);
+        $("#deleteSelectedLogsBtn").prop("disabled", count === 0);
+    }
+
+    function syncVisibleCheckboxes(){
+        let visibleChecks = $("#logsTable tbody .log-row-check");
+
+        visibleChecks.each(function(){
+            let id = String($(this).data("id"));
+            this.checked = selectedLogIds.has(id);
+        });
+
+        let allVisibleChecked = visibleChecks.length > 0;
+
+        visibleChecks.each(function(){
+            if(!this.checked){
+                allVisibleChecked = false;
+            }
+        });
+
+        $("#selectAllVisibleLogs").prop("checked", allVisibleChecked);
+        updateSelectedCount();
+    }
 
     function updateActiveFilterBox(){
         let searchText = $("#liveActivitySearch").val().trim();
@@ -589,7 +922,7 @@ $(document).ready(function(){
 
     $('#logsTable tbody').on('click', 'tr', function(e){
 
-        if($(e.target).closest('button, a').length){
+        if($(e.target).closest('button, a, input').length){
             return;
         }
 
@@ -619,6 +952,37 @@ $(document).ready(function(){
         new bootstrap.Modal(document.getElementById('logModal')).show();
     });
 
+    $('#logsTable tbody').on('change', '.log-row-check', function(e){
+        e.stopPropagation();
+
+        let id = String($(this).data('id'));
+
+        if(this.checked){
+            selectedLogIds.add(id);
+        }else{
+            selectedLogIds.delete(id);
+        }
+
+        syncVisibleCheckboxes();
+    });
+
+    $("#selectAllVisibleLogs").on("change", function(){
+        let checked = this.checked;
+
+        $("#logsTable tbody .log-row-check").each(function(){
+            let id = String($(this).data("id"));
+            this.checked = checked;
+
+            if(checked){
+                selectedLogIds.add(id);
+            }else{
+                selectedLogIds.delete(id);
+            }
+        });
+
+        updateSelectedCount();
+    });
+
     $('#logsTable tbody').on('click', '.delete-log-btn', function(e){
         e.stopPropagation();
 
@@ -634,7 +998,84 @@ $(document).ready(function(){
         }, function(data){
 
             if(data.trim() === "success"){
+                selectedLogIds.delete(String(id));
                 table.ajax.reload(null, false);
+                updateSelectedCount();
+            }else{
+                alert(data);
+            }
+
+        });
+    });
+
+    $("#deleteSelectedLogsBtn").on("click", function(){
+        let ids = Array.from(selectedLogIds);
+
+        if(ids.length === 0){
+            alert("Please select at least one log.");
+            return;
+        }
+
+        if(!confirm("Delete " + ids.length + " selected activity log(s)?")){
+            return;
+        }
+
+        $.post("tracking.php", {
+            action: "delete_selected_logs",
+            ids: ids
+        }, function(data){
+
+            let response = data.trim();
+
+            if(response.startsWith("success")){
+                let parts = response.split("|");
+                let count = parts[1] || ids.length;
+
+                selectedLogIds.clear();
+                $("#selectAllVisibleLogs").prop("checked", false);
+
+                table.ajax.reload(null, false);
+                updateSelectedCount();
+
+                alert(count + " selected activity log(s) deleted.");
+            }else{
+                alert(data);
+            }
+
+        });
+    });
+
+    $("#deleteOldLogsBtn").on("click", function(){
+        let days = $("#deleteOldDays").val();
+
+        if(days === ""){
+            alert("Please choose 30 days, 60 days, or 90 days.");
+            return;
+        }
+
+        if(!confirm("Delete all activity logs older than " + days + " days?")){
+            return;
+        }
+
+        $.post("tracking.php", {
+            action: "delete_old_logs",
+            days: days
+        }, function(data){
+
+            let response = data.trim();
+
+            if(response.startsWith("success")){
+                let parts = response.split("|");
+                let count = parts[1] || 0;
+
+                selectedLogIds.clear();
+                $("#selectAllVisibleLogs").prop("checked", false);
+                $("#deleteOldDays").val("");
+
+                table.ajax.reload(null, false);
+                updateSelectedCount();
+
+                alert(count + " old activity log(s) deleted.");
             }else{
                 alert(data);
             }
@@ -643,6 +1084,7 @@ $(document).ready(function(){
     });
 
     updateActiveFilterBox();
+    updateSelectedCount();
 
 });
 </script>
