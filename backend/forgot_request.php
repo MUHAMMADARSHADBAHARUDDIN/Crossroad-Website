@@ -260,6 +260,11 @@ button:hover{
     background:#edb100;
 }
 
+button:disabled{
+    opacity:0.75;
+    cursor:not-allowed;
+}
+
 .back-login{
     display:block;
     text-align:center;
@@ -273,32 +278,153 @@ button:hover{
     text-decoration:underline;
     color:#000;
 }
+
+/* =========================
+   LOADING SCREEN
+========================= */
+.loading-overlay{
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,0.65);
+    backdrop-filter:blur(4px);
+    display:none;
+    justify-content:center;
+    align-items:center;
+    z-index:9999;
+}
+
+.loading-box{
+    background:white;
+    width:330px;
+    padding:30px;
+    border-radius:14px;
+    box-shadow:0 10px 35px rgba(0,0,0,0.35);
+    text-align:center;
+    animation:popIn 0.25s ease;
+}
+
+.loading-icon{
+    width:58px;
+    height:58px;
+    border:6px solid #f1f1f1;
+    border-top:6px solid #ffc107;
+    border-radius:50%;
+    animation:spin 0.9s linear infinite;
+    margin:0 auto 18px auto;
+}
+
+.loading-title{
+    font-size:18px;
+    font-weight:bold;
+    margin-bottom:6px;
+}
+
+.loading-text{
+    font-size:14px;
+    color:#666;
+    margin-bottom:0;
+}
+
+.loading-dots span{
+    animation:blink 1.4s infinite;
+    font-weight:bold;
+}
+
+.loading-dots span:nth-child(2){
+    animation-delay:0.2s;
+}
+
+.loading-dots span:nth-child(3){
+    animation-delay:0.4s;
+}
+
+@keyframes spin{
+    from{
+        transform:rotate(0deg);
+    }
+    to{
+        transform:rotate(360deg);
+    }
+}
+
+@keyframes popIn{
+    from{
+        transform:scale(0.92);
+        opacity:0;
+    }
+    to{
+        transform:scale(1);
+        opacity:1;
+    }
+}
+
+@keyframes blink{
+    0%, 80%, 100%{
+        opacity:0;
+    }
+    40%{
+        opacity:1;
+    }
+}
 </style>
 </head>
 
 <body>
 
+<!-- LOADING SCREEN -->
+<div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-box">
+        <div class="loading-icon"></div>
+        <div class="loading-title">Sending Request</div>
+        <p class="loading-text">
+            Please wait while we notify the administrator
+            <span class="loading-dots">
+                <span>.</span><span>.</span><span>.</span>
+            </span>
+        </p>
+    </div>
+</div>
+
 <div class="login-box">
     <h4 class="page-title">Forgot Password</h4>
     <p class="page-desc">Enter your registered email to request password reset assistance.</p>
 
-    <form method="POST">
+    <form method="POST" id="forgotForm">
+        <!-- Keeps your existing PHP isset($_POST['submit']) working even when button is disabled -->
+        <input type="hidden" name="submit" value="1">
+
         <label>Email</label>
         <input type="email" name="email" required>
 
         <br>
         <br>
 
-        <button name="submit" type="submit">
+        <button name="submit" type="submit" id="sendBtn">
             <i class="fa-solid fa-paper-plane"></i> Send Request
         </button>
 
-        <a href="../frontend/index.html" class="back-login">
+        <a href="../frontend/index.html" class="back-login" id="backLoginLink">
             <i class="fa-solid fa-arrow-left"></i> Back to Login
         </a>
     </form>
 
 </div>
+
+<script>
+document.getElementById("forgotForm").addEventListener("submit", function(){
+    const loadingOverlay = document.getElementById("loadingOverlay");
+    const sendBtn = document.getElementById("sendBtn");
+    const backLoginLink = document.getElementById("backLoginLink");
+
+    loadingOverlay.style.display = "flex";
+
+    sendBtn.disabled = true;
+    sendBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sending...';
+
+    backLoginLink.style.pointerEvents = "none";
+    backLoginLink.style.opacity = "0.5";
+});
+</script>
 
 </body>
 </html>
