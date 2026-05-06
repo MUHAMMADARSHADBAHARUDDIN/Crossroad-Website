@@ -8,7 +8,6 @@ if(!isset($_SESSION['username'])){
     exit("No session");
 }
 
-
 if(!isset($_GET['id'])){
     exit("Invalid request");
 }
@@ -20,7 +19,7 @@ $username = $_SESSION['username'];
 
 /* GET CONTRACT DATA */
 $stmt = $mysqli->prepare("
-    SELECT project_name, project_owner, created_by
+    SELECT project_name, project_owner, project_manager, account_manager, created_by
     FROM project_inventory
     WHERE no = ?
 ");
@@ -42,12 +41,25 @@ if(!$data){
 $created_by = $data['created_by'];
 $project_name = $data['project_name'];
 $project_owner = $data['project_owner'];
+$project_manager = $data['project_manager'] ?? '';
+$account_manager = $data['account_manager'] ?? '';
 
 if(!hasContractDeleteAccess($mysqli, $created_by)){
     exit("Access denied");
 }
 
-/* DELETE */
+/* DELETE TASKS FIRST */
+$deleteTaskStmt = $mysqli->prepare("
+    DELETE FROM contract_tasks
+    WHERE contract_id = ?
+");
+
+if($deleteTaskStmt){
+    $deleteTaskStmt->bind_param("i", $id);
+    $deleteTaskStmt->execute();
+}
+
+/* DELETE CONTRACT */
 $deleteStmt = $mysqli->prepare("DELETE FROM project_inventory WHERE no = ?");
 
 if(!$deleteStmt){
@@ -64,7 +76,10 @@ if($deleteStmt->execute()){
     $description = "User [$username] deleted contract.
 Project Name: $project_name
 Project Owner: $project_owner
+Project Manager: $project_manager
+Account Manager: $account_manager
 Contract ID: $id
+Related checklist tasks were also deleted.
 IP Address: $ip
 Time: $time";
 

@@ -9,10 +9,6 @@ if(!isset($_SESSION['username']) || !isset($_SESSION['role'])){
     exit("No session");
 }
 
-if(($_SESSION['role'] ?? '') !== "Administrator"){
-    exit("Access denied");
-}
-
 if(!hasPermission($mysqli, "users_delete")){
     exit("Access denied");
 }
@@ -21,11 +17,15 @@ if(!isset($_GET['username']) || !isset($_GET['account_type'])){
     exit("Invalid request");
 }
 
-$username = $_GET['username'];
-$accountType = $_GET['account_type'];
+$username = trim($_GET['username']);
+$accountType = trim($_GET['account_type']);
 
 $adminUser = $_SESSION['username'];
 $adminRole = $_SESSION['role'];
+
+if(!in_array($accountType, ["user", "administrator"], true)){
+    exit("Invalid account type");
+}
 
 if($username === $adminUser && $accountType === "administrator"){
     exit("You cannot delete your own administrator account.");
@@ -34,27 +34,29 @@ if($username === $adminUser && $accountType === "administrator"){
 if($accountType === "administrator"){
 
     $checkStmt = $mysqli->prepare("
-        SELECT username, email
+        SELECT username, email, role
         FROM administrator
         WHERE username = ?
         LIMIT 1
     ");
 
-} elseif($accountType === "user"){
+} else {
 
     $checkStmt = $mysqli->prepare("
-        SELECT username, email
+        SELECT username, email, role
         FROM user
         WHERE username = ?
         LIMIT 1
     ");
+}
 
-} else {
-    exit("Invalid account type");
+if(!$checkStmt){
+    exit("Prepare failed: " . $mysqli->error);
 }
 
 $checkStmt->bind_param("s", $username);
 $checkStmt->execute();
+
 $result = $checkStmt->get_result();
 $userData = $result->fetch_assoc();
 
@@ -77,24 +79,54 @@ if($accountType === "administrator"){
     ");
 }
 
+if(!$deleteStmt){
+    exit("Prepare failed: " . $mysqli->error);
+}
+
 $deleteStmt->bind_param("s", $username);
 
 if($deleteStmt->execute()){
 
+    /*
+    |--------------------------------------------------------------------------
+    | DELETE USER PERMISSIONS TOO
+    |--------------------------------------------------------------------------
+    */
     $deletePerm = $mysqli->prepare("
         DELETE FROM user_permissions
         WHERE username = ?
+        AND account_type = ?
     ");
-    $deletePerm->bind_param("s", $username);
-    $deletePerm->execute();
+
+    if($deletePerm){
+        $deletePerm->bind_param("ss", $username, $accountType);
+        $deletePerm->execute();
+    }
+
+    /*
+    Clean any leftover permission with same username, just in case account type changed before.
+    */
+    $deletePermAll = $mysqli->prepare("
+        DELETE FROM user_permissions
+        WHERE username = ?
+    ");
+
+    if($deletePermAll){
+        $deletePermAll->bind_param("s", $username);
+        $deletePermAll->execute();
+    }
 
     $ip = $_SERVER['REMOTE_ADDR'];
     $time = date("Y-m-d H:i:s");
 
+    $deletedRole = $userData['role'] ?? "-";
+    $deletedEmail = $userData['email'] ?? "-";
+
     $description = "Admin [$adminUser] deleted user account.
 Deleted Username: $username
 Account Type: $accountType
-User Email: {$userData['email']}
+Role/Title: $deletedRole
+User Email: $deletedEmail
 IP Address: $ip
 Time: $time";
 

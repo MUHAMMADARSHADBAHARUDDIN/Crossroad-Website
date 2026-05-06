@@ -23,6 +23,22 @@ function contractEscape($value){
     return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
 }
 
+function contractFormatDate($value){
+    $value = trim((string)($value ?? ''));
+
+    if($value === "" || $value === "0000-00-00"){
+        return "";
+    }
+
+    $timestamp = strtotime($value);
+
+    if($timestamp === false){
+        return $value;
+    }
+
+    return date("d/m/Y", $timestamp);
+}
+
 function bindStatementParams($stmt, $types, $params){
     if($types === "" || empty($params)){
         return;
@@ -38,23 +54,101 @@ function bindStatementParams($stmt, $types, $params){
     call_user_func_array([$stmt, 'bind_param'], $refs);
 }
 
+function contractTableExists($mysqli, $tableName){
+    $tableName = $mysqli->real_escape_string($tableName);
+    $result = $mysqli->query("SHOW TABLES LIKE '$tableName'");
+    return ($result && $result->num_rows > 0);
+}
+
+function contractColumnExists($mysqli, $tableName, $columnName){
+    $tableName = str_replace("`", "", $tableName);
+    $columnName = $mysqli->real_escape_string($columnName);
+
+    $result = $mysqli->query("SHOW COLUMNS FROM `$tableName` LIKE '$columnName'");
+    return ($result && $result->num_rows > 0);
+}
+
+/* =========================================================
+   SAFE COLUMN / TABLE CHECK
+========================================================= */
+$hasProjectManager = contractColumnExists($mysqli, "project_inventory", "project_manager");
+$hasAccountManager = contractColumnExists($mysqli, "project_inventory", "account_manager");
+
+$hasContractTasksTable = contractTableExists($mysqli, "contract_tasks");
+$hasContractTaskContractId = $hasContractTasksTable && contractColumnExists($mysqli, "contract_tasks", "contract_id");
+
+$hasTaskIsCompleted = $hasContractTasksTable && contractColumnExists($mysqli, "contract_tasks", "is_completed");
+$hasTaskCompleted = $hasContractTasksTable && contractColumnExists($mysqli, "contract_tasks", "completed");
+$hasTaskStatus = $hasContractTasksTable && contractColumnExists($mysqli, "contract_tasks", "status");
+
+$canUseContractTasks = ($hasContractTasksTable && $hasContractTaskContractId);
+
+$projectManagerSelect = $hasProjectManager ? "pi.project_manager" : "'' AS project_manager";
+$accountManagerSelect = $hasAccountManager ? "pi.account_manager" : "'' AS account_manager";
+
 $statusCase = "
 CASE
-    WHEN contract_end IS NOT NULL
-         AND contract_end <> ''
-         AND contract_end <> '0000-00-00'
-         AND contract_end < CURDATE()
+    WHEN pi.contract_end IS NOT NULL
+         AND pi.contract_end <> ''
+         AND pi.contract_end <> '0000-00-00'
+         AND pi.contract_end < CURDATE()
     THEN 'Closed'
 
-    WHEN contract_end IS NOT NULL
-         AND contract_end <> ''
-         AND contract_end <> '0000-00-00'
-         AND contract_end BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)
+    WHEN pi.contract_end IS NOT NULL
+         AND pi.contract_end <> ''
+         AND pi.contract_end <> '0000-00-00'
+         AND pi.contract_end BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)
     THEN 'Expiring Soon'
 
     ELSE 'Active'
 END
 ";
+
+/* =========================================================
+   TASK PROGRESS SAFE SQL
+========================================================= */
+$taskJoinSql = "";
+$taskTotalSelect = "0 AS task_total";
+$taskDoneSelect = "0 AS task_done";
+$progressSelect = "NULL AS progress_percent";
+
+if($canUseContractTasks){
+
+    if($hasTaskIsCompleted){
+        $taskDoneSql = "SUM(CASE WHEN is_completed = 1 THEN 1 ELSE 0 END)";
+    }
+    elseif($hasTaskCompleted){
+        $taskDoneSql = "SUM(CASE WHEN completed = 1 THEN 1 ELSE 0 END)";
+    }
+    elseif($hasTaskStatus){
+        $taskDoneSql = "SUM(CASE WHEN LOWER(status) IN ('completed','complete','done') THEN 1 ELSE 0 END)";
+    }
+    else{
+        $taskDoneSql = "SUM(0)";
+    }
+
+    $taskJoinSql = "
+        LEFT JOIN (
+            SELECT
+                contract_id,
+                COUNT(*) AS task_total,
+                $taskDoneSql AS task_done
+            FROM contract_tasks
+            GROUP BY contract_id
+        ) task_summary ON task_summary.contract_id = pi.no
+    ";
+
+    $taskTotalSelect = "COALESCE(task_summary.task_total, 0) AS task_total";
+    $taskDoneSelect = "COALESCE(task_summary.task_done, 0) AS task_done";
+
+    $progressSelect = "
+        CASE
+            WHEN COALESCE(task_summary.task_total, 0) > 0
+            THEN ROUND((COALESCE(task_summary.task_done, 0) / task_summary.task_total) * 100)
+            ELSE NULL
+        END AS progress_percent
+    ";
+}
 
 /* =========================================================
    AJAX SERVER-SIDE DATATABLE RESPONSE
@@ -83,19 +177,24 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
         ? "ASC"
         : "DESC";
 
+    $projectManagerOrder = $hasProjectManager ? "pi.project_manager" : "pi.no";
+    $accountManagerOrder = $hasAccountManager ? "pi.account_manager" : "pi.no";
+
     $orderColumnMap = [
-        0 => "no",
-        1 => "year_awarded",
-        2 => "project_name",
-        3 => "project_owner",
-        4 => "auto_status",
-        5 => "contract_start",
-        6 => "contract_end",
-        7 => "amount"
+        0 => "pi.no",
+        1 => "pi.year_awarded",
+        2 => "pi.project_name",
+        3 => "pi.project_owner",
+        4 => $projectManagerOrder,
+        5 => $accountManagerOrder,
+        6 => "progress_percent",
+        7 => "auto_status",
+        8 => "pi.contract_start",
+        9 => "pi.contract_end",
+        10 => "pi.amount"
     ];
 
-    /* ✅ DEFAULT LOAD BASED ON NUMBER */
-    $orderBy = "no DESC";
+    $orderBy = "pi.no DESC";
 
     if(isset($orderColumnMap[$orderColumnIndex])){
         $selectedOrderColumn = $orderColumnMap[$orderColumnIndex];
@@ -103,15 +202,17 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
         if($selectedOrderColumn === "auto_status"){
             $orderBy = "$statusCase $orderDirection";
         }
-        elseif($selectedOrderColumn === "amount"){
-            $orderBy = "CAST(amount AS DECIMAL(15,2)) $orderDirection";
+        elseif($selectedOrderColumn === "progress_percent"){
+            $orderBy = "progress_percent $orderDirection";
+        }
+        elseif($selectedOrderColumn === "pi.amount"){
+            $orderBy = "CAST(pi.amount AS DECIMAL(15,2)) $orderDirection";
         }
         else{
             $orderBy = "$selectedOrderColumn $orderDirection";
         }
     }
 
-    /* TOTAL RECORDS */
     $totalResult = $mysqli->query("SELECT COUNT(*) AS total FROM project_inventory");
     $recordsTotal = $totalResult ? (int)$totalResult->fetch_assoc()['total'] : 0;
 
@@ -119,19 +220,6 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
     $params = [];
     $types = "";
 
-    /*
-        ✅ MULTI SEARCH SUPPORT
-        Example:
-        2026, active
-
-        This means:
-        - row must match 2026 somewhere
-        - AND row must match active somewhere
-
-        Each comma item searches across:
-        no, year, project name, owner, end user, contract no,
-        service, po date, start date, end date, amount, status
-    */
     $searchTerms = [];
 
     if($search !== ""){
@@ -149,24 +237,33 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
     foreach($searchTerms as $term){
         $searchLike = "%" . $term . "%";
 
-        $whereParts[] = "
-        (
-            CAST(no AS CHAR) LIKE ?
-            OR CAST(year_awarded AS CHAR) LIKE ?
-            OR project_name LIKE ?
-            OR project_owner LIKE ?
-            OR end_user LIKE ?
-            OR contract_no LIKE ?
-            OR service LIKE ?
-            OR po_date LIKE ?
-            OR contract_start LIKE ?
-            OR contract_end LIKE ?
-            OR CAST(amount AS CHAR) LIKE ?
-            OR $statusCase LIKE ?
-        )
-        ";
+        $conditionParts = [
+            "CAST(pi.no AS CHAR) LIKE ?",
+            "CAST(pi.year_awarded AS CHAR) LIKE ?",
+            "pi.project_name LIKE ?",
+            "pi.project_owner LIKE ?"
+        ];
 
-        for($i = 0; $i < 12; $i++){
+        if($hasProjectManager){
+            $conditionParts[] = "pi.project_manager LIKE ?";
+        }
+
+        if($hasAccountManager){
+            $conditionParts[] = "pi.account_manager LIKE ?";
+        }
+
+        $conditionParts[] = "pi.end_user LIKE ?";
+        $conditionParts[] = "pi.contract_no LIKE ?";
+        $conditionParts[] = "pi.service LIKE ?";
+        $conditionParts[] = "pi.po_date LIKE ?";
+        $conditionParts[] = "pi.contract_start LIKE ?";
+        $conditionParts[] = "pi.contract_end LIKE ?";
+        $conditionParts[] = "CAST(pi.amount AS CHAR) LIKE ?";
+        $conditionParts[] = "$statusCase LIKE ?";
+
+        $whereParts[] = "(" . implode(" OR ", $conditionParts) . ")";
+
+        foreach($conditionParts as $unused){
             $params[] = $searchLike;
             $types .= "s";
         }
@@ -184,11 +281,10 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
         $whereSql = "WHERE " . implode(" AND ", $whereParts);
     }
 
-    /* FILTERED COUNT */
     if(count($whereParts) > 0){
         $countStmt = $mysqli->prepare("
             SELECT COUNT(*) AS total
-            FROM project_inventory
+            FROM project_inventory pi
             $whereSql
         ");
 
@@ -212,23 +308,28 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
         $recordsFiltered = $recordsTotal;
     }
 
-    /* DATA QUERY */
     $sql = "
         SELECT
-            no,
-            year_awarded,
-            project_name,
-            project_owner,
-            end_user,
-            contract_no,
-            service,
-            po_date,
-            contract_start,
-            contract_end,
-            amount,
-            created_by,
-            $statusCase AS auto_status
-        FROM project_inventory
+            pi.no,
+            pi.year_awarded,
+            pi.project_name,
+            pi.project_owner,
+            $projectManagerSelect,
+            $accountManagerSelect,
+            pi.end_user,
+            pi.contract_no,
+            pi.service,
+            pi.po_date,
+            pi.contract_start,
+            pi.contract_end,
+            pi.amount,
+            pi.created_by,
+            $statusCase AS auto_status,
+            $taskTotalSelect,
+            $taskDoneSelect,
+            $progressSelect
+        FROM project_inventory pi
+        $taskJoinSql
         $whereSql
         ORDER BY $orderBy
         LIMIT ?
@@ -278,6 +379,36 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
             $statusHtml = '<span class="badge bg-success">Active</span>';
         }
 
+        $taskTotal = (int)($row['task_total'] ?? 0);
+        $taskDone = (int)($row['task_done'] ?? 0);
+        $progressPercent = $row['progress_percent'];
+
+        if($taskTotal <= 0 || $progressPercent === null){
+            $progressHtml = '<span class="text-muted small">No available</span>';
+        } else {
+            $progressPercent = (int)$progressPercent;
+
+            $progressBarColor = "bg-danger";
+
+            if($progressPercent >= 70){
+                $progressBarColor = "bg-success";
+            }
+            elseif($progressPercent >= 40){
+                $progressBarColor = "bg-warning";
+            }
+
+            $progressHtml = '
+                <div class="progress contract-progress">
+                    <div class="progress-bar ' . $progressBarColor . '"
+                         role="progressbar"
+                         style="width:' . $progressPercent . '%;">
+                        ' . $progressPercent . '%
+                    </div>
+                </div>
+                <small class="text-muted">' . $taskDone . '/' . $taskTotal . ' completed</small>
+            ';
+        }
+
         $actionsHtml = "";
 
         if($canEditThisContract){
@@ -303,14 +434,21 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
             $actionsHtml = '<span class="badge bg-secondary">View Only</span>';
         }
 
+        $formattedStart = contractFormatDate($row['contract_start']);
+        $formattedEnd = contractFormatDate($row['contract_end']);
+        $formattedPoDate = contractFormatDate($row['po_date']);
+
         $data[] = [
             "no" => contractEscape($row['no']),
             "year" => contractEscape($row['year_awarded']),
             "project_name" => contractEscape($row['project_name']),
             "owner" => contractEscape($row['project_owner']),
+            "project_manager" => contractEscape($row['project_manager'] ?? ''),
+            "account_manager" => contractEscape($row['account_manager'] ?? ''),
+            "progress" => $progressHtml,
             "status" => $statusHtml,
-            "start" => contractEscape($row['contract_start']),
-            "end" => contractEscape($row['contract_end']),
+            "start" => contractEscape($formattedStart),
+            "end" => contractEscape($formattedEnd),
             "amount" => "RM " . number_format((float)$row['amount'], 2),
             "actions" => $actionsHtml,
 
@@ -319,16 +457,21 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
                 "year" => $row['year_awarded'],
                 "project" => $row['project_name'],
                 "owner" => $row['project_owner'],
+                "projectmanager" => $row['project_manager'] ?? '',
+                "accountmanager" => $row['account_manager'] ?? '',
                 "createdby" => $created_by,
                 "canupload" => $canUploadThisContract ? "1" : "0",
                 "enduser" => $row['end_user'],
                 "contractno" => $row['contract_no'],
                 "service" => $row['service'],
-                "podate" => $row['po_date'],
-                "start" => $row['contract_start'],
-                "end" => $row['contract_end'],
+                "podate" => $formattedPoDate,
+                "start" => $formattedStart,
+                "end" => $formattedEnd,
                 "status" => $auto_status,
-                "amount" => $row['amount']
+                "amount" => $row['amount'],
+                "tasktotal" => $taskTotal,
+                "taskdone" => $taskDone,
+                "progresspercent" => $progressPercent
             ]
         ];
     }
@@ -343,7 +486,6 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
     exit();
 }
 
-/* NORMAL PAGE LOAD SEARCH VALUE */
 $search = "";
 if(isset($_GET['search'])){
     $search = trim($_GET['search']);
@@ -374,18 +516,9 @@ body{
     overflow-x:hidden !important;
 }
 
-/* ✅ RESPONSIVE CONTRACT PAGE */
 .contract-page-wrap{
     width:100%;
     max-width:100%;
-}
-
-.contract-search-card{
-    background:#fff;
-    border-radius:14px;
-    padding:14px;
-    box-shadow:0 4px 14px rgba(0,0,0,0.06);
-    margin-bottom:14px;
 }
 
 .contract-table-card{
@@ -402,7 +535,6 @@ body{
     overflow-x:hidden !important;
 }
 
-/* ✅ DESKTOP TABLE BALANCE */
 #contractsTable{
     width:100% !important;
     table-layout:fixed;
@@ -420,52 +552,31 @@ body{
     white-space:normal !important;
     overflow-wrap:anywhere;
     word-break:break-word;
-    font-size:14px;
+    font-size:12px;
+    padding:8px 6px;
+}
+
+/* ✅ SMALLER NO + YEAR, BIGGER PROJECT NAME */
+#contractsTable .contract-col-no,
+#contractsTable .contract-col-year{
+    text-align:center;
 }
 
 #contractsTable th:nth-child(1),
 #contractsTable td:nth-child(1){
-    width:6%;
+    width:4% !important;
+    max-width:50px !important;
 }
 
 #contractsTable th:nth-child(2),
 #contractsTable td:nth-child(2){
-    width:7%;
+    width:5% !important;
+    max-width:60px !important;
 }
 
 #contractsTable th:nth-child(3),
 #contractsTable td:nth-child(3){
-    width:24%;
-}
-
-#contractsTable th:nth-child(4),
-#contractsTable td:nth-child(4){
-    width:17%;
-}
-
-#contractsTable th:nth-child(5),
-#contractsTable td:nth-child(5){
-    width:11%;
-}
-
-#contractsTable th:nth-child(6),
-#contractsTable td:nth-child(6){
-    width:9%;
-}
-
-#contractsTable th:nth-child(7),
-#contractsTable td:nth-child(7){
-    width:9%;
-}
-
-#contractsTable th:nth-child(8),
-#contractsTable td:nth-child(8){
-    width:10%;
-}
-
-#contractsTable th:nth-child(9),
-#contractsTable td:nth-child(9){
-    width:10%;
+    width:24% !important;
 }
 
 #contractsTable tbody tr{
@@ -483,11 +594,17 @@ body{
     white-space:nowrap;
 }
 
-#contractsTable td:nth-child(9){
-    line-height:2;
+.contract-progress{
+    height:18px;
+    border-radius:12px;
+    background:#e9ecef;
 }
 
-/* ✅ DATATABLE FOOTER DYNAMIC */
+.contract-progress .progress-bar{
+    font-size:11px;
+    font-weight:600;
+}
+
 #contractsTable_wrapper{
     width:100%;
     max-width:100%;
@@ -522,7 +639,6 @@ body{
     font-weight:600;
 }
 
-/* ✅ ONLY STATUS HEADER FILTER IS CLICKABLE */
 .header-filter{
     cursor:pointer;
     display:inline-flex;
@@ -580,12 +696,143 @@ body{
     color:#0d6efd;
 }
 
-/* ✅ TABLET */
+/* =========================================================
+   REAL CHECKLIST STYLE - NOT TABLE
+========================================================= */
+.task-card{
+    background:#f8fafc;
+    border:1px solid #e5e7eb;
+    border-radius:14px;
+    padding:14px;
+}
+
+.task-checklist-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:10px;
+    margin-bottom:12px;
+    flex-wrap:wrap;
+}
+
+.task-summary-pill{
+    background:#fff3cd;
+    border:1px solid #ffe69c;
+    color:#664d03;
+    border-radius:999px;
+    padding:6px 12px;
+    font-size:13px;
+    font-weight:700;
+}
+
+.task-add-box{
+    background:#fff;
+    border:1px solid #e5e7eb;
+    border-radius:12px;
+    padding:10px;
+    margin-bottom:12px;
+}
+
+.task-checklist{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+}
+
+.contract-task-item{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:12px;
+    background:#fff;
+    border:1px solid #e5e7eb;
+    border-radius:14px;
+    padding:12px 14px;
+    transition:0.2s ease;
+}
+
+.contract-task-item:hover{
+    border-color:#ffc107;
+    box-shadow:0 4px 12px rgba(0,0,0,0.06);
+}
+
+.contract-task-left{
+    display:flex;
+    align-items:flex-start;
+    gap:11px;
+    flex:1;
+    min-width:0;
+}
+
+.contract-task-checkbox{
+    width:20px;
+    height:20px;
+    cursor:pointer;
+    margin-top:2px;
+    flex:0 0 auto;
+}
+
+.contract-task-text{
+    font-size:14px;
+    font-weight:600;
+    color:#212529;
+    line-height:1.4;
+    overflow-wrap:anywhere;
+    word-break:break-word;
+}
+
+.contract-task-meta{
+    font-size:12px;
+    color:#6c757d;
+    margin-top:4px;
+}
+
+.contract-task-actions{
+    display:flex;
+    gap:6px;
+    flex-wrap:wrap;
+    justify-content:flex-end;
+}
+
+.task-icon-btn{
+    border:none;
+    border-radius:9px;
+    width:34px;
+    height:34px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+}
+
+.task-completed{
+    background:#f0fff4;
+    border-color:#b7e4c7;
+}
+
+.task-completed .contract-task-text{
+    color:#198754;
+    text-decoration:line-through;
+}
+
+.task-empty-state{
+    background:#fff;
+    border:1px dashed #cbd5e1;
+    border-radius:14px;
+    padding:18px;
+    text-align:center;
+    color:#6c757d;
+}
+
+.task-loading{
+    color:#0d6efd;
+    font-size:14px;
+}
+
 @media(max-width: 1200px){
     #contractsTable th,
     #contractsTable td{
-        font-size:13px;
-        padding:9px 7px;
+        font-size:11px;
+        padding:7px 5px;
     }
 
     .contract-action-btn{
@@ -594,7 +841,6 @@ body{
     }
 }
 
-/* ✅ MOBILE: TABLE BECOMES CARD STYLE */
 @media(max-width: 768px){
 
     .main{
@@ -602,17 +848,13 @@ body{
         padding-right:14px !important;
     }
 
-    .contract-search-card{
-        padding:12px;
-    }
-
-    .contract-search-card .input-group{
+    .input-group{
         flex-direction:column;
         gap:8px;
     }
 
-    .contract-search-card .input-group input,
-    .contract-search-card .input-group button{
+    .input-group input,
+    .input-group button{
         width:100%;
         border-radius:8px !important;
     }
@@ -681,20 +923,14 @@ body{
         letter-spacing:0.3px;
     }
 
-    #contractsTable td:nth-child(3){
-        font-size:15px;
-        font-weight:600;
-        color:#212529;
-    }
-
-    #contractsTable td:nth-child(9){
-        display:flex;
+    .contract-col-actions{
+        display:flex !important;
         flex-wrap:wrap;
         gap:6px;
         align-items:center;
     }
 
-    #contractsTable td:nth-child(9)::before{
+    .contract-col-actions::before{
         flex:0 0 100%;
         width:100%;
     }
@@ -703,6 +939,16 @@ body{
         flex:1 1 auto;
         min-width:80px;
         margin:0;
+    }
+
+    .contract-task-item{
+        flex-direction:column;
+        align-items:stretch;
+    }
+
+    .contract-task-actions{
+        justify-content:flex-start;
+        padding-left:31px;
     }
 
     #contractsTable_wrapper .dataTables_info,
@@ -717,7 +963,6 @@ body{
     }
 }
 
-/* ✅ VERY SMALL PHONE */
 @media(max-width: 430px){
     h2{
         font-size:22px;
@@ -749,7 +994,6 @@ body{
 
 <h2 class="mb-3">Contracts</h2>
 
-<div class="">
 <form method="GET" class="mb-0" onsubmit="return false;">
     <div class="input-group">
         <input
@@ -768,9 +1012,8 @@ body{
     </div>
 </form>
 
-<div class="contract-filter-hint mt-2">
+<div class="contract-filter-hint mt-2 mb-2">
     Use comma to search multiple terms, example: <b>2026, active</b>. Click the yellow Status header to filter status.
-</div>
 </div>
 
 <div id="activeFilterBox" class="active-filter-box"></div>
@@ -792,6 +1035,9 @@ body{
     <th>Year</th>
     <th>Project Name</th>
     <th>Owner</th>
+    <th>Project Manager</th>
+    <th>Account Manager</th>
+    <th>Progress</th>
 
     <th>
         <span class="header-filter" id="statusHeaderFilter">
@@ -817,7 +1063,6 @@ body{
 
 </div>
 
-<!-- STATUS HEADER FILTER MENU -->
 <div id="statusFilterMenu" class="status-filter-menu">
     <button type="button" data-status="">All Status</button>
     <button type="button" data-status="Active">Active</button>
@@ -850,6 +1095,8 @@ body{
 <div class="col-md-6"><b>End User</b><div id="m_enduser"></div></div>
 <div class="col-md-6"><b>Contract No</b><div id="m_contractno"></div></div>
 <div class="col-md-6"><b>Service</b><div id="m_service"></div></div>
+<div class="col-md-6"><b>Project Manager</b><div id="m_projectmanager"></div></div>
+<div class="col-md-6"><b>Account Manager</b><div id="m_accountmanager"></div></div>
 <div class="col-md-6"><b>PO Date</b><div id="m_podate"></div></div>
 <div class="col-md-6"><b>Start</b><div id="m_start"></div></div>
 <div class="col-md-6"><b>End</b><div id="m_end"></div></div>
@@ -874,7 +1121,46 @@ body{
 </form>
 </div>
 
+<hr>
+
+<h6><i class="fa fa-list-check"></i> Contract Checklist</h6>
+<div id="tasksContainer" class="task-card">
+    <div class="task-loading">
+        <i class="fa fa-spinner fa-spin"></i> Loading tasks...
+    </div>
 </div>
+
+</div>
+</div>
+</div>
+</div>
+
+<!-- EDIT TASK MODAL -->
+<div class="modal fade" id="editTaskModal">
+<div class="modal-dialog modal-dialog-centered">
+<div class="modal-content">
+
+<div class="modal-header bg-primary text-white">
+    <h5 class="modal-title">
+        <i class="fa fa-pen"></i> Edit Task
+    </h5>
+    <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+</div>
+
+<div class="modal-body">
+    <input type="hidden" id="editTaskId">
+
+    <label class="form-label">Task</label>
+    <textarea id="editTaskText" class="form-control" rows="4"></textarea>
+</div>
+
+<div class="modal-footer">
+    <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+    <button class="btn btn-warning" onclick="updateContractTask()">
+        <i class="fa fa-save"></i> Save
+    </button>
+</div>
+
 </div>
 </div>
 </div>
@@ -887,14 +1173,153 @@ body{
 <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
 
 <script>
+let contractsTable;
+
+function loadContractTasks(){
+    let contractId = $("#m_id").val();
+
+    if(!contractId){
+        $("#tasksContainer").html("<div class='task-empty-state'>No contract selected.</div>");
+        return;
+    }
+
+    $("#tasksContainer").html("<div class='task-loading'><i class='fa fa-spinner fa-spin'></i> Loading checklist...</div>");
+
+    $.post("../backend/get_contract_tasks.php", {
+        contract_id: contractId
+    }, function(data){
+        $("#tasksContainer").html(data);
+    }).fail(function(){
+        $("#tasksContainer").html("<div class='alert alert-danger mb-0'>Failed to load checklist.</div>");
+    });
+}
+
+function reloadContractTableProgress(){
+    if(typeof contractsTable !== "undefined" && contractsTable){
+        contractsTable.ajax.reload(null, false);
+    }
+}
+
+function addContractTask(){
+    let contractId = $("#m_id").val();
+    let taskText = $("#newContractTaskText").val().trim();
+
+    if(!contractId){
+        alert("No contract selected.");
+        return;
+    }
+
+    if(taskText === ""){
+        alert("Please enter a task.");
+        return;
+    }
+
+    $("#addTaskBtn").prop("disabled", true).html("<i class='fa fa-spinner fa-spin'></i>");
+
+    $.post("../backend/add_contract_task.php", {
+        contract_id: contractId,
+        task_text: taskText
+    }, function(data){
+        if(data.trim() === "success"){
+            $("#newContractTaskText").val("");
+            loadContractTasks();
+            reloadContractTableProgress();
+        }else{
+            alert(data);
+        }
+    }).fail(function(){
+        alert("Failed to add task.");
+    }).always(function(){
+        $("#addTaskBtn").prop("disabled", false).html("<i class='fa fa-plus'></i> Add");
+    });
+}
+
+function toggleContractTask(id, isCompleted, checkboxEl){
+    let checkbox = $(checkboxEl);
+    let item = checkbox.closest(".contract-task-item");
+
+    checkbox.prop("disabled", true);
+    item.toggleClass("task-completed", isCompleted);
+
+    $.post("../backend/toggle_contract_task.php", {
+        id: id,
+        is_completed: isCompleted ? 1 : 0
+    }, function(data){
+        if(data.trim() === "success"){
+            loadContractTasks();
+            reloadContractTableProgress();
+        }else{
+            checkbox.prop("checked", !isCompleted);
+            item.toggleClass("task-completed", !isCompleted);
+            alert(data);
+        }
+    }).fail(function(){
+        checkbox.prop("checked", !isCompleted);
+        item.toggleClass("task-completed", !isCompleted);
+        alert("Failed to update checklist.");
+    }).always(function(){
+        checkbox.prop("disabled", false);
+    });
+}
+
+function openEditTaskModal(id, taskText){
+    $("#editTaskId").val(id);
+    $("#editTaskText").val(taskText);
+
+    new bootstrap.Modal(document.getElementById("editTaskModal")).show();
+}
+
+function updateContractTask(){
+    let id = $("#editTaskId").val();
+    let taskText = $("#editTaskText").val().trim();
+
+    if(taskText === ""){
+        alert("Task cannot be empty.");
+        return;
+    }
+
+    $.post("../backend/update_contract_task.php", {
+        id: id,
+        task_text: taskText
+    }, function(data){
+        if(data.trim() === "success"){
+            bootstrap.Modal.getInstance(document.getElementById("editTaskModal")).hide();
+            loadContractTasks();
+            reloadContractTableProgress();
+        }else{
+            alert(data);
+        }
+    }).fail(function(){
+        alert("Failed to update task.");
+    });
+}
+
+function deleteContractTask(id){
+    if(!confirm("Delete this task?")){
+        return;
+    }
+
+    $.post("../backend/delete_contract_task.php", {
+        id: id
+    }, function(data){
+        if(data.trim() === "success"){
+            loadContractTasks();
+            reloadContractTableProgress();
+        }else{
+            alert(data);
+        }
+    }).fail(function(){
+        alert("Failed to delete task.");
+    });
+}
+
 $(document).ready(function(){
 
     let initialSearch = <?= json_encode($search) ?>;
     let typingTimer = null;
-
     let statusFilter = "";
 
-    let contractsTable = $('#contractsTable').DataTable({
+    contractsTable = $('#contractsTable').DataTable({
         processing: true,
         serverSide: true,
         pageLength: 10,
@@ -918,11 +1343,19 @@ $(document).ready(function(){
                 d.status_filter = statusFilter;
             }
         },
+        columnDefs: [
+            { targets: 0, width: "4%" },
+            { targets: 1, width: "5%" },
+            { targets: 2, width: "24%" }
+        ],
         columns: [
             { data: "no", className: "contract-col-no" },
             { data: "year", className: "contract-col-year" },
             { data: "project_name", className: "contract-col-project" },
             { data: "owner", className: "contract-col-owner" },
+            { data: "project_manager", className: "contract-col-project-manager" },
+            { data: "account_manager", className: "contract-col-account-manager" },
+            { data: "progress", className: "contract-col-progress" },
             { data: "status", className: "contract-col-status" },
             { data: "start", className: "contract-col-start" },
             { data: "end", className: "contract-col-end" },
@@ -939,6 +1372,8 @@ $(document).ready(function(){
             $(row).attr("data-year", data.meta.year);
             $(row).attr("data-project", data.meta.project);
             $(row).attr("data-owner", data.meta.owner);
+            $(row).attr("data-projectmanager", data.meta.projectmanager);
+            $(row).attr("data-accountmanager", data.meta.accountmanager);
             $(row).attr("data-createdby", data.meta.createdby);
             $(row).attr("data-canupload", data.meta.canupload);
             $(row).attr("data-enduser", data.meta.enduser);
@@ -954,11 +1389,14 @@ $(document).ready(function(){
             $("td:eq(1)", row).attr("data-label", "Year");
             $("td:eq(2)", row).attr("data-label", "Project Name");
             $("td:eq(3)", row).attr("data-label", "Owner");
-            $("td:eq(4)", row).attr("data-label", "Status");
-            $("td:eq(5)", row).attr("data-label", "Start");
-            $("td:eq(6)", row).attr("data-label", "End");
-            $("td:eq(7)", row).attr("data-label", "Amount");
-            $("td:eq(8)", row).attr("data-label", "Actions");
+            $("td:eq(4)", row).attr("data-label", "Project Manager");
+            $("td:eq(5)", row).attr("data-label", "Account Manager");
+            $("td:eq(6)", row).attr("data-label", "Progress");
+            $("td:eq(7)", row).attr("data-label", "Status");
+            $("td:eq(8)", row).attr("data-label", "Start");
+            $("td:eq(9)", row).attr("data-label", "End");
+            $("td:eq(10)", row).attr("data-label", "Amount");
+            $("td:eq(11)", row).attr("data-label", "Actions");
         }
     });
 
@@ -1028,9 +1466,6 @@ $(document).ready(function(){
         updateActiveFilterBox();
     });
 
-    /* =========================================================
-       ✅ STATUS HEADER FILTER ONLY
-    ========================================================= */
     $("#statusHeaderFilter").on("click", function(e){
         e.preventDefault();
         e.stopPropagation();
@@ -1059,9 +1494,13 @@ $(document).ready(function(){
         $("#statusFilterMenu").hide();
     });
 
-    /* =========================================================
-       ✅ DATA ROW CLICK OPENS POPUP
-    ========================================================= */
+    $(document).on("keypress", "#newContractTaskText", function(e){
+        if(e.which === 13){
+            e.preventDefault();
+            addContractTask();
+        }
+    });
+
     function openContractModal(data){
         let meta = data.meta;
 
@@ -1069,6 +1508,8 @@ $(document).ready(function(){
 
         $('#m_project').text(meta.project || '');
         $('#m_owner').text(meta.owner || '');
+        $('#m_projectmanager').text(meta.projectmanager || '-');
+        $('#m_accountmanager').text(meta.accountmanager || '-');
         $('#m_createdby').text(meta.createdby || '-');
         $('#m_year').text(meta.year || '');
         $('#m_enduser').text(meta.enduser || '');
@@ -1112,6 +1553,8 @@ $(document).ready(function(){
             $('#filesContainer').html(fileData);
         });
 
+        loadContractTasks();
+
         new bootstrap.Modal(document.getElementById('contractModal')).show();
     }
 
@@ -1147,5 +1590,6 @@ function toggleSidebar(){
     btn.classList.toggle("active");
 }
 </script>
+
 </body>
 </html>

@@ -26,6 +26,8 @@ if(isset($_POST['submit'])){
     $year_awarded = intval($_POST['year_awarded']);
     $project_name = trim($_POST['project_name']);
     $project_owner = trim($_POST['project_owner']);
+    $project_manager = trim($_POST['project_manager']);
+    $account_manager = trim($_POST['account_manager']);
     $end_user = trim($_POST['end_user']);
     $contract_no = trim($_POST['contract_no']);
     $service = trim($_POST['service']);
@@ -71,9 +73,9 @@ if(isset($_POST['submit'])){
 
     $stmt = $mysqli->prepare("
         INSERT INTO project_inventory
-        (no, year_awarded, project_name, project_owner, end_user,
+        (no, year_awarded, project_name, project_owner, project_manager, account_manager, end_user,
         contract_no, service, po_date, contract_start, contract_end, status, amount, created_by)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ");
 
     if(!$stmt){
@@ -81,11 +83,13 @@ if(isset($_POST['submit'])){
     }
 
     $stmt->bind_param(
-        "iisssssssssds",
+        "iisssssssssssds",
         $no,
         $year_awarded,
         $project_name,
         $project_owner,
+        $project_manager,
+        $account_manager,
         $end_user,
         $contract_no,
         $service,
@@ -112,6 +116,8 @@ Contract No: $no
 Project Name: $project_name
 Year Awarded: $year_awarded
 Project Owner: $project_owner
+Project Manager: $project_manager
+Account Manager: $account_manager
 End User: $end_user
 Service: $service
 PO Date: $po_date
@@ -152,6 +158,26 @@ Time: $time";
     border-radius:12px;
     box-shadow:0 5px 20px rgba(0,0,0,0.05);
 }
+
+.project-name-box{
+    min-height:105px !important;
+    resize:vertical;
+}
+
+.form-section-title{
+    font-size:14px;
+    font-weight:700;
+    color:#6c757d;
+    text-transform:uppercase;
+    letter-spacing:0.4px;
+    margin-bottom:10px;
+}
+
+@media(max-width:768px){
+    .form-card{
+        padding:18px;
+    }
+}
 </style>
 
 </head>
@@ -167,28 +193,87 @@ Time: $time";
 
 <form method="POST" class="form-card">
 
+<!-- FIRST ROW: NO + YEAR AWARDED -->
+<div class="form-section-title">Contract Basic Information</div>
+
+<div class="row g-3 mb-3">
+
+<div class="col-md-6">
+    <div class="form-floating">
+        <input type="number" name="no" class="form-control" required>
+        <label>No</label>
+    </div>
+</div>
+
+<div class="col-md-6">
+    <div class="form-floating">
+        <input type="number" name="year_awarded" class="form-control" required>
+        <label>Year Awarded</label>
+    </div>
+</div>
+
+</div>
+
+<!-- SECOND ROW: PO DATE + START DATE + END DATE -->
+<div class="form-section-title">Important Dates</div>
+
+<div class="row g-3 mb-3">
+
+<div class="col-md-4">
+    <div class="form-floating">
+        <input type="date" name="po_date" class="form-control">
+        <label>PO Date</label>
+    </div>
+</div>
+
+<div class="col-md-4">
+    <div class="form-floating">
+        <input type="date" name="contract_start" class="form-control">
+        <label>Start Date</label>
+    </div>
+</div>
+
+<div class="col-md-4">
+    <div class="form-floating">
+        <input type="date" name="contract_end" class="form-control">
+        <label>End Date</label>
+    </div>
+</div>
+
+</div>
+
+<!-- PROJECT NAME BIGGER BOX -->
+<div class="form-section-title">Project Details</div>
+
+<div class="row g-3 mb-3">
+
+<div class="col-md-12">
+    <div class="form-floating">
+        <textarea name="project_name" class="form-control project-name-box" required></textarea>
+        <label>Project Name</label>
+    </div>
+</div>
+
+</div>
+
+<!-- OTHER FIELDS -->
 <div class="row g-3">
 
 <div class="col-md-6">
 
 <div class="form-floating">
-<input type="number" name="no" class="form-control" required>
-<label>No</label>
-</div>
-
-<div class="form-floating mt-3">
-<input type="number" name="year_awarded" class="form-control" required>
-<label>Year Awarded</label>
-</div>
-
-<div class="form-floating mt-3">
-<input type="text" name="project_name" class="form-control" required>
-<label>Project Name</label>
-</div>
-
-<div class="form-floating mt-3">
 <input type="text" name="project_owner" class="form-control">
 <label>Project Owner</label>
+</div>
+
+<div class="form-floating mt-3">
+<input type="text" name="project_manager" class="form-control">
+<label>Project Manager</label>
+</div>
+
+<div class="form-floating mt-3">
+<input type="text" name="account_manager" class="form-control">
+<label>Account Manager</label>
 </div>
 
 <div class="form-floating mt-3">
@@ -196,7 +281,11 @@ Time: $time";
 <label>End User</label>
 </div>
 
-<div class="form-floating mt-3">
+</div>
+
+<div class="col-md-6">
+
+<div class="form-floating">
 <input type="text" name="contract_no" class="form-control">
 <label>Contract No</label>
 </div>
@@ -204,25 +293,6 @@ Time: $time";
 <div class="form-floating mt-3">
 <input type="text" name="service" class="form-control">
 <label>Service</label>
-</div>
-
-</div>
-
-<div class="col-md-6">
-
-<div class="form-floating">
-<input type="date" name="po_date" class="form-control">
-<label>PO Date</label>
-</div>
-
-<div class="form-floating mt-3">
-<input type="date" name="contract_start" class="form-control">
-<label>Start Date</label>
-</div>
-
-<div class="form-floating mt-3">
-<input type="date" name="contract_end" class="form-control">
-<label>End Date</label>
 </div>
 
 <div class="form-floating mt-3">

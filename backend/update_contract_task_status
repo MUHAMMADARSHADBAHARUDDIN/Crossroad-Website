@@ -1,0 +1,100 @@
+<?php
+session_start();
+
+require_once "../includes/db_connect.php";
+require_once "../includes/activity_log.php";
+require_once "../includes/permissions.php";
+
+header("Content-Type: text/plain");
+
+if(!isset($_SESSION['username'])){
+    exit("No session");
+}
+
+$id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
+$is_completed = isset($_POST['is_completed']) ? (int)$_POST['is_completed'] : 0;
+
+$is_completed = $is_completed === 1 ? 1 : 0;
+
+if($id <= 0){
+    exit("Invalid request");
+}
+
+$stmt = $mysqli->prepare("
+    SELECT
+        ct.id,
+        ct.contract_id,
+        ct.task_text,
+        ct.is_completed,
+        pi.project_name,
+        pi.created_by
+    FROM contract_tasks ct
+    INNER JOIN project_inventory pi ON pi.no = ct.contract_id
+    WHERE ct.id = ?
+    LIMIT 1
+");
+
+if(!$stmt){
+    exit("SQL Error: " . $mysqli->error);
+}
+
+$stmt->bind_param("i", $id);
+$stmt->execute();
+$result = $stmt->get_result();
+$taskData = $result->fetch_assoc();
+
+if(!$taskData){
+    exit("Task not found");
+}
+
+$created_by = $taskData['created_by'] ?? "";
+
+if(!hasContractTaskEditAccess($mysqli, $created_by)){
+    exit("Access denied");
+}
+
+$username = $_SESSION['username'];
+$role = $_SESSION['role'] ?? "UNKNOWN";
+
+$updateStmt = $mysqli->prepare("
+    UPDATE contract_tasks
+    SET is_completed = ?,
+        updated_at = NOW()
+    WHERE id = ?
+");
+
+if(!$updateStmt){
+    exit("SQL Error: " . $mysqli->error);
+}
+
+$updateStmt->bind_param("ii", $is_completed, $id);
+
+if(!$updateStmt->execute()){
+    exit("Update failed: " . $updateStmt->error);
+}
+
+$statusText = $is_completed === 1 ? "Completed" : "Not Completed";
+
+$ip = $_SERVER['REMOTE_ADDR'];
+$time = date("Y-m-d H:i:s");
+
+$description = "User [$username] updated contract task status.
+Task ID: $id
+Contract ID: {$taskData['contract_id']}
+Project Name: {$taskData['project_name']}
+Task: {$taskData['task_text']}
+New Status: $statusText
+IP Address: $ip
+Time: $time";
+
+logActivity(
+    $mysqli,
+    $username,
+    $role,
+    "UPDATE CONTRACT TASK STATUS",
+    $description
+);
+
+echo "success";
+exit();
+?>

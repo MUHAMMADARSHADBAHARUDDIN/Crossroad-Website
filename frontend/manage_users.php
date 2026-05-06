@@ -18,7 +18,6 @@ $canAddUser = hasPermission($mysqli, "users_add");
 $canEditUser = hasPermission($mysqli, "users_edit");
 $canDeleteUser = hasPermission($mysqli, "users_delete");
 
-/* ✅ SEARCH FIX */
 $search = "";
 
 if(isset($_GET['search'])){
@@ -48,6 +47,9 @@ $permissionGroups = [
             "contracts_delete" => "Delete",
             "contracts_upload" => "Upload",
             "contracts_download" => "Download",
+            "contracts_task" => "Task Add",
+            "contracts_task_edit" => "Task Edit",
+            "contracts_task_delete" => "Task Delete",
             "contracts_personal" => "Personal / Own"
         ]
     ],
@@ -186,7 +188,7 @@ if($administratorResult){
     }
 }
 
-/* ✅ FINAL SORT: ALPHABETICAL BY USERNAME, IGNORE ACCOUNT TYPE / ROLE */
+/* ✅ SORT ALL ACCOUNTS ALPHABETICALLY BY USERNAME */
 usort($accounts, function($a, $b){
     return strcasecmp($a['username'] ?? '', $b['username'] ?? '');
 });
@@ -215,7 +217,6 @@ html, body{
     overflow-x:hidden !important;
 }
 
-/* ✅ SAME FEEL AS ASSET INVENTORY TABLE */
 .user-table{
     width:100%;
 }
@@ -240,7 +241,6 @@ html, body{
     overflow-x:hidden !important;
 }
 
-/* ✅ BADGES */
 .badge-user{
     background:#0d6efd;
     color:#fff;
@@ -303,7 +303,6 @@ html, body{
     max-width:950px;
 }
 
-/* ✅ PERMISSION CHECKBOX UI */
 .permission-card{
     border:1px solid #e5e7eb;
     border-radius:12px;
@@ -354,7 +353,6 @@ html, body{
     font-size:13px;
 }
 
-/* ✅ MOBILE STILL TABLE-LIKE BUT STACKED CLEANLY */
 @media(max-width: 768px){
     .user-table thead{
         display:none;
@@ -464,8 +462,28 @@ $permissionText = [];
 
 if(in_array("users_full", $permissions, true)){
     $permissionText[] = "Users: Full";
-} else if(in_array("users_view", $permissions, true)){
-    $permissionText[] = "Users";
+} else {
+    $userLabels = [];
+
+    if(in_array("users_view", $permissions, true)){
+        $userLabels[] = "View";
+    }
+
+    if(in_array("users_add", $permissions, true)){
+        $userLabels[] = "Add";
+    }
+
+    if(in_array("users_edit", $permissions, true)){
+        $userLabels[] = "Edit";
+    }
+
+    if(in_array("users_delete", $permissions, true)){
+        $userLabels[] = "Delete";
+    }
+
+    if(!empty($userLabels)){
+        $permissionText[] = "Users: " . implode(", ", $userLabels);
+    }
 }
 
 if(in_array("contracts_full", $permissions, true)){
@@ -495,6 +513,18 @@ if(in_array("contracts_full", $permissions, true)){
 
     if(in_array("contracts_download", $permissions, true)){
         $contractLabels[] = "Download";
+    }
+
+    if(in_array("contracts_task", $permissions, true)){
+        $contractLabels[] = "Task Add";
+    }
+
+    if(in_array("contracts_task_edit", $permissions, true)){
+        $contractLabels[] = "Task Edit";
+    }
+
+    if(in_array("contracts_task_delete", $permissions, true)){
+        $contractLabels[] = "Task Delete";
     }
 
     if(in_array("contracts_personal", $permissions, true)){
