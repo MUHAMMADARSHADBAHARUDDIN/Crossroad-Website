@@ -1,147 +1,151 @@
 <?php
 session_start();
-
 require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
 
 if(!isset($_SESSION['username'])){
-    exit("No session");
+    die("No session");
+}
+
+$role = $_SESSION['role'] ?? "";
+$username = $_SESSION['username'] ?? "";
+
+$contract_id = $_POST['id'] ?? $_POST['contract_id'] ?? "";
+
+if($contract_id == ""){
+    echo "<div class='alert alert-danger'>No contract selected.</div>";
+    exit();
 }
 
 function fileEscape($value){
-    return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
+    return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
 
-function displayContractFileName($fileName){
-    $fileName = basename((string)$fileName);
-
-    /*
-      Removes timestamp / unique prefix only from display.
-      Example:
-      1712345678_contract.pdf becomes contract.pdf
-      1712345678123_contract.pdf becomes contract.pdf
-    */
-    return preg_replace('/^\d{10,}_/', '', $fileName);
+function cleanDisplayFileName($fileName){
+    return preg_replace('/^\d+_/', '', $fileName);
 }
 
-$contract_id = 0;
+/* =========================
+   APP BASE URL
+   This makes the link work whether your page is:
+   /frontend/contracts.php
+   or
+   /contracts.php
+========================= */
+$appBaseUrl = rtrim(dirname(dirname($_SERVER['SCRIPT_NAME'])), '/');
 
-if(isset($_POST['id'])){
-    $contract_id = intval($_POST['id']);
-}
-elseif(isset($_POST['contract_id'])){
-    $contract_id = intval($_POST['contract_id']);
-}
+/* =========================
+   PERMISSION CONTROL
+========================= */
 
-if($contract_id <= 0){
-    exit("<div class='text-muted'>Invalid contract.</div>");
-}
+$canDownload = true;
+$canDelete = false;
 
-/* Get contract owner for permission */
-$contractStmt = $mysqli->prepare("
-    SELECT created_by
-    FROM project_inventory
-    WHERE no = ?
-    LIMIT 1
-");
-
-if(!$contractStmt){
-    exit("<div class='text-danger'>SQL Error: " . fileEscape($mysqli->error) . "</div>");
+if(function_exists('hasContractDownloadAccess')){
+    $canDownload = hasContractDownloadAccess($mysqli);
 }
 
-$contractStmt->bind_param("i", $contract_id);
-$contractStmt->execute();
-$contractResult = $contractStmt->get_result();
-
-if($contractResult->num_rows <= 0){
-    exit("<div class='text-muted'>Contract not found.</div>");
+if(function_exists('hasContractDeleteAccess')){
+    $canDelete = hasContractDeleteAccess($mysqli);
+} else {
+    $canDelete = in_array($role, [
+        "Administrator",
+        "System Admin",
+        "User (Project Coordinator)"
+    ]);
 }
 
-$contractData = $contractResult->fetch_assoc();
-$created_by = $contractData['created_by'] ?? "";
-
-$canDownload = hasContractDownloadAccess($mysqli, $created_by);
-$canDelete = hasContractUploadAccess($mysqli, $created_by);
+/* =========================
+   GET CONTRACT FILES
+========================= */
 
 $stmt = $mysqli->prepare("
-    SELECT *
+    SELECT id, file_name, uploaded_by
     FROM contract_files
     WHERE contract_id = ?
     ORDER BY id DESC
 ");
 
 if(!$stmt){
-    exit("<div class='text-danger'>SQL Error: " . fileEscape($mysqli->error) . "</div>");
+    echo "<div class='alert alert-danger'>SQL Error: " . fileEscape($mysqli->error) . "</div>";
+    exit();
 }
 
-$stmt->bind_param("i", $contract_id);
+$stmt->bind_param("s", $contract_id);
 $stmt->execute();
 $result = $stmt->get_result();
 
-if($result->num_rows <= 0){
-    exit("<div class='text-muted'>No files uploaded.</div>");
-}
-?>
-
-<div class="list-group">
-
-<?php while($file = $result->fetch_assoc()): ?>
-
-<?php
-$fileId = $file['id'] ?? 0;
-$storedFileName = $file['file_name'] ?? "";
-$displayFileName = displayContractFileName($storedFileName);
-$filePath = "../uploads/" . $storedFileName;
-
-$uploadedBy = $file['uploaded_by'] ?? "-";
-$uploadedAt = $file['uploaded_at'] ?? ($file['upload_date'] ?? "");
-?>
-
-<div class="list-group-item d-flex justify-content-between align-items-center gap-2 flex-wrap">
-
-    <div style="min-width:0;">
-        <div class="fw-semibold" style="word-break:break-word;">
-            <i class="fa fa-file"></i>
-            <?= fileEscape($displayFileName) ?>
+if($result->num_rows == 0){
+    echo "
+        <div class='alert alert-secondary mb-0'>
+            <i class='fa fa-folder-open'></i> No document uploaded for this contract.
         </div>
+    ";
+    $stmt->close();
+    exit();
+}
 
-        <small class="text-muted">
-            Uploaded by <?= fileEscape($uploadedBy) ?>
-            <?php if(!empty($uploadedAt)): ?>
-                • <?= fileEscape($uploadedAt) ?>
-            <?php endif; ?>
-        </small>
-    </div>
+echo "<div class='list-group'>";
 
-    <div class="d-flex gap-2 flex-wrap">
+while($row = $result->fetch_assoc()){
 
-        <?php if($canDownload): ?>
-            <a
-                href="<?= fileEscape($filePath) ?>"
-                target="_blank"
-                class="btn btn-sm btn-primary"
-                download="<?= fileEscape($displayFileName) ?>"
-            >
-                <i class="fa fa-download"></i> Download
-            </a>
-        <?php else: ?>
-            <span class="badge bg-secondary">No Download Access</span>
-        <?php endif; ?>
+    $fileId = (int)$row['id'];
+    $storedFileName = basename($row['file_name']);
+    $displayFileName = cleanDisplayFileName($storedFileName);
 
-        <?php if($canDelete): ?>
-            <a
-                href="../backend/delete_contract_file.php?id=<?= urlencode($fileId) ?>"
-                class="btn btn-sm btn-danger"
-                onclick="return confirm('Delete this file?')"
-            >
-                <i class="fa fa-trash"></i> Delete
-            </a>
-        <?php endif; ?>
+    $viewUrl = $appBaseUrl . "/backend/view_contract_file.php?id=" . $fileId;
+    $downloadUrl = $appBaseUrl . "/backend/download_contract_file.php?id=" . $fileId;
 
-    </div>
+    echo "
+        <div class='list-group-item'>
+            <div class='d-flex justify-content-between align-items-center flex-wrap gap-2'>
 
-</div>
+                <div>
+                    <div class='fw-semibold'>
+                        <i class='fa fa-file'></i> " . fileEscape($displayFileName) . "
+                    </div>
+                    <small class='text-muted'>
+                        Uploaded by: " . fileEscape($row['uploaded_by'] ?? '-') . "
+                    </small>
+                </div>
 
-<?php endwhile; ?>
+                <div class='d-flex gap-2 flex-wrap'>
 
-</div>
+                    <a href='" . fileEscape($viewUrl) . "'
+                       target='_blank'
+                       rel='noopener noreferrer'
+                       class='btn btn-sm btn-info text-white'>
+                        <i class='fa fa-eye'></i> View
+                    </a>
+    ";
+
+    if($canDownload){
+        echo "
+                    <a href='" . fileEscape($downloadUrl) . "'
+                       class='btn btn-sm btn-success'>
+                        <i class='fa fa-download'></i> Download
+                    </a>
+        ";
+    }
+
+    if($canDelete){
+        echo "
+                    <button type='button'
+                            class='btn btn-sm btn-danger'
+                            onclick='deleteContractFile($fileId, " . json_encode($contract_id) . ")'>
+                        <i class='fa fa-trash'></i> Delete
+                    </button>
+        ";
+    }
+
+    echo "
+                </div>
+            </div>
+        </div>
+    ";
+}
+
+echo "</div>";
+
+$stmt->close();
+?>

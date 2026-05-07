@@ -1312,7 +1312,39 @@ function deleteContractTask(id){
         alert("Failed to delete task.");
     });
 }
+function deleteContractFile(fileId, contractId){
+    if(!confirm("Delete this document?")){
+        return;
+    }
 
+    $.post("../backend/delete_contract_file.php", {
+        id: fileId
+    }, function(data){
+
+        if(data.trim() === "success"){
+
+            $("#filesContainer").html(
+                "<div class='text-primary small'><i class='fa fa-spinner fa-spin'></i> Reloading documents...</div>"
+            );
+
+            $.post("../backend/get_contract_files.php", {
+                id: contractId
+            }, function(fileData){
+                $("#filesContainer").html(fileData);
+            }).fail(function(){
+                $("#filesContainer").html(
+                    "<div class='alert alert-danger mb-0'>Failed to reload documents.</div>"
+                );
+            });
+
+        }else{
+            alert(data);
+        }
+
+    }).fail(function(){
+        alert("Failed to delete document.");
+    });
+}
 $(document).ready(function(){
 
     let initialSearch = <?= json_encode($search) ?>;

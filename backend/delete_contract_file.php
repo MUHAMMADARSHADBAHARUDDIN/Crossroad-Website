@@ -1,103 +1,133 @@
 <?php
 session_start();
+
 require_once "../includes/db_connect.php";
-require_once "../includes/activity_log.php";
 require_once "../includes/permissions.php";
+require_once "../includes/activity_log.php";
 
 if(!isset($_SESSION['username'])){
-    exit("No session");
+    die("No session");
 }
 
-$role = $_SESSION['role'] ?? "UNKNOWN";
-$username = $_SESSION['username'];
+$username = $_SESSION['username'] ?? "";
+$role = $_SESSION['role'] ?? "";
 
-if(!isset($_GET['id'])){
-    exit("Invalid request");
+$file_id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
+
+if($file_id <= 0){
+    die("Invalid file");
 }
 
-$id = intval($_GET['id']);
-
+/* =========================
+   GET FILE DATA + CONTRACT OWNER
+========================= */
 $stmt = $mysqli->prepare("
     SELECT
+        cf.id,
+        cf.contract_id,
         cf.file_name,
         cf.uploaded_by,
-        cf.contract_id,
-        pi.created_by AS contract_created_by
+        pi.created_by,
+        pi.project_name,
+        pi.contract_no
     FROM contract_files cf
-    LEFT JOIN project_inventory pi ON cf.contract_id = pi.no
+    LEFT JOIN project_inventory pi ON pi.no = cf.contract_id
     WHERE cf.id = ?
     LIMIT 1
 ");
 
 if(!$stmt){
-    die("Prepare failed: " . $mysqli->error);
+    die("SQL Error: " . $mysqli->error);
 }
 
-$stmt->bind_param("i", $id);
+$stmt->bind_param("i", $file_id);
 $stmt->execute();
-
 $result = $stmt->get_result();
-$file = $result->fetch_assoc();
 
-if(!$file){
+if($result->num_rows <= 0){
     die("File not found");
 }
 
-$contractCreatedBy = $file['contract_created_by'] ?? "";
+$row = $result->fetch_assoc();
+$stmt->close();
 
-if(!hasContractDeleteAccess($mysqli, $contractCreatedBy)){
+$contract_id = $row['contract_id'];
+$file_name = basename($row['file_name']);
+$created_by = $row['created_by'] ?? "";
+
+/* =========================
+   PERMISSION CHECK
+   Do not change existing permission system.
+========================= */
+$canDelete = false;
+
+if(function_exists("hasContractDeleteAccess")){
+    $canDelete = hasContractDeleteAccess($mysqli, $created_by);
+}else{
+    $canDelete = in_array($role, [
+        "Administrator",
+        "System Admin",
+        "User (Project Coordinator)"
+    ]);
+}
+
+if(!$canDelete){
     die("Access denied");
 }
 
-$file_path = "../uploads/" . $file['file_name'];
-$fileDeleted = false;
+/* =========================
+   FILE PATH
+========================= */
+$filePathContracts = "../uploads/contracts/" . $file_name;
+$filePathOld = "../uploads/" . $file_name;
 
-if(file_exists($file_path)){
-    $fileDeleted = unlink($file_path);
-}
-
+/* =========================
+   DELETE DATABASE RECORD FIRST
+========================= */
 $deleteStmt = $mysqli->prepare("
     DELETE FROM contract_files
     WHERE id = ?
 ");
 
-if($deleteStmt){
-    $deleteStmt->bind_param("i", $id);
-
-    if($deleteStmt->execute()){
-
-        $ip = $_SERVER['REMOTE_ADDR'];
-        $time = date("Y-m-d H:i:s");
-
-        $description = "User [$username] deleted contract file.
-File Name: {$file['file_name']}
-Uploaded By: {$file['uploaded_by']}
-Contract ID: {$file['contract_id']}
-Contract Created By: {$contractCreatedBy}
-File Deleted From Server: " . ($fileDeleted ? "YES" : "NO") . "
-File ID: $id
-IP Address: $ip
-Time: $time";
-
-        logActivity(
-            $mysqli,
-            $username,
-            $role,
-            "DELETE FILE",
-            $description
-        );
-
-        header("Location: ../frontend/contracts.php");
-        exit();
-
-    } else {
-        echo "Delete failed: " . $mysqli->error;
-    }
-
-} else {
-    echo "Prepare failed: " . $mysqli->error;
+if(!$deleteStmt){
+    die("SQL Error: " . $mysqli->error);
 }
 
-header("Location: ../frontend/contracts.php");
+$deleteStmt->bind_param("i", $file_id);
+
+if(!$deleteStmt->execute()){
+    die("Delete failed: " . $mysqli->error);
+}
+
+$deleteStmt->close();
+
+/* =========================
+   DELETE PHYSICAL FILE
+========================= */
+if(file_exists($filePathContracts)){
+    unlink($filePathContracts);
+}
+elseif(file_exists($filePathOld)){
+    unlink($filePathOld);
+}
+
+/* =========================
+   ACTIVITY LOG
+========================= */
+$displayFileName = preg_replace('/^\d+_/', '', $file_name);
+
+if(function_exists("logActivity")){
+    $description = "User [$username] deleted contract document.
+Contract ID: $contract_id
+Project Name: " . ($row['project_name'] ?? '-') . "
+Contract No: " . ($row['contract_no'] ?? '-') . "
+File Name: $displayFileName
+IP Address: " . ($_SERVER['REMOTE_ADDR'] ?? '-') . "
+Time: " . date("Y-m-d H:i:s");
+
+    logActivity($mysqli, $username, $role, "DELETE CONTRACT FILE", $description);
+}
+
+echo "success";
 exit();
 ?>
