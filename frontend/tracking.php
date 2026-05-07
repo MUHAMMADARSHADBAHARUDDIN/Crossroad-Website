@@ -26,6 +26,47 @@ function trackingEscape($value){
     return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
 }
 
+function trackingDisplayFileName($fileName){
+    $fileName = basename((string)$fileName);
+    return preg_replace('/^\d{10,}_/', '', $fileName);
+}
+
+function trackingCleanDescriptionForDisplay($description){
+    $description = (string)($description ?? '');
+
+    /*
+       Cleans old upload logs too.
+       Example:
+       File Name: 1712345678_contract.pdf
+       becomes:
+       File Name: contract.pdf
+    */
+    $description = preg_replace_callback(
+        '/(^|\R)(File Name:\s*)([^\r\n]+)/i',
+        function($matches){
+            return $matches[1] . $matches[2] . trackingDisplayFileName(trim($matches[3]));
+        },
+        $description
+    );
+
+    return $description;
+}
+
+function trackingShortDescription($description, $limit = 160){
+    $description = trackingCleanDescriptionForDisplay($description);
+    $description = preg_replace('/\s+/', ' ', trim($description));
+
+    if(function_exists('mb_strlen') && function_exists('mb_substr')){
+        return mb_strlen($description) > $limit
+            ? mb_substr($description, 0, $limit) . "..."
+            : $description;
+    }
+
+    return strlen($description) > $limit
+        ? substr($description, 0, $limit) . "..."
+        : $description;
+}
+
 function bindTrackingParams($stmt, $types, $params){
     if($types === "" || empty($params)){
         return;
@@ -382,7 +423,6 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
         $orderBy = $orderColumnMap[$orderColumnIndex] . " " . $orderDirection;
     }
 
-    /* TOTAL RECORDS */
     $totalResult = $mysqli->query("
         SELECT COUNT(*) AS total
         FROM activity_logs
@@ -395,7 +435,6 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
 
     $whereSql = buildTrackingSearchWhere($search, $params, $types);
 
-    /* FILTERED COUNT */
     if($whereSql !== ""){
         $countStmt = $mysqli->prepare("
             SELECT COUNT(*) AS total
@@ -422,7 +461,6 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
         $recordsFiltered = $recordsTotal;
     }
 
-    /* DATA QUERY */
     $sql = "
         SELECT
             id,
@@ -463,11 +501,8 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
 
     while($row = $result->fetch_assoc()){
 
-        $descriptionRaw = $row['description'] ?? "";
-
-        $descriptionShort = mb_strlen($descriptionRaw) > 160
-            ? mb_substr($descriptionRaw, 0, 160) . "..."
-            : $descriptionRaw;
+        $descriptionRaw = trackingCleanDescriptionForDisplay($row['description'] ?? "");
+        $descriptionShort = trackingShortDescription($descriptionRaw, 160);
 
         $formattedTime = !empty($row['log_time'])
             ? date("d M Y, h:i A", strtotime($row['log_time']))
@@ -496,7 +531,7 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
             "username" => trackingEscape($row['username']),
             "role" => trackingEscape($row['role']),
             "action" => trackingEscape($row['action_type']),
-            "description" => nl2br(trackingEscape($descriptionShort)),
+            "description" => trackingEscape($descriptionShort),
             "time" => trackingEscape($formattedTime),
             "actions" => $actionsHtml,
 
@@ -680,6 +715,125 @@ if(isset($_GET['search'])){
     text-align:center;
 }
 
+/* ✅ NEW ACTIVITY DETAIL DESIGN */
+.activity-description-box{
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+}
+
+.activity-intro-card{
+    background:#f8fafc;
+    border:1px solid #e5e7eb;
+    border-radius:12px;
+    padding:12px 14px;
+    font-weight:600;
+    color:#111827;
+    overflow-wrap:anywhere;
+}
+
+.activity-info-grid{
+    display:grid;
+    grid-template-columns:170px 1fr;
+    border:1px solid #e5e7eb;
+    border-radius:12px;
+    overflow:hidden;
+    background:#fff;
+}
+
+.activity-info-label{
+    background:#f8fafc;
+    padding:10px 12px;
+    font-weight:700;
+    border-bottom:1px solid #e5e7eb;
+    color:#374151;
+}
+
+.activity-info-value{
+    padding:10px 12px;
+    border-bottom:1px solid #e5e7eb;
+    color:#111827;
+    overflow-wrap:anywhere;
+    word-break:normal;
+}
+
+.activity-info-label:last-of-type,
+.activity-info-value:last-of-type{
+    border-bottom:none;
+}
+
+.activity-compare-wrap{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:14px;
+}
+
+.activity-compare-card{
+    border:1px solid #e5e7eb;
+    border-radius:14px;
+    overflow:hidden;
+    background:#fff;
+}
+
+.activity-compare-title{
+    padding:10px 12px;
+    font-weight:800;
+    color:#fff;
+}
+
+.old-title{
+    background:#6c757d;
+}
+
+.new-title{
+    background:#198754;
+}
+
+.activity-compare-row{
+    border-bottom:1px solid #eef2f7;
+    padding:10px 12px;
+}
+
+.activity-compare-row:last-child{
+    border-bottom:none;
+}
+
+.activity-compare-label{
+    font-size:12px;
+    text-transform:uppercase;
+    letter-spacing:0.35px;
+    font-weight:800;
+    color:#6b7280;
+    margin-bottom:4px;
+}
+
+.activity-compare-value{
+    color:#111827;
+    overflow-wrap:anywhere;
+    word-break:normal;
+}
+
+.diff-highlight{
+    font-weight:800;
+    background:#fff3cd;
+    color:#000;
+    padding:1px 3px;
+    border-radius:4px;
+}
+
+.activity-system-card{
+    border:1px solid #dbeafe;
+    background:#eff6ff;
+    border-radius:12px;
+    padding:12px;
+}
+
+.activity-system-title{
+    font-weight:800;
+    color:#1d4ed8;
+    margin-bottom:8px;
+}
+
 @media(max-width:768px){
     .activity-toolbar{
         align-items:flex-start;
@@ -697,6 +851,23 @@ if(isset($_GET['search'])){
 
     .old-delete-group .form-select{
         min-width:0;
+    }
+
+    .activity-info-grid{
+        grid-template-columns:1fr;
+    }
+
+    .activity-info-label{
+        border-bottom:none;
+        padding-bottom:2px;
+    }
+
+    .activity-info-value{
+        padding-top:2px;
+    }
+
+    .activity-compare-wrap{
+        grid-template-columns:1fr;
     }
 }
 </style>
@@ -813,6 +984,304 @@ $(document).ready(function(){
     let typingTimer = null;
     let selectedLogIds = new Set();
 
+    function escapeHtml(value){
+        return String(value ?? "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    function stripStoredFilePrefix(fileName){
+        return String(fileName ?? "").replace(/^\d{10,}_/, "");
+    }
+
+    function cleanFieldValue(label, value){
+        let cleanLabel = String(label ?? "").toLowerCase().trim();
+
+        if(cleanLabel === "file name"){
+            return stripStoredFilePrefix(value);
+        }
+
+        return value ?? "";
+    }
+
+    function parseLabelValue(line){
+        let cleanLine = String(line ?? "").trim();
+
+        if(cleanLine.startsWith("- ")){
+            cleanLine = cleanLine.substring(2).trim();
+        }
+
+        let colonIndex = cleanLine.indexOf(":");
+
+        if(colonIndex === -1){
+            return {
+                label: "",
+                value: cleanLine
+            };
+        }
+
+        let label = cleanLine.substring(0, colonIndex).trim();
+        let value = cleanLine.substring(colonIndex + 1).trim();
+
+        value = cleanFieldValue(label, value);
+
+        return {
+            label: label,
+            value: value
+        };
+    }
+
+    function parseDescription(description){
+        let lines = String(description ?? "")
+            .replace(/\r\n/g, "\n")
+            .replace(/\r/g, "\n")
+            .split("\n")
+            .map(line => line.trim())
+            .filter(line => line !== "");
+
+        let parsed = {
+            intro: [],
+            main: [],
+            oldData: [],
+            newData: [],
+            system: [],
+            notes: []
+        };
+
+        let section = "main";
+
+        lines.forEach(function(line){
+            let upper = line.toUpperCase().replace(/:$/, "");
+
+            if(upper === "OLD DATA" || upper === "==================== OLD DATA ===================="){
+                section = "oldData";
+                return;
+            }
+
+            if(upper === "NEW DATA" || upper === "==================== NEW DATA ===================="){
+                section = "newData";
+                return;
+            }
+
+            if(upper === "SYSTEM INFO" || upper === "==================== SYSTEM INFO ===================="){
+                section = "system";
+                return;
+            }
+
+            let item = parseLabelValue(line);
+
+            if(item.label === ""){
+                if(section === "main"){
+                    parsed.intro.push(item.value);
+                }else{
+                    parsed.notes.push(item.value);
+                }
+                return;
+            }
+
+            if(item.label.toLowerCase() === "ip address" || item.label.toLowerCase() === "time"){
+                parsed.system.push(item);
+                return;
+            }
+
+            if(section === "oldData"){
+                parsed.oldData.push(item);
+            }
+            else if(section === "newData"){
+                parsed.newData.push(item);
+            }
+            else if(section === "system"){
+                parsed.system.push(item);
+            }
+            else{
+                parsed.main.push(item);
+            }
+        });
+
+        return parsed;
+    }
+
+    function highlightChangedText(oldText, newText){
+        oldText = String(oldText ?? "");
+        newText = String(newText ?? "");
+
+        if(oldText === newText){
+            return escapeHtml(newText);
+        }
+
+        let oldParts = oldText.split(/(\s+)/);
+        let newParts = newText.split(/(\s+)/);
+
+        let start = 0;
+
+        while(
+            start < oldParts.length &&
+            start < newParts.length &&
+            oldParts[start] === newParts[start]
+        ){
+            start++;
+        }
+
+        let oldEnd = oldParts.length - 1;
+        let newEnd = newParts.length - 1;
+
+        while(
+            oldEnd >= start &&
+            newEnd >= start &&
+            oldParts[oldEnd] === newParts[newEnd]
+        ){
+            oldEnd--;
+            newEnd--;
+        }
+
+        let before = newParts.slice(0, start).join("");
+        let changed = newParts.slice(start, newEnd + 1).join("");
+        let after = newParts.slice(newEnd + 1).join("");
+
+        if(changed.trim() === ""){
+            return escapeHtml(newText);
+        }
+
+        return escapeHtml(before) +
+            "<span class='diff-highlight'>" + escapeHtml(changed) + "</span>" +
+            escapeHtml(after);
+    }
+
+    function makeInfoGrid(items){
+        if(!items || items.length === 0){
+            return "";
+        }
+
+        let html = "<div class='activity-info-grid'>";
+
+        items.forEach(function(item){
+            html += `
+                <div class="activity-info-label">${escapeHtml(item.label)}</div>
+                <div class="activity-info-value">${escapeHtml(item.value)}</div>
+            `;
+        });
+
+        html += "</div>";
+
+        return html;
+    }
+
+    function makeSystemCard(items){
+        if(!items || items.length === 0){
+            return "";
+        }
+
+        return `
+            <div class="activity-system-card">
+                <div class="activity-system-title">
+                    <i class="fa fa-circle-info"></i> System Info
+                </div>
+                ${makeInfoGrid(items)}
+            </div>
+        `;
+    }
+
+    function makeCompareCards(oldItems, newItems){
+        if((!oldItems || oldItems.length === 0) && (!newItems || newItems.length === 0)){
+            return "";
+        }
+
+        let oldMap = {};
+        let newMap = {};
+        let labels = [];
+
+        oldItems.forEach(function(item){
+            oldMap[item.label] = item.value;
+            if(!labels.includes(item.label)){
+                labels.push(item.label);
+            }
+        });
+
+        newItems.forEach(function(item){
+            newMap[item.label] = item.value;
+            if(!labels.includes(item.label)){
+                labels.push(item.label);
+            }
+        });
+
+        let oldHtml = `
+            <div class="activity-compare-card">
+                <div class="activity-compare-title old-title">
+                    <i class="fa fa-clock-rotate-left"></i> Old Data
+                </div>
+        `;
+
+        let newHtml = `
+            <div class="activity-compare-card">
+                <div class="activity-compare-title new-title">
+                    <i class="fa fa-pen-to-square"></i> New Data
+                </div>
+        `;
+
+        labels.forEach(function(label){
+            let oldValue = oldMap[label] ?? "";
+            let newValue = newMap[label] ?? "";
+
+            oldHtml += `
+                <div class="activity-compare-row">
+                    <div class="activity-compare-label">${escapeHtml(label)}</div>
+                    <div class="activity-compare-value">${escapeHtml(oldValue)}</div>
+                </div>
+            `;
+
+            newHtml += `
+                <div class="activity-compare-row">
+                    <div class="activity-compare-label">${escapeHtml(label)}</div>
+                    <div class="activity-compare-value">${highlightChangedText(oldValue, newValue)}</div>
+                </div>
+            `;
+        });
+
+        oldHtml += "</div>";
+        newHtml += "</div>";
+
+        return `
+            <div class="activity-compare-wrap">
+                ${oldHtml}
+                ${newHtml}
+            </div>
+        `;
+    }
+
+    function buildDescriptionHtml(description){
+        let parsed = parseDescription(description);
+        let html = "";
+
+        if(parsed.intro.length > 0){
+            parsed.intro.forEach(function(line){
+                html += `<div class="activity-intro-card">${escapeHtml(line)}</div>`;
+            });
+        }
+
+        if(parsed.main.length > 0){
+            html += makeInfoGrid(parsed.main);
+        }
+
+        html += makeCompareCards(parsed.oldData, parsed.newData);
+
+        if(parsed.notes.length > 0){
+            parsed.notes.forEach(function(note){
+                html += `<div class="activity-intro-card">${escapeHtml(note)}</div>`;
+            });
+        }
+
+        html += makeSystemCard(parsed.system);
+
+        if(html.trim() === ""){
+            html = `<div class="text-muted">No description available.</div>`;
+        }
+
+        return html;
+    }
+
     let table = $('#logsTable').DataTable({
         processing: true,
         serverSide: true,
@@ -890,7 +1359,7 @@ $(document).ready(function(){
 
         if(searchText !== ""){
             $("#activeFilterBox")
-                .html("<strong>Active Search:</strong> " + searchText)
+                .html("<strong>Active Search:</strong> " + escapeHtml(searchText))
                 .show();
         }else{
             $("#activeFilterBox").hide().html("");
@@ -932,22 +1401,12 @@ $(document).ready(function(){
             return;
         }
 
-        let description = rowData.meta.description || "";
-
-        let points = description.split(/[,.;\n]/);
-        let listHTML = "";
-
-        points.forEach(function(item){
-            if(item.trim() !== ""){
-                listHTML += `<li>${item.trim()}</li>`;
-            }
-        });
-
         $('#mUsername').text(rowData.meta.username || "");
         $('#mRole').text(rowData.meta.role || "");
         $('#mAction').text(rowData.meta.action || "");
         $('#mTime').text(rowData.meta.time || "");
-        $('#mDescription').html(listHTML);
+
+        $('#mDescription').html(buildDescriptionHtml(rowData.meta.description || ""));
 
         new bootstrap.Modal(document.getElementById('logModal')).show();
     });
@@ -1091,7 +1550,7 @@ $(document).ready(function(){
 
 <!-- MODAL -->
 <div class="modal fade" id="logModal" tabindex="-1">
-<div class="modal-dialog modal-lg modal-dialog-centered">
+<div class="modal-dialog modal-xl modal-dialog-centered">
 <div class="modal-content shadow">
 
 <div class="modal-header">
@@ -1110,7 +1569,7 @@ $(document).ready(function(){
 <hr>
 
 <strong>Description:</strong>
-<ul id="mDescription"></ul>
+<div id="mDescription" class="activity-description-box mt-2"></div>
 </div>
 
 </div>

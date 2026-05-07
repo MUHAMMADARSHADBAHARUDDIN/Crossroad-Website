@@ -3,6 +3,7 @@ session_start();
 
 require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
+require_once "../includes/activity_log.php";
 
 if(!isset($_SESSION['username'])){
     exit("No session");
@@ -42,7 +43,7 @@ if(!addTaskColumnExists($mysqli, "contract_tasks", "contract_id")){
 }
 
 $contractStmt = $mysqli->prepare("
-    SELECT created_by
+    SELECT created_by, project_name, contract_no
     FROM project_inventory
     WHERE no = ?
     LIMIT 1
@@ -62,8 +63,9 @@ if($contractResult->num_rows <= 0){
 
 $contract = $contractResult->fetch_assoc();
 $createdBy = $contract['created_by'] ?? "";
+$projectName = $contract['project_name'] ?? "";
+$contractNo = $contract['contract_no'] ?? "";
 
-/* ✅ FIXED: use Task Add permission */
 if(!hasContractTaskAddAccess($mysqli, $createdBy)){
     exit("Access denied. You do not have Task Add permission.");
 }
@@ -136,6 +138,31 @@ array_unshift($refs, $types);
 call_user_func_array([$stmt, 'bind_param'], $refs);
 
 if($stmt->execute()){
+
+    $newTaskId = $stmt->insert_id;
+    $username = $_SESSION['username'];
+    $role = $_SESSION['role'] ?? "UNKNOWN";
+    $ip = $_SERVER['REMOTE_ADDR'];
+    $time = date("Y-m-d H:i:s");
+
+    $description = "User [$username] added a contract task.
+Contract ID: $contractId
+Contract No: $contractNo
+Project Name: $projectName
+Task ID: $newTaskId
+Task: $taskText
+Status: Pending
+IP Address: $ip
+Time: $time";
+
+    logActivity(
+        $mysqli,
+        $username,
+        $role,
+        "ADD CONTRACT TASK",
+        $description
+    );
+
     exit("success");
 }
 

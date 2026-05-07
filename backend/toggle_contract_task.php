@@ -3,6 +3,7 @@ session_start();
 
 require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
+require_once "../includes/activity_log.php";
 
 if(!isset($_SESSION['username'])){
     exit("No session");
@@ -43,8 +44,39 @@ if(!toggleTaskColumnExists($mysqli, "contract_tasks", "contract_id")){
     exit("contract_id column not found.");
 }
 
+if(toggleTaskColumnExists($mysqli, "contract_tasks", "task_text")){
+    $textColumn = "task_text";
+}
+elseif(toggleTaskColumnExists($mysqli, "contract_tasks", "task_name")){
+    $textColumn = "task_name";
+}
+elseif(toggleTaskColumnExists($mysqli, "contract_tasks", "title")){
+    $textColumn = "title";
+}
+elseif(toggleTaskColumnExists($mysqli, "contract_tasks", "description")){
+    $textColumn = "description";
+}
+else{
+    $textColumn = "";
+}
+
+if(toggleTaskColumnExists($mysqli, "contract_tasks", "is_completed")){
+    $oldStatusSql = "CASE WHEN is_completed = 1 THEN 'Completed' ELSE 'Pending' END AS old_status";
+}
+elseif(toggleTaskColumnExists($mysqli, "contract_tasks", "completed")){
+    $oldStatusSql = "CASE WHEN completed = 1 THEN 'Completed' ELSE 'Pending' END AS old_status";
+}
+elseif(toggleTaskColumnExists($mysqli, "contract_tasks", "status")){
+    $oldStatusSql = "status AS old_status";
+}
+else{
+    $oldStatusSql = "'Pending' AS old_status";
+}
+
+$taskTextSelect = $textColumn !== "" ? "`$textColumn` AS task_text" : "'' AS task_text";
+
 $taskStmt = $mysqli->prepare("
-    SELECT contract_id
+    SELECT contract_id, $taskTextSelect, $oldStatusSql
     FROM contract_tasks
     WHERE `$idColumn` = ?
     LIMIT 1
@@ -64,9 +96,11 @@ if($taskResult->num_rows <= 0){
 
 $task = $taskResult->fetch_assoc();
 $contractId = (int)$task['contract_id'];
+$taskText = $task['task_text'] ?? "";
+$oldStatus = $task['old_status'] ?? "Pending";
 
 $contractStmt = $mysqli->prepare("
-    SELECT created_by
+    SELECT created_by, project_name, contract_no
     FROM project_inventory
     WHERE no = ?
     LIMIT 1
@@ -86,11 +120,14 @@ if($contractResult->num_rows <= 0){
 
 $contract = $contractResult->fetch_assoc();
 $createdBy = $contract['created_by'] ?? "";
+$projectName = $contract['project_name'] ?? "";
+$contractNo = $contract['contract_no'] ?? "";
 
-/* ✅ FIXED: checkbox tick is considered Task Edit permission */
 if(!hasContractTaskEditAccess($mysqli, $createdBy)){
     exit("Access denied. You do not have Task Edit permission.");
 }
+
+$newStatus = $isCompleted === 1 ? "Completed" : "Pending";
 
 if(toggleTaskColumnExists($mysqli, "contract_tasks", "is_completed")){
     $value = $isCompleted === 1 ? 1 : 0;
@@ -142,6 +179,44 @@ else{
 }
 
 if($stmt->execute()){
+
+    $username = $_SESSION['username'];
+    $role = $_SESSION['role'] ?? "UNKNOWN";
+    $ip = $_SERVER['REMOTE_ADDR'];
+    $time = date("Y-m-d H:i:s");
+
+    $actionType = $isCompleted === 1
+        ? "COMPLETE CONTRACT TASK"
+        : "CANCEL COMPLETE CONTRACT TASK";
+
+    $actionText = $isCompleted === 1
+        ? "completed a contract task"
+        : "cancelled completion of a contract task";
+
+    $description = "User [$username] $actionText.
+Contract ID: $contractId
+Contract No: $contractNo
+Project Name: $projectName
+Task ID: $id
+Task: $taskText
+
+OLD DATA:
+- Status: $oldStatus
+
+NEW DATA:
+- Status: $newStatus
+
+IP Address: $ip
+Time: $time";
+
+    logActivity(
+        $mysqli,
+        $username,
+        $role,
+        $actionType,
+        $description
+    );
+
     exit("success");
 }
 

@@ -50,7 +50,12 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
         die("File upload error");
     }
 
-    $file_name = time() . "_" . basename($file['name']);
+    /*
+       Database/storage filename still has unique timestamp.
+       Activity log display only uses original clean filename.
+    */
+    $original_file_name = basename($file['name']);
+    $file_name = time() . "_" . $original_file_name;
     $target_path = "../uploads/" . $file_name;
 
     if(!is_dir("../uploads")){
@@ -77,7 +82,7 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
 
             $description = "User [$uploaded_by] uploaded a contract file.
 Contract ID: $contract_id
-File Name: $file_name
+File Name: $original_file_name
 File Size: " . $file['size'] . " bytes
 IP Address: $ip
 Time: $time";

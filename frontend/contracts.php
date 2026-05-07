@@ -415,7 +415,7 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
             $actionsHtml .= '
                 <a href="contract_edit.php?id=' . contractEscape($row['no']) . '"
                    class="btn btn-sm btn-primary contract-action-btn">
-                    Edit
+                    &nbsp&nbsp;Edit&nbsp&nbsp;
                 </a>
             ';
         }

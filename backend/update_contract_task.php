@@ -3,6 +3,7 @@ session_start();
 
 require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
+require_once "../includes/activity_log.php";
 
 if(!isset($_SESSION['username'])){
     exit("No session");
@@ -64,7 +65,7 @@ else{
 }
 
 $taskStmt = $mysqli->prepare("
-    SELECT contract_id
+    SELECT contract_id, `$textColumn` AS old_task_text
     FROM contract_tasks
     WHERE `$idColumn` = ?
     LIMIT 1
@@ -84,9 +85,10 @@ if($taskResult->num_rows <= 0){
 
 $task = $taskResult->fetch_assoc();
 $contractId = (int)$task['contract_id'];
+$oldTaskText = $task['old_task_text'] ?? "";
 
 $contractStmt = $mysqli->prepare("
-    SELECT created_by
+    SELECT created_by, project_name, contract_no
     FROM project_inventory
     WHERE no = ?
     LIMIT 1
@@ -106,8 +108,9 @@ if($contractResult->num_rows <= 0){
 
 $contract = $contractResult->fetch_assoc();
 $createdBy = $contract['created_by'] ?? "";
+$projectName = $contract['project_name'] ?? "";
+$contractNo = $contract['contract_no'] ?? "";
 
-/* ✅ FIXED: use Task Edit permission */
 if(!hasContractTaskEditAccess($mysqli, $createdBy)){
     exit("Access denied. You do not have Task Edit permission.");
 }
@@ -125,6 +128,35 @@ if(!$stmt){
 $stmt->bind_param("si", $taskText, $id);
 
 if($stmt->execute()){
+
+    $username = $_SESSION['username'];
+    $role = $_SESSION['role'] ?? "UNKNOWN";
+    $ip = $_SERVER['REMOTE_ADDR'];
+    $time = date("Y-m-d H:i:s");
+
+    $description = "User [$username] updated a contract task.
+Contract ID: $contractId
+Contract No: $contractNo
+Project Name: $projectName
+Task ID: $id
+
+OLD DATA:
+- Task: $oldTaskText
+
+NEW DATA:
+- Task: $taskText
+
+IP Address: $ip
+Time: $time";
+
+    logActivity(
+        $mysqli,
+        $username,
+        $role,
+        "UPDATE CONTRACT TASK",
+        $description
+    );
+
     exit("success");
 }
 
