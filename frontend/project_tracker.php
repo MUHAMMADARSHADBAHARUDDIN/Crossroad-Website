@@ -14,6 +14,8 @@ if(!hasPermission($mysqli, "contracts_view")){
     die("Access denied");
 }
 
+$faviconVersion = file_exists("../image/logo.png") ? filemtime("../image/logo.png") : time();
+
 $total = $mysqli->query("
     SELECT COUNT(*) as total
     FROM project_inventory
@@ -112,6 +114,10 @@ function percent($value, $total){
 <head>
 <meta charset="UTF-8">
 <title>Project Tracker</title>
+
+<link rel="icon" type="image/png" href="../image/logo.png?v=<?= $faviconVersion ?>">
+<link rel="shortcut icon" type="image/png" href="../image/logo.png?v=<?= $faviconVersion ?>">
+<link rel="apple-touch-icon" href="../image/logo.png?v=<?= $faviconVersion ?>">
 
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">

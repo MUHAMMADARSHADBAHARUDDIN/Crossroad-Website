@@ -13,6 +13,8 @@ if(!hasPermission($mysqli, "inventory_view")){
     die("Access denied");
 }
 
+$faviconVersion = file_exists("../image/logo.png") ? filemtime("../image/logo.png") : time();
+
 $role = $_SESSION['role'] ?? "UNKNOWN";
 $username = $_SESSION['username'];
 
@@ -64,6 +66,10 @@ $result = $stmt->get_result();
 <html>
 <head>
 <title>Server Inventory</title>
+
+<link rel="icon" type="image/png" href="../image/logo.png?v=<?= $faviconVersion ?>">
+<link rel="shortcut icon" type="image/png" href="../image/logo.png?v=<?= $faviconVersion ?>">
+<link rel="apple-touch-icon" href="../image/logo.png?v=<?= $faviconVersion ?>">
 
 <link rel="stylesheet" href="style.css">
 

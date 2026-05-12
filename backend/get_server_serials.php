@@ -11,6 +11,22 @@ if(!hasPermission($mysqli, "inventory_view")){
     exit("Access denied");
 }
 
+function getServerSerialFormatDate($value){
+    $value = trim((string)($value ?? ''));
+
+    if($value === "" || $value === "0000-00-00"){
+        return "";
+    }
+
+    $timestamp = strtotime($value);
+
+    if($timestamp === false){
+        return $value;
+    }
+
+    return date("d/m/y", $timestamp);
+}
+
 $name = $_POST['name'] ?? '';
 $type = $_POST['type'] ?? '';
 
@@ -50,13 +66,14 @@ while($row = $result->fetch_assoc()){
     $serialJs = htmlspecialchars(json_encode($row['serial_number'] ?? ''), ENT_QUOTES, 'UTF-8');
 
     $statusColor = ($row['status'] == 'Okay') ? 'success' : 'danger';
+    $dateTesting = getServerSerialFormatDate($row['date_testing'] ?? '');
 
     echo "<tr style='cursor:pointer;' onclick='viewServerDetail($id)'>";
 
     echo "<td>" . htmlspecialchars($row['serial_number'] ?? '') . "</td>";
     echo "<td>" . htmlspecialchars($row['location'] ?? '') . "</td>";
     echo "<td><span class='badge bg-$statusColor'>" . htmlspecialchars($row['status'] ?? '') . "</span></td>";
-    echo "<td>" . htmlspecialchars($row['date_testing'] ?? '') . "</td>";
+    echo "<td>" . htmlspecialchars($dateTesting) . "</td>";
     echo "<td>" . htmlspecialchars($row['tester'] ?? '') . "</td>";
 
     echo "<td>";

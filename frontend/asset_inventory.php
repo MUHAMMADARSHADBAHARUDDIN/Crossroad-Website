@@ -15,6 +15,8 @@ if(!hasPermission($mysqli, "inventory_view")){
     die("Access denied");
 }
 
+$faviconVersion = file_exists("../image/logo.png") ? filemtime("../image/logo.png") : time();
+
 $role = $_SESSION['role'] ?? "UNKNOWN";
 $username = $_SESSION['username'];
 
@@ -24,6 +26,22 @@ $search = "";
 
 if(isset($_GET['search'])){
     $search = trim($_GET['search']);
+}
+
+function assetInventoryFormatDate($value){
+    $value = trim((string)($value ?? ''));
+
+    if($value === "" || $value === "0000-00-00"){
+        return "";
+    }
+
+    $timestamp = strtotime($value);
+
+    if($timestamp === false){
+        return $value;
+    }
+
+    return date("d/m/y", $timestamp);
 }
 
 /*
@@ -61,6 +79,10 @@ $result = $stmt->get_result();
 <html>
 <head>
 <title>Asset Inventory</title>
+
+<link rel="icon" type="image/png" href="../image/logo.png?v=<?= $faviconVersion ?>">
+<link rel="shortcut icon" type="image/png" href="../image/logo.png?v=<?= $faviconVersion ?>">
+<link rel="apple-touch-icon" href="../image/logo.png?v=<?= $faviconVersion ?>">
 
 <link rel="stylesheet" href="style.css">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -211,6 +233,8 @@ html, body{
 <?php while($row = $result->fetch_assoc()): ?>
 
 <?php
+$formattedDateReceived = assetInventoryFormatDate($row['date_received'] ?? '');
+
 $searchText = strtolower(
     ($row['part_number'] ?? '') . ' ' .
     ($row['brand'] ?? '') . ' ' .
@@ -218,6 +242,7 @@ $searchText = strtolower(
     ($row['serial_numbers'] ?? '') . ' ' .
     ($row['created_by'] ?? '') . ' ' .
     ($row['date_received'] ?? '') . ' ' .
+    $formattedDateReceived . ' ' .
     ($row['total_qty'] ?? '')
 );
 ?>

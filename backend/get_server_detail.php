@@ -11,6 +11,22 @@ if(!hasPermission($mysqli, "inventory_view")){
     exit("Access denied");
 }
 
+function getServerDetailFormatDate($value){
+    $value = trim((string)($value ?? ''));
+
+    if($value === "" || $value === "0000-00-00"){
+        return "";
+    }
+
+    $timestamp = strtotime($value);
+
+    if($timestamp === false){
+        return $value;
+    }
+
+    return date("d/m/y", $timestamp);
+}
+
 $id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
 
 if(!$id){
@@ -38,6 +54,8 @@ if(!$row){
     exit("Server not found");
 }
 
+$dateTesting = getServerDetailFormatDate($row['date_testing'] ?? '');
+
 echo "
 <table class='table table-bordered'>
 <tr><th>Serial</th><td>".htmlspecialchars($row['serial_number'] ?? '')."</td></tr>
@@ -47,7 +65,7 @@ echo "
 <tr><th>Location</th><td>".htmlspecialchars($row['location'] ?? '')."</td></tr>
 <tr><th>Status</th><td>".htmlspecialchars($row['status'] ?? '')."</td></tr>
 <tr><th>Remark</th><td>".nl2br(htmlspecialchars($row['remark'] ?? ''))."</td></tr>
-<tr><th>Date Testing</th><td>".htmlspecialchars($row['date_testing'] ?? '')."</td></tr>
+<tr><th>Date Testing</th><td>".htmlspecialchars($dateTesting)."</td></tr>
 <tr><th>Tester</th><td>".htmlspecialchars($row['tester'] ?? '')."</td></tr>
 </table>
 ";

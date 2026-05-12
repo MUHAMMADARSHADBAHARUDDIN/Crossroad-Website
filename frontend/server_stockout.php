@@ -12,6 +12,8 @@ if(!hasPermission($mysqli, "inventory_view")){
     die("Access denied");
 }
 
+$faviconVersion = file_exists("../image/logo.png") ? filemtime("../image/logo.png") : time();
+
 $role = $_SESSION['role'] ?? "UNKNOWN";
 $username = $_SESSION['username'];
 $canDelete = hasPermission($mysqli, "inventory_delete");
@@ -48,6 +50,10 @@ $result = $stmt->get_result();
 <html>
 <head>
     <title>Server Stock Out History</title>
+
+    <link rel="icon" type="image/png" href="../image/logo.png?v=<?= $faviconVersion ?>">
+    <link rel="shortcut icon" type="image/png" href="../image/logo.png?v=<?= $faviconVersion ?>">
+    <link rel="apple-touch-icon" href="../image/logo.png?v=<?= $faviconVersion ?>">
 
     <link rel="stylesheet" href="style.css">
 
@@ -198,7 +204,7 @@ $result = $stmt->get_result();
         $time = "";
 
         if(!empty($row['stock_out_date'])){
-            $date = date("d/m/Y", strtotime($row['stock_out_date']));
+            $date = date("d/m/y", strtotime($row['stock_out_date']));
             $time = date("H:i:s", strtotime($row['stock_out_date']));
         }
 

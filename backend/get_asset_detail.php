@@ -11,6 +11,22 @@ if(!hasPermission($mysqli, "inventory_view")){
     exit("Access denied");
 }
 
+function getAssetDetailFormatDate($value){
+    $value = trim((string)($value ?? ''));
+
+    if($value === "" || $value === "0000-00-00"){
+        return "";
+    }
+
+    $timestamp = strtotime($value);
+
+    if($timestamp === false){
+        return $value;
+    }
+
+    return date("d/m/y", $timestamp);
+}
+
 $id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
 
 if(!$id){
@@ -38,6 +54,8 @@ if(!$row){
     exit("Asset not found");
 }
 
+$dateReceived = getAssetDetailFormatDate($row['date_received'] ?? '');
+
 echo "
 <div class='row g-3'>
 
@@ -63,7 +81,7 @@ echo "
 
 <div class='col-md-6'>
 <label class='fw-bold'>Date Received</label>
-<div>".htmlspecialchars($row['date_received'] ?? '')."</div>
+<div>".htmlspecialchars($dateReceived)."</div>
 </div>
 
 <div class='col-12'>

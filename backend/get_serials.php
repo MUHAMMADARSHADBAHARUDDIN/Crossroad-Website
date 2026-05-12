@@ -11,6 +11,22 @@ if(!hasPermission($mysqli, "inventory_view")){
     exit("Access denied");
 }
 
+function getSerialFormatDate($value){
+    $value = trim((string)($value ?? ''));
+
+    if($value === "" || $value === "0000-00-00"){
+        return "";
+    }
+
+    $timestamp = strtotime($value);
+
+    if($timestamp === false){
+        return $value;
+    }
+
+    return date("d/m/y", $timestamp);
+}
+
 $part = $_POST['part'] ?? '';
 
 $canEdit = hasPermission($mysqli, "inventory_edit");
@@ -46,13 +62,14 @@ while($row = $result->fetch_assoc()){
 
     $id = (int)$row['no'];
     $serialJs = htmlspecialchars(json_encode($row['serial_number'] ?? ''), ENT_QUOTES, 'UTF-8');
+    $dateReceived = getSerialFormatDate($row['date_received'] ?? '');
 
     echo "<tr style='cursor:pointer;' onclick='viewDetail($id)'>";
 
     echo "<td>" . htmlspecialchars($row['serial_number'] ?? '') . "</td>";
     echo "<td>" . htmlspecialchars($row['brand'] ?? '') . "</td>";
     echo "<td>" . htmlspecialchars($row['location'] ?? '') . "</td>";
-    echo "<td>" . htmlspecialchars($row['date_received'] ?? '') . "</td>";
+    echo "<td>" . htmlspecialchars($dateReceived) . "</td>";
 
     echo "<td>";
 
