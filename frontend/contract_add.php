@@ -19,9 +19,62 @@ if(!hasContractAddAccess($mysqli)){
 $created_by = $_SESSION['username'];
 $role = $_SESSION['role'] ?? "UNKNOWN";
 
+function getNextContractNo($mysqli){
+    $result = $mysqli->query("
+        SELECT COUNT(*) AS total
+        FROM project_inventory
+    ");
+
+    $total = 0;
+
+    if($result){
+        $row = $result->fetch_assoc();
+        $total = (int)($row['total'] ?? 0);
+    }
+
+    $nextNo = $total + 1;
+
+    /*
+        Safety check:
+        If total + 1 already exists because an old middle record was deleted,
+        keep increasing until available.
+    */
+    while(true){
+        $checkStmt = $mysqli->prepare("
+            SELECT no
+            FROM project_inventory
+            WHERE no = ?
+            LIMIT 1
+        ");
+
+        if(!$checkStmt){
+            die("SQL Error: " . $mysqli->error);
+        }
+
+        $checkStmt->bind_param("i", $nextNo);
+        $checkStmt->execute();
+        $checkResult = $checkStmt->get_result();
+
+        if($checkResult->num_rows <= 0){
+            break;
+        }
+
+        $nextNo++;
+    }
+
+    return $nextNo;
+}
+
+$nextContractNo = getNextContractNo($mysqli);
+
 if(isset($_POST['submit'])){
 
-    $no = intval($_POST['no']);
+    /*
+        Auto detect again during submit.
+        This prevents duplicate number if another user adds a contract
+        while this page is open.
+    */
+    $no = getNextContractNo($mysqli);
 
     $year_awarded = intval($_POST['year_awarded']);
     $project_name = trim($_POST['project_name']);
@@ -67,7 +120,7 @@ if(isset($_POST['submit'])){
     $checkResult = $checkStmt->get_result();
 
     if($checkResult->num_rows > 0){
-        echo "<script>alert('Contract No already exists. Please use another No.'); window.history.back();</script>";
+        echo "<script>alert('Contract No already exists. Please refresh and try again.'); window.history.back();</script>";
         exit();
     }
 
@@ -173,6 +226,12 @@ Time: $time";
     margin-bottom:10px;
 }
 
+.auto-no-note{
+    font-size:12px;
+    color:#6c757d;
+    margin-top:5px;
+}
+
 @media(max-width:768px){
     .form-card{
         padding:18px;
@@ -200,14 +259,38 @@ Time: $time";
 
 <div class="col-md-6">
     <div class="form-floating">
-        <input type="number" name="no" class="form-control" required>
+        <input
+            type="number"
+            name="no"
+            class="form-control"
+            value="<?= htmlspecialchars($nextContractNo) ?>"
+            readonly
+            required
+        >
         <label>No</label>
+    </div>
+    <div class="auto-no-note">
+        Auto detected from current total contracts.
     </div>
 </div>
 
 <div class="col-md-6">
     <div class="form-floating">
-        <input type="number" name="year_awarded" class="form-control" required>
+        <select name="year_awarded" class="form-control" required>
+            <option value="">Select Year Awarded</option>
+
+            <?php
+            $currentYear = (int)date("Y");
+            $startYear = $currentYear + 5;
+            $endYear = 1990;
+
+            for($year = $startYear; $year >= $endYear; $year--):
+            ?>
+                <option value="<?= $year ?>" <?= $year === $currentYear ? 'selected' : '' ?>>
+                    <?= $year ?>
+                </option>
+            <?php endfor; ?>
+        </select>
         <label>Year Awarded</label>
     </div>
 </div>

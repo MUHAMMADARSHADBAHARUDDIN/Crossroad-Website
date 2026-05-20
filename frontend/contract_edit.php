@@ -210,6 +210,12 @@ Time: $time";
     margin-bottom:10px;
 }
 
+.auto-no-note{
+    font-size:12px;
+    color:#6c757d;
+    margin-top:5px;
+}
+
 @media(max-width:768px){
     .form-card{
         padding:18px;
@@ -246,18 +252,49 @@ Time: $time";
         >
         <label>No</label>
     </div>
+    <div class="auto-no-note">
+        Contract number is fixed after creation.
+    </div>
 </div>
 
 <div class="col-md-6">
     <div class="form-floating">
-        <input
-            type="number"
+        <select
             name="year_awarded"
             class="form-control"
-            value="<?= htmlspecialchars($row['year_awarded'] ?? '') ?>"
-            <?= $canEdit ? '' : 'readonly' ?>
+            <?= $canEdit ? '' : 'disabled' ?>
             required
         >
+            <option value="">Select Year Awarded</option>
+
+            <?php
+            $currentYear = (int)date("Y");
+            $selectedYear = (int)($row['year_awarded'] ?? 0);
+            $startYear = $currentYear + 5;
+            $endYear = 1990;
+
+            /*
+                If existing year is outside the normal dropdown range,
+                still show it so old data is not lost.
+            */
+            if($selectedYear > 0 && ($selectedYear > $startYear || $selectedYear < $endYear)):
+            ?>
+                <option value="<?= $selectedYear ?>" selected>
+                    <?= $selectedYear ?>
+                </option>
+            <?php endif; ?>
+
+            <?php for($year = $startYear; $year >= $endYear; $year--): ?>
+                <option value="<?= $year ?>" <?= $year === $selectedYear ? 'selected' : '' ?>>
+                    <?= $year ?>
+                </option>
+            <?php endfor; ?>
+        </select>
+
+        <?php if(!$canEdit): ?>
+            <input type="hidden" name="year_awarded" value="<?= htmlspecialchars($row['year_awarded'] ?? '') ?>">
+        <?php endif; ?>
+
         <label>Year Awarded</label>
     </div>
 </div>
