@@ -129,6 +129,9 @@ else{
 <meta charset="UTF-8">
 <title>View Document - <?= viewerEscape($displayFileName) ?></title>
 
+<link rel="icon" type="image/png" href="../image/logo.png">
+<link rel="shortcut icon" type="image/png" href="../image/logo.png">
+<link rel="apple-touch-icon" href="../image/logo.png">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 

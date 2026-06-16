@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Crossroad Inventory Login</title>
+    <link rel="icon" type="image/png" href="../image/logo.png">
+    <link rel="shortcut icon" type="image/png" href="../image/logo.png">
+    <link rel="apple-touch-icon" href="../image/logo.png">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
@@ -108,6 +111,18 @@
            margin-bottom:15px;
            font-size:14px;
        }
+       .login-visit-counter{
+           margin-top:14px;
+           color:#555;
+           display:flex;
+           align-items:center;
+           justify-content:center;
+           gap:8px;
+           font-size:13px;
+       }
+       .login-visit-counter i{
+           color:#777;
+       }
     </style>
 </head>
 <body>
@@ -132,12 +147,32 @@
             <i class="fa-solid fa-right-to-bracket"></i> Login
         </button>
     </form>
+    <div class="login-visit-counter" title="Total login page visits">
+        <i class="fa-solid fa-chart-simple"></i>
+        <span>Total Visits:</span>
+        <span id="loginVisitCount">...</span>
+    </div>
 </div>
 <script>
     function togglePassword(){
         const password = document.getElementById("password");
         password.type = password.type === "password" ? "text" : "password";
     }
+
+    fetch("../backend/record_login_page_visit.php", {
+        method: "POST",
+        cache: "no-store"
+    })
+        .then(response => response.json())
+        .then(data => {
+            const counter = document.getElementById("loginVisitCount");
+            const total = Number(data.total || 0);
+
+            counter.textContent = total.toLocaleString();
+        })
+        .catch(() => {
+            document.getElementById("loginVisitCount").textContent = "-";
+        });
 </script>
 </body>
 </html>

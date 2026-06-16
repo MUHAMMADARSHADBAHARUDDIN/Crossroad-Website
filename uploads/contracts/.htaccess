@@ -1,0 +1,11 @@
+Options -Indexes
+php_flag engine off
+
+<FilesMatch "\.(php|php3|php4|php5|phtml|phar|cgi|pl|asp|aspx|jsp|exe|sh|bat|cmd|com|scr)$">
+    Require all denied
+</FilesMatch>
+
+<IfModule mod_headers.c>
+Header set X-Content-Type-Options "nosniff"
+Header set Content-Disposition "attachment"
+</IfModule>

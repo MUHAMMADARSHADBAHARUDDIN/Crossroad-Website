@@ -1,5 +1,7 @@
 <?php
-session_start();
+require_once "../includes/security.php";
+startSecureSession(false);
+
 require_once "../includes/db_connect.php";
 require_once "../includes/activity_log.php";
 
@@ -50,6 +52,11 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
             $stmt->fetch();
 
             if(password_verify($password, $db_password)){
+
+                session_regenerate_id(true);
+                $_SESSION['_created_at'] = time();
+                $_SESSION['_last_regenerated_at'] = time();
+                $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 
                 $_SESSION['username'] = $db_username;
                 $_SESSION['email'] = $email;

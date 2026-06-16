@@ -1,0 +1,9 @@
+Options -Indexes
+
+<Files "security_client.php">
+    Require all granted
+</Files>
+
+<FilesMatch "^(?!security_client\.php$).+">
+    Require all denied
+</FilesMatch>

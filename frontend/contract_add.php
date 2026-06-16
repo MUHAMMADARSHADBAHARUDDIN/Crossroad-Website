@@ -10,6 +10,7 @@ if(!isset($_SESSION['username'])){
 require_once "../includes/db_connect.php";
 require_once "../includes/activity_log.php";
 require_once "../includes/permissions.php";
+require_once "../includes/date_helpers.php";
 
 if(!hasContractAddAccess($mysqli)){
     header("Location: contracts.php");
@@ -84,14 +85,14 @@ if(isset($_POST['submit'])){
     $end_user = trim($_POST['end_user']);
     $contract_no = trim($_POST['contract_no']);
     $service = trim($_POST['service']);
-    $po_date = trim($_POST['po_date']);
-    $contract_start = trim($_POST['contract_start']);
-    $contract_end = trim($_POST['contract_end']);
+    $po_date = appNormalizeDateInput($_POST['po_date'] ?? "");
+    $contract_start = appNormalizeDateInput($_POST['contract_start'] ?? "");
+    $contract_end = appNormalizeDateInput($_POST['contract_end'] ?? "");
     $amount = floatval($_POST['amount']);
 
     $today = date('Y-m-d');
 
-    if(empty($contract_end)){
+    if($contract_end === null){
         $status = "Active";
     }
     elseif($contract_end < $today){
@@ -200,6 +201,9 @@ Time: $time";
 
 <title>Add Contract</title>
 
+<link rel="icon" type="image/png" href="../image/logo.png">
+<link rel="shortcut icon" type="image/png" href="../image/logo.png">
+<link rel="apple-touch-icon" href="../image/logo.png">
 <link rel="stylesheet" href="style.css">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">

@@ -1,6 +1,7 @@
 <?php
 global $mysqli;
-session_start();
+require_once "../includes/security.php";
+startSecureSession(false);
 
 if(!isset($_SESSION['username'])){
     header("location: index.html");
@@ -9,6 +10,7 @@ if(!isset($_SESSION['username'])){
 
 require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
+require_once "../includes/date_helpers.php";
 
 if(!hasContractViewAccess($mysqli)){
     die("Access denied");
@@ -86,18 +88,16 @@ $canUseContractTasks = ($hasContractTasksTable && $hasContractTaskContractId);
 $projectManagerSelect = $hasProjectManager ? "pi.project_manager" : "'' AS project_manager";
 $accountManagerSelect = $hasAccountManager ? "pi.account_manager" : "'' AS account_manager";
 
+$contractEndDateSql = appSqlDateValue("pi.contract_end");
+
 $statusCase = "
 CASE
-    WHEN pi.contract_end IS NOT NULL
-         AND pi.contract_end <> ''
-         AND pi.contract_end <> '0000-00-00'
-         AND pi.contract_end < CURDATE()
+    WHEN $contractEndDateSql IS NOT NULL
+         AND $contractEndDateSql < CURDATE()
     THEN 'Closed'
 
-    WHEN pi.contract_end IS NOT NULL
-         AND pi.contract_end <> ''
-         AND pi.contract_end <> '0000-00-00'
-         AND pi.contract_end BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)
+    WHEN $contractEndDateSql IS NOT NULL
+         AND $contractEndDateSql BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)
     THEN 'Expiring Soon'
 
     ELSE 'Active'
@@ -255,9 +255,9 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
         $conditionParts[] = "pi.end_user LIKE ?";
         $conditionParts[] = "pi.contract_no LIKE ?";
         $conditionParts[] = "pi.service LIKE ?";
-        $conditionParts[] = "pi.po_date LIKE ?";
-        $conditionParts[] = "pi.contract_start LIKE ?";
-        $conditionParts[] = "pi.contract_end LIKE ?";
+        $conditionParts[] = "CAST(pi.po_date AS CHAR) LIKE ?";
+        $conditionParts[] = "CAST(pi.contract_start AS CHAR) LIKE ?";
+        $conditionParts[] = "CAST(pi.contract_end AS CHAR) LIKE ?";
         $conditionParts[] = "CAST(pi.amount AS CHAR) LIKE ?";
         $conditionParts[] = "$statusCase LIKE ?";
 
@@ -490,6 +490,10 @@ $search = "";
 if(isset($_GET['search'])){
     $search = trim($_GET['search']);
 }
+
+$focusContractId = isset($_GET['focus_contract']) ? (int)$_GET['focus_contract'] : 0;
+$focusTaskId = isset($_GET['focus_task']) ? (int)$_GET['focus_task'] : 0;
+$csrfToken = ensureCsrfToken();
 ?>
 
 <!DOCTYPE html>
@@ -498,7 +502,9 @@ if(isset($_GET['search'])){
 <meta charset="UTF-8">
 <title>Contracts</title>
 
-<link rel="icon" href="../image/logo.png">
+<link rel="icon" type="image/png" href="../image/logo.png">
+<link rel="shortcut icon" type="image/png" href="../image/logo.png">
+<link rel="apple-touch-icon" href="../image/logo.png">
 <link rel="stylesheet" href="style.css">
 
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -587,6 +593,13 @@ body{
 #contractsTable tbody tr:hover{
     background:#fff3cd !important;
     transform:scale(1.003);
+}
+
+#contractsTable tbody tr.contract-focus-row{
+    background:#fff3cd !important;
+    outline:3px solid #ffc107;
+    outline-offset:-3px;
+    box-shadow:0 0 0 5px rgba(255,193,7,0.18);
 }
 
 .contract-action-btn{
@@ -754,6 +767,12 @@ body{
 .contract-task-item:hover{
     border-color:#ffc107;
     box-shadow:0 4px 12px rgba(0,0,0,0.06);
+}
+
+.contract-task-item.contract-task-focus{
+    border-color:#ffc107;
+    background:#fff8e1;
+    box-shadow:0 0 0 4px rgba(255,193,7,0.22), 0 8px 18px rgba(0,0,0,0.08);
 }
 
 .contract-task-left{
@@ -1151,7 +1170,21 @@ body{
     <input type="hidden" id="editTaskId">
 
     <label class="form-label">Task</label>
-    <textarea id="editTaskText" class="form-control" rows="4"></textarea>
+    <textarea id="editTaskText" class="form-control mb-3" rows="4"></textarea>
+
+    <div class="row g-2">
+        <div class="col-md-6">
+            <label class="form-label">Task Start Date</label>
+            <input type="date" id="editTaskStartDate" class="form-control">
+        </div>
+        <div class="col-md-6">
+            <label class="form-label">Task End Date</label>
+            <input type="date" id="editTaskEndDate" class="form-control">
+        </div>
+    </div>
+    <small class="text-muted d-block mt-2">
+        Dated unfinished tasks scheduled in the current month appear in the Preventive Management dashboard bulletin.
+    </small>
 </div>
 
 <div class="modal-footer">
@@ -1174,8 +1207,44 @@ body{
 
 <script>
 let contractsTable;
+const contractCsrfToken = <?= json_encode($csrfToken) ?>;
+const focusContractId = <?= json_encode($focusContractId) ?>;
+const focusTaskId = <?= json_encode($focusTaskId) ?>;
 
-function loadContractTasks(){
+function withContractCsrf(data){
+    data = data || {};
+    data.csrf_token = contractCsrfToken;
+    return data;
+}
+
+function focusContractTask(taskId){
+    taskId = parseInt(taskId, 10);
+
+    if(!taskId){
+        return;
+    }
+
+    let task = $('#tasksContainer .contract-task-item[data-task-id="' + taskId + '"]');
+
+    if(!task.length){
+        return;
+    }
+
+    task.addClass("contract-task-focus");
+
+    if(task[0] && typeof task[0].scrollIntoView === "function"){
+        task[0].scrollIntoView({
+            behavior: "smooth",
+            block: "center"
+        });
+    }
+
+    setTimeout(function(){
+        task.removeClass("contract-task-focus");
+    }, 6500);
+}
+
+function loadContractTasks(taskToFocus){
     let contractId = $("#m_id").val();
 
     if(!contractId){
@@ -1189,6 +1258,7 @@ function loadContractTasks(){
         contract_id: contractId
     }, function(data){
         $("#tasksContainer").html(data);
+        focusContractTask(taskToFocus);
     }).fail(function(){
         $("#tasksContainer").html("<div class='alert alert-danger mb-0'>Failed to load checklist.</div>");
     });
@@ -1203,6 +1273,8 @@ function reloadContractTableProgress(){
 function addContractTask(){
     let contractId = $("#m_id").val();
     let taskText = $("#newContractTaskText").val().trim();
+    let taskStartDate = $("#newTaskStartDate").val();
+    let taskEndDate = $("#newTaskEndDate").val();
 
     if(!contractId){
         alert("No contract selected.");
@@ -1214,14 +1286,28 @@ function addContractTask(){
         return;
     }
 
+    if(taskStartDate === "" && taskEndDate !== ""){
+        alert("Please select a task start date first.");
+        return;
+    }
+
+    if(taskStartDate !== "" && taskEndDate !== "" && taskEndDate < taskStartDate){
+        alert("Task end date cannot be before the start date.");
+        return;
+    }
+
     $("#addTaskBtn").prop("disabled", true).html("<i class='fa fa-spinner fa-spin'></i>");
 
-    $.post("../backend/add_contract_task.php", {
+    $.post("../backend/add_contract_task.php", withContractCsrf({
         contract_id: contractId,
-        task_text: taskText
-    }, function(data){
+        task_text: taskText,
+        task_start_date: taskStartDate,
+        task_end_date: taskEndDate
+    }), function(data){
         if(data.trim() === "success"){
             $("#newContractTaskText").val("");
+            $("#newTaskStartDate").val("");
+            $("#newTaskEndDate").val("");
             loadContractTasks();
             reloadContractTableProgress();
         }else{
@@ -1241,10 +1327,10 @@ function toggleContractTask(id, isCompleted, checkboxEl){
     checkbox.prop("disabled", true);
     item.toggleClass("task-completed", isCompleted);
 
-    $.post("../backend/toggle_contract_task.php", {
+    $.post("../backend/toggle_contract_task.php", withContractCsrf({
         id: id,
         is_completed: isCompleted ? 1 : 0
-    }, function(data){
+    }), function(data){
         if(data.trim() === "success"){
             loadContractTasks();
             reloadContractTableProgress();
@@ -1262,9 +1348,11 @@ function toggleContractTask(id, isCompleted, checkboxEl){
     });
 }
 
-function openEditTaskModal(id, taskText){
+function openEditTaskModal(id, taskText, taskStartDate, taskEndDate){
     $("#editTaskId").val(id);
     $("#editTaskText").val(taskText);
+    $("#editTaskStartDate").val(taskStartDate || "");
+    $("#editTaskEndDate").val(taskEndDate || "");
 
     new bootstrap.Modal(document.getElementById("editTaskModal")).show();
 }
@@ -1272,16 +1360,30 @@ function openEditTaskModal(id, taskText){
 function updateContractTask(){
     let id = $("#editTaskId").val();
     let taskText = $("#editTaskText").val().trim();
+    let taskStartDate = $("#editTaskStartDate").val();
+    let taskEndDate = $("#editTaskEndDate").val();
 
     if(taskText === ""){
         alert("Task cannot be empty.");
         return;
     }
 
-    $.post("../backend/update_contract_task.php", {
+    if(taskStartDate === "" && taskEndDate !== ""){
+        alert("Please select a task start date first.");
+        return;
+    }
+
+    if(taskStartDate !== "" && taskEndDate !== "" && taskEndDate < taskStartDate){
+        alert("Task end date cannot be before the start date.");
+        return;
+    }
+
+    $.post("../backend/update_contract_task.php", withContractCsrf({
         id: id,
-        task_text: taskText
-    }, function(data){
+        task_text: taskText,
+        task_start_date: taskStartDate,
+        task_end_date: taskEndDate
+    }), function(data){
         if(data.trim() === "success"){
             bootstrap.Modal.getInstance(document.getElementById("editTaskModal")).hide();
             loadContractTasks();
@@ -1299,9 +1401,9 @@ function deleteContractTask(id){
         return;
     }
 
-    $.post("../backend/delete_contract_task.php", {
+    $.post("../backend/delete_contract_task.php", withContractCsrf({
         id: id
-    }, function(data){
+    }), function(data){
         if(data.trim() === "success"){
             loadContractTasks();
             reloadContractTableProgress();
@@ -1350,6 +1452,8 @@ $(document).ready(function(){
     let initialSearch = <?= json_encode($search) ?>;
     let typingTimer = null;
     let statusFilter = "";
+    let focusHandled = false;
+    let focusSearchRetried = false;
 
     contractsTable = $('#contractsTable').DataTable({
         processing: true,
@@ -1462,6 +1566,18 @@ $(document).ready(function(){
         }
     }
 
+    function clearFocusUrlParams(){
+        if(!focusContractId && !focusTaskId){
+            return;
+        }
+
+        let url = new URL(window.location.href);
+        url.searchParams.delete("focus_contract");
+        url.searchParams.delete("focus_task");
+
+        window.history.replaceState(null, "", url.pathname + url.search);
+    }
+
     function runContractSearch(value){
         contractsTable.search(value).draw();
 
@@ -1533,7 +1649,9 @@ $(document).ready(function(){
         }
     });
 
-    function openContractModal(data){
+    function openContractModal(data, options){
+        options = options || {};
+
         let meta = data.meta;
 
         $('#m_id').val(meta.id);
@@ -1585,9 +1703,66 @@ $(document).ready(function(){
             $('#filesContainer').html(fileData);
         });
 
-        loadContractTasks();
+        loadContractTasks(options.focusTaskId || 0);
 
-        new bootstrap.Modal(document.getElementById('contractModal')).show();
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('contractModal')).show();
+    }
+
+    function openFocusedContractFromAlert(){
+        if(!focusContractId || focusHandled){
+            return;
+        }
+
+        let row = $('#contractsTable tbody tr[data-id="' + focusContractId + '"]');
+
+        if(!row.length){
+            if(!focusSearchRetried && contractsTable.rows({page: "current"}).count() > 0){
+                focusSearchRetried = true;
+
+                let searchBox = $("#liveContractSearch");
+                let currentSearch = searchBox.val().trim();
+                let focusTerm = String(focusContractId);
+                let terms = currentSearch === ""
+                    ? []
+                    : currentSearch.split(",").map(function(term){ return term.trim(); }).filter(Boolean);
+
+                if(terms.indexOf(focusTerm) === -1){
+                    terms.push(focusTerm);
+                    let narrowedSearch = terms.join(", ");
+                    searchBox.val(narrowedSearch);
+                    contractsTable.search(narrowedSearch).draw();
+                    updateActiveFilterBox();
+                }
+            }
+
+            return;
+        }
+
+        let rowData = contractsTable.row(row[0]).data();
+
+        if(!rowData){
+            return;
+        }
+
+        focusHandled = true;
+        row.addClass("contract-focus-row");
+
+        if(row[0] && typeof row[0].scrollIntoView === "function"){
+            row[0].scrollIntoView({
+                behavior: "smooth",
+                block: "center"
+            });
+        }
+
+        setTimeout(function(){
+            row.removeClass("contract-focus-row");
+        }, 6500);
+
+        openContractModal(rowData, {
+            focusTaskId: focusTaskId
+        });
+
+        clearFocusUrlParams();
     }
 
     $('#contractsTable tbody').on('click','tr',function(e){
@@ -1605,8 +1780,11 @@ $(document).ready(function(){
         openContractModal(rowData);
     });
 
+    contractsTable.on("draw", openFocusedContractFromAlert);
+
     updateActiveFilterBox();
     adjustContractTable();
+    openFocusedContractFromAlert();
 
 });
 </script>

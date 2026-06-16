@@ -2,6 +2,7 @@
 session_start();
 require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
+require_once "../includes/inventory_report_schema.php";
 
 if(!isset($_SESSION['username'])){
     exit("No session");
@@ -10,6 +11,8 @@ if(!isset($_SESSION['username'])){
 if(!hasPermission($mysqli, "inventory_view")){
     exit("Access denied");
 }
+
+ensureInventoryReportSchema($mysqli);
 
 function getAssetDetailFormatDate($value){
     $value = trim((string)($value ?? ''));
@@ -82,6 +85,11 @@ echo "
 <div class='col-md-6'>
 <label class='fw-bold'>Date Received</label>
 <div>".htmlspecialchars($dateReceived)."</div>
+</div>
+
+<div class='col-md-6'>
+<label class='fw-bold'>Received By</label>
+<div>".htmlspecialchars($row['received_by'] ?? '')."</div>
 </div>
 
 <div class='col-12'>

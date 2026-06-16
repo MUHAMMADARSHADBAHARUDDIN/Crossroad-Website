@@ -69,8 +69,12 @@ function allowedPermissionsList()
         "inventory_add",
         "inventory_edit",
         "inventory_stockout",
+        "inventory_stockout_edit",
+        "inventory_stockout_add_info",
+        "inventory_stockout_delete_info",
         "inventory_delete",
-        "inventory_export"
+        "inventory_export",
+        "inventory_report"
     ];
 }
 

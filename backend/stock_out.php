@@ -3,6 +3,7 @@ session_start();
 require_once "../includes/db_connect.php";
 require_once "../includes/activity_log.php";
 require_once "../includes/permissions.php";
+require_once "../includes/inventory_report_schema.php";
 
 header('Content-Type: text/plain');
 
@@ -19,6 +20,7 @@ $remark = isset($_POST['remark']) ? trim($_POST['remark']) : "";
 
 $username = $_SESSION['username'];
 $role = $_SESSION['role'] ?? "UNKNOWN";
+ensureInventoryReportSchema($mysqli);
 
 if(!$id){
     exit("error");
@@ -42,16 +44,19 @@ if(!$row){
 
 $insertStmt = $mysqli->prepare("
 INSERT INTO stock_out_history
-(part_number, serial_number, location, remark, stock_out_by)
-VALUES (?, ?, ?, ?, ?)
+(part_number, serial_number, location, remark, quantity, stock_out_by)
+VALUES (?, ?, ?, ?, ?, ?)
 ");
 
+$quantity = 1;
+
 $insertStmt->bind_param(
-    "sssss",
+    "ssssis",
     $row['part_number'],
     $row['serial_number'],
     $row['location'],
     $remark,
+    $quantity,
     $username
 );
 
@@ -64,6 +69,7 @@ $description = "User [$username] performed STOCK OUT on asset.
 Part Number: {$row['part_number']}
 Serial Number: {$row['serial_number']}
 Location: {$row['location']}
+Quantity: $quantity
 Remark: $remark
 IP Address: $ip
 Time: $time";

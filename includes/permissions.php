@@ -443,6 +443,50 @@ if(!function_exists('hasContractTaskAccess')){
 }
 
 /* =========================================================
+   STOCK OUT ADDITIONAL INFORMATION ACCESS
+   Allows adding new information while original stock out text remains unchanged.
+========================================================= */
+if(!function_exists('hasStockOutAdditionalInfoAccess')){
+    function hasStockOutAdditionalInfoAccess($mysqli){
+        return hasPermission($mysqli, "inventory_stockout_add_info");
+    }
+}
+
+
+
+/* =========================================================
+   STOCK OUT ADDITIONAL INFORMATION EDIT ACCESS
+   Allows editing additional information only.
+   The original stock out history/remark is not edited by this permission.
+========================================================= */
+if(!function_exists('hasStockOutAdditionalInfoEditAccess')){
+    function hasStockOutAdditionalInfoEditAccess($mysqli){
+        return hasPermission($mysqli, "inventory_stockout_edit");
+    }
+}
+
+/* =========================================================
+   OLD FUNCTION COMPATIBILITY
+   Existing code that calls hasStockOutEditAccess() will now mean
+   edit additional stock out information only.
+========================================================= */
+if(!function_exists('hasStockOutEditAccess')){
+    function hasStockOutEditAccess($mysqli){
+        return hasStockOutAdditionalInfoEditAccess($mysqli);
+    }
+}
+
+/* =========================================================
+   STOCK OUT ADDITIONAL INFORMATION DELETE ACCESS
+   Allows deleting previously added stock out additional information.
+========================================================= */
+if(!function_exists('hasStockOutAdditionalInfoDeleteAccess')){
+    function hasStockOutAdditionalInfoDeleteAccess($mysqli){
+        return hasPermission($mysqli, "inventory_stockout_delete_info");
+    }
+}
+
+/* =========================================================
    REAL ADMIN CHECK
    Use this only for pages that must be true administrator account.
 ========================================================= */

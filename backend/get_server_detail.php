@@ -2,6 +2,7 @@
 session_start();
 require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
+require_once "../includes/inventory_report_schema.php";
 
 if(!isset($_SESSION['username'])){
     exit("No session");
@@ -10,6 +11,8 @@ if(!isset($_SESSION['username'])){
 if(!hasPermission($mysqli, "inventory_view")){
     exit("Access denied");
 }
+
+ensureInventoryReportSchema($mysqli);
 
 function getServerDetailFormatDate($value){
     $value = trim((string)($value ?? ''));
@@ -67,6 +70,7 @@ echo "
 <tr><th>Remark</th><td>".nl2br(htmlspecialchars($row['remark'] ?? ''))."</td></tr>
 <tr><th>Date Testing</th><td>".htmlspecialchars($dateTesting)."</td></tr>
 <tr><th>Tester</th><td>".htmlspecialchars($row['tester'] ?? '')."</td></tr>
+<tr><th>Received By</th><td>".htmlspecialchars($row['received_by'] ?? '')."</td></tr>
 </table>
 ";
 ?>

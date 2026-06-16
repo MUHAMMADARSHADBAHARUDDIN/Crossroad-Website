@@ -180,7 +180,7 @@ html, body{
 
 <div class="main">
 
-<h2 class="mb-4">Server Inventory</h2>
+<h2 class="mb-4">Assets Inventory</h2>
 
 <form method="GET" class="mb-2" onsubmit="return false;">
     <div class="input-group">
@@ -285,7 +285,7 @@ onclick="viewServer(<?= htmlspecialchars(json_encode($row['server_name'] ?? ''),
 <div class="modal-content">
 
 <div class="modal-header">
-<h5>Server Serial List</h5>
+<h5>Assets Serial List</h5>
 <button class="btn-close" data-bs-dismiss="modal"></button>
 </div>
 

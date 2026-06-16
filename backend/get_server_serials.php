@@ -2,6 +2,7 @@
 session_start();
 require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
+require_once "../includes/inventory_report_schema.php";
 
 if(!isset($_SESSION['username'])){
     exit("No session");
@@ -10,6 +11,8 @@ if(!isset($_SESSION['username'])){
 if(!hasPermission($mysqli, "inventory_view")){
     exit("Access denied");
 }
+
+ensureInventoryReportSchema($mysqli);
 
 function getServerSerialFormatDate($value){
     $value = trim((string)($value ?? ''));
@@ -35,7 +38,7 @@ $canStockOut = hasPermission($mysqli, "inventory_stockout");
 $canDelete = hasPermission($mysqli, "inventory_delete");
 
 $stmt = $mysqli->prepare("
-SELECT no, serial_number, location, status, remark, date_testing, tester
+SELECT no, serial_number, location, status, remark, date_testing, tester, received_by
 FROM server_inventory
 WHERE server_name = ? AND machine_type = ?
 ORDER BY date_testing DESC
@@ -54,6 +57,7 @@ echo "
     <th>Status</th>
     <th>Date Tested</th>
     <th>Tester</th>
+    <th>Received By</th>
     <th style='width:220px;'>Action</th>
 </tr>
 </thead>
@@ -75,6 +79,7 @@ while($row = $result->fetch_assoc()){
     echo "<td><span class='badge bg-$statusColor'>" . htmlspecialchars($row['status'] ?? '') . "</span></td>";
     echo "<td>" . htmlspecialchars($dateTesting) . "</td>";
     echo "<td>" . htmlspecialchars($row['tester'] ?? '') . "</td>";
+    echo "<td>" . htmlspecialchars($row['received_by'] ?? '') . "</td>";
 
     echo "<td>";
 

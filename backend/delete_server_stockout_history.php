@@ -4,7 +4,7 @@ require_once "../includes/db_connect.php";
 require_once "../includes/activity_log.php";
 require_once "../includes/permissions.php";
 
-header("Content-Type: text/plain");
+header("Content-Type: text/plain; charset=UTF-8");
 
 if(!isset($_SESSION['username'])){
     exit("No session");
@@ -15,7 +15,6 @@ if(!hasPermission($mysqli, "inventory_delete")){
 }
 
 $id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
-
 if($id <= 0){
     exit("Invalid ID");
 }
@@ -23,52 +22,53 @@ if($id <= 0){
 $username = $_SESSION['username'];
 $role = $_SESSION['role'] ?? "UNKNOWN";
 
-$stmt = $mysqli->prepare("
-SELECT *
-FROM server_stockout_history
-WHERE id = ?
-LIMIT 1
-");
+$stmt = $mysqli->prepare("SELECT * FROM server_stockout_history WHERE id = ? LIMIT 1");
 $stmt->bind_param("i", $id);
 $stmt->execute();
-$result = $stmt->get_result();
-$row = $result->fetch_assoc();
+$row = $stmt->get_result()->fetch_assoc();
 
 if(!$row){
     exit("Record not found");
 }
 
-$deleteStmt = $mysqli->prepare("
-DELETE FROM server_stockout_history
-WHERE id = ?
-");
-$deleteStmt->bind_param("i", $id);
+$mysqli->begin_transaction();
 
-if($deleteStmt->execute()){
+try{
+    $tableCheck = $mysqli->query("SHOW TABLES LIKE 'stockout_additional_information'");
+    if($tableCheck && $tableCheck->num_rows > 0){
+        $noteDelete = $mysqli->prepare("
+            DELETE FROM stockout_additional_information
+            WHERE stockout_type = 'server' AND stockout_id = ?
+        ");
+        $noteDelete->bind_param("i", $id);
+        if(!$noteDelete->execute()){
+            throw new Exception($noteDelete->error);
+        }
+    }
 
-    $ip = $_SERVER['REMOTE_ADDR'];
+    $deleteStmt = $mysqli->prepare("DELETE FROM server_stockout_history WHERE id = ?");
+    $deleteStmt->bind_param("i", $id);
+    if(!$deleteStmt->execute()){
+        throw new Exception($deleteStmt->error);
+    }
+
+    $mysqli->commit();
+
+    $ip = $_SERVER['REMOTE_ADDR'] ?? "Unknown";
     $time = date("Y-m-d H:i:s");
+    $description = "User [$username] deleted server stock out history.\n"
+        . "Server Name: {$row['server_name']}\n"
+        . "Machine Type: {$row['machine_type']}\n"
+        . "Serial Number: {$row['serial_number']}\n"
+        . "Stock Out By: {$row['stock_out_by']}\n"
+        . "History ID: $id\n"
+        . "IP Address: $ip\n"
+        . "Time: $time";
 
-    $description = "User [$username] deleted server stock out history.
-Server Name: {$row['server_name']}
-Machine Type: {$row['machine_type']}
-Serial Number: {$row['serial_number']}
-Stock Out By: {$row['stock_out_by']}
-History ID: $id
-IP Address: $ip
-Time: $time";
-
-    logActivity(
-        $mysqli,
-        $username,
-        $role,
-        "DELETE SERVER STOCK OUT HISTORY",
-        $description
-    );
-
-    echo "success";
-    exit();
+    logActivity($mysqli, $username, $role, "DELETE SERVER STOCK OUT HISTORY", $description);
+    exit("success");
+}catch(Throwable $e){
+    $mysqli->rollback();
+    exit("Delete failed: " . $e->getMessage());
 }
-
-echo "Delete failed: " . $mysqli->error;
 ?>

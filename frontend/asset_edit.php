@@ -3,6 +3,8 @@ session_start();
 require_once "../includes/db_connect.php";
 require_once "../includes/activity_log.php";
 require_once "../includes/permissions.php";
+require_once "../includes/inventory_report_schema.php";
+require_once "../includes/date_helpers.php";
 
 if(!isset($_SESSION['username'])){
     header("Location: ../frontend/index.html");
@@ -15,6 +17,7 @@ if(!hasPermission($mysqli, "inventory_view")){
 
 $role = $_SESSION['role'] ?? "UNKNOWN";
 $username = $_SESSION['username'];
+ensureInventoryReportSchema($mysqli);
 
 $isView = isset($_GET['view']);
 $canEdit = !$isView && hasPermission($mysqli, "inventory_edit");
@@ -53,7 +56,8 @@ if(isset($_POST['update']) && $canEdit){
     $brand        = trim($_POST['brand']);
     $descriptionInput  = trim($_POST['description']);
     $location     = trim($_POST['location']);
-    $date         = trim($_POST['date_received']);
+    $date         = appNormalizeDateInput($_POST['date_received'] ?? "");
+    $receivedBy   = trim($_POST['received_by'] ?? "");
 
     $updateStmt = $mysqli->prepare("
         UPDATE asset_inventory SET
@@ -62,7 +66,8 @@ if(isset($_POST['update']) && $canEdit){
             brand = ?,
             description = ?,
             location = ?,
-            date_received = ?
+            date_received = ?,
+            received_by = ?
         WHERE no = ?
     ");
 
@@ -71,18 +76,46 @@ if(isset($_POST['update']) && $canEdit){
     }
 
     $updateStmt->bind_param(
-        "ssssssi",
+        "sssssssi",
         $new_part,
         $new_serial,
         $brand,
         $descriptionInput,
         $location,
         $date,
+        $receivedBy,
         $id
     );
 
     if(!$updateStmt->execute()){
         die("Update Error: " . $mysqli->error);
+    }
+
+    $historyUpdateStmt = $mysqli->prepare("
+        UPDATE asset_stockin_history SET
+            part_number = ?,
+            serial_number = ?,
+            brand = ?,
+            description = ?,
+            location = ?,
+            received_by = ?,
+            date_received = ?
+        WHERE asset_inventory_id = ?
+    ");
+
+    if($historyUpdateStmt){
+        $historyUpdateStmt->bind_param(
+            "sssssssi",
+            $new_part,
+            $new_serial,
+            $brand,
+            $descriptionInput,
+            $location,
+            $receivedBy,
+            $date,
+            $id
+        );
+        $historyUpdateStmt->execute();
     }
 
     $ip = $_SERVER['REMOTE_ADDR'];
@@ -96,6 +129,7 @@ OLD DATA:
 - Brand: {$row['brand']}
 - Description: {$row['description']}
 - Location: {$row['location']}
+- Received By: {$row['received_by']}
 - Date Received: {$row['date_received']}
 
 NEW DATA:
@@ -104,6 +138,7 @@ NEW DATA:
 - Brand: $brand
 - Description: $descriptionInput
 - Location: $location
+- Received By: $receivedBy
 - Date Received: $date
 
 IP Address: $ip
@@ -126,6 +161,9 @@ Time: $time";
 <html>
 <head>
     <title><?= $canEdit ? 'Edit Asset' : 'View Asset' ?></title>
+    <link rel="icon" type="image/png" href="../image/logo.png">
+    <link rel="shortcut icon" type="image/png" href="../image/logo.png">
+    <link rel="apple-touch-icon" href="../image/logo.png">
     <link rel="stylesheet" href="style.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
@@ -174,7 +212,13 @@ Time: $time";
             <div class="col-12 mb-3">
                 <label>Date Received</label>
                 <input type="date" name="date_received" class="form-control"
-                       value="<?= htmlspecialchars($row['date_received'] ?? '') ?>" <?= $canEdit ? '' : 'readonly' ?>>
+                       value="<?= htmlspecialchars(appDateInputValue($row['date_received'] ?? '')) ?>" <?= $canEdit ? '' : 'readonly' ?>>
+            </div>
+
+            <div class="col-12 mb-3">
+                <label>Received By</label>
+                <input type="text" name="received_by" class="form-control"
+                       value="<?= htmlspecialchars($row['received_by'] ?? '') ?>" <?= $canEdit ? '' : 'readonly' ?>>
             </div>
 
         </div>

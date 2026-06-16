@@ -137,3 +137,36 @@ CREATE TABLE server_stockout_history (
                                          stock_out_by VARCHAR(100),
                                          stock_out_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+
+
+
+-- ============================================================
+-- CROSSROAD INVENTORY SYSTEM UPDATE
+-- 1. Append-only additional information for stock-out history
+-- 2. Task date range for Preventive Management dashboard bulletin
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS `stockout_additional_information` (
+                                                                 `id` int(11) NOT NULL AUTO_INCREMENT,
+    `stockout_type` enum('asset','server') NOT NULL,
+    `stockout_id` int(11) NOT NULL,
+    `additional_information` text NOT NULL,
+    `added_by` varchar(100) NOT NULL,
+    `added_at` datetime NOT NULL DEFAULT current_timestamp(),
+    PRIMARY KEY (`id`),
+    KEY `idx_stockout_reference` (`stockout_type`, `stockout_id`),
+    KEY `idx_added_at` (`added_at`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+ALTER TABLE `contract_tasks`
+    ADD COLUMN IF NOT EXISTS `task_start_date` date DEFAULT NULL AFTER `task_text`;
+
+ALTER TABLE `contract_tasks`
+    ADD COLUMN IF NOT EXISTS `task_end_date` date DEFAULT NULL AFTER `task_start_date`;
+
+ALTER TABLE `contract_tasks`
+    ADD COLUMN IF NOT EXISTS `completed_by` varchar(255) DEFAULT NULL;
+
+ALTER TABLE `contract_tasks`
+    ADD COLUMN IF NOT EXISTS `completed_at` datetime DEFAULT NULL;

@@ -1,13 +1,17 @@
 <?php
-session_start();
+require_once "../includes/security.php";
+startSecureSession();
 
 require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
 require_once "../includes/activity_log.php";
+require_once "../includes/contract_task_schema.php";
 
 if(!isset($_SESSION['username'])){
     exit("No session");
 }
+
+ensureContractTaskCompletionSchema($mysqli);
 
 function toggleTaskTableExists($mysqli, $tableName){
     $tableName = $mysqli->real_escape_string($tableName);
@@ -21,6 +25,21 @@ function toggleTaskColumnExists($mysqli, $tableName, $columnName){
 
     $result = $mysqli->query("SHOW COLUMNS FROM `$tableName` LIKE '$columnName'");
     return ($result && $result->num_rows > 0);
+}
+
+function toggleTaskBindParams($stmt, $types, $params){
+    if($types === "" || empty($params)){
+        return;
+    }
+
+    $refs = [];
+
+    foreach($params as $key => $value){
+        $refs[$key] = &$params[$key];
+    }
+
+    array_unshift($refs, $types);
+    call_user_func_array([$stmt, 'bind_param'], $refs);
 }
 
 $id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
@@ -74,9 +93,18 @@ else{
 }
 
 $taskTextSelect = $textColumn !== "" ? "`$textColumn` AS task_text" : "'' AS task_text";
+$taskDateSelect = toggleTaskColumnExists($mysqli, "contract_tasks", "task_start_date")
+    ? ", task_start_date"
+    : ", NULL AS task_start_date";
+$completedBySelect = toggleTaskColumnExists($mysqli, "contract_tasks", "completed_by")
+    ? ", completed_by"
+    : ", '' AS completed_by";
+$completedAtSelect = toggleTaskColumnExists($mysqli, "contract_tasks", "completed_at")
+    ? ", completed_at"
+    : ", NULL AS completed_at";
 
 $taskStmt = $mysqli->prepare("
-    SELECT contract_id, $taskTextSelect, $oldStatusSql
+    SELECT contract_id, $taskTextSelect, $oldStatusSql $taskDateSelect $completedBySelect $completedAtSelect
     FROM contract_tasks
     WHERE `$idColumn` = ?
     LIMIT 1
@@ -128,55 +156,59 @@ if(!hasContractTaskEditAccess($mysqli, $createdBy)){
 }
 
 $newStatus = $isCompleted === 1 ? "Completed" : "Pending";
+$assignments = [];
+$types = "";
+$params = [];
 
 if(toggleTaskColumnExists($mysqli, "contract_tasks", "is_completed")){
     $value = $isCompleted === 1 ? 1 : 0;
-
-    $stmt = $mysqli->prepare("
-        UPDATE contract_tasks
-        SET is_completed = ?
-        WHERE `$idColumn` = ?
-    ");
-
-    if(!$stmt){
-        exit("SQL Error: " . $mysqli->error);
-    }
-
-    $stmt->bind_param("ii", $value, $id);
+    $assignments[] = "is_completed = ?";
+    $types .= "i";
+    $params[] = $value;
 }
 elseif(toggleTaskColumnExists($mysqli, "contract_tasks", "completed")){
     $value = $isCompleted === 1 ? 1 : 0;
-
-    $stmt = $mysqli->prepare("
-        UPDATE contract_tasks
-        SET completed = ?
-        WHERE `$idColumn` = ?
-    ");
-
-    if(!$stmt){
-        exit("SQL Error: " . $mysqli->error);
-    }
-
-    $stmt->bind_param("ii", $value, $id);
+    $assignments[] = "completed = ?";
+    $types .= "i";
+    $params[] = $value;
 }
 elseif(toggleTaskColumnExists($mysqli, "contract_tasks", "status")){
     $value = $isCompleted === 1 ? "Completed" : "Pending";
-
-    $stmt = $mysqli->prepare("
-        UPDATE contract_tasks
-        SET status = ?
-        WHERE `$idColumn` = ?
-    ");
-
-    if(!$stmt){
-        exit("SQL Error: " . $mysqli->error);
-    }
-
-    $stmt->bind_param("si", $value, $id);
+    $assignments[] = "status = ?";
+    $types .= "s";
+    $params[] = $value;
 }
 else{
     exit("No completion column found. Add is_completed column.");
 }
+
+if(toggleTaskColumnExists($mysqli, "contract_tasks", "completed_by")){
+    $completedByValue = $isCompleted === 1 ? ($_SESSION['username'] ?? "") : null;
+    $assignments[] = "completed_by = ?";
+    $types .= "s";
+    $params[] = $completedByValue;
+}
+
+if(toggleTaskColumnExists($mysqli, "contract_tasks", "completed_at")){
+    $assignments[] = $isCompleted === 1
+        ? "completed_at = NOW()"
+        : "completed_at = NULL";
+}
+
+$types .= "i";
+$params[] = $id;
+
+$stmt = $mysqli->prepare("
+    UPDATE contract_tasks
+    SET " . implode(", ", $assignments) . "
+    WHERE `$idColumn` = ?
+");
+
+if(!$stmt){
+    exit("SQL Error: " . $mysqli->error);
+}
+
+toggleTaskBindParams($stmt, $types, $params);
 
 if($stmt->execute()){
 
@@ -184,6 +216,11 @@ if($stmt->execute()){
     $role = $_SESSION['role'] ?? "UNKNOWN";
     $ip = $_SERVER['REMOTE_ADDR'];
     $time = date("Y-m-d H:i:s");
+    $taskStartDate = (string)($task['task_start_date'] ?? "");
+    $hasAssignedDate = $taskStartDate !== "" && $taskStartDate !== "0000-00-00";
+    $completionNote = $isCompleted === 1
+        ? ($hasAssignedDate ? "Assigned task date kept unchanged." : "Completion date/time was taken from the tick time.")
+        : "Completion metadata cleared.";
 
     $actionType = $isCompleted === 1
         ? "COMPLETE CONTRACT TASK"
@@ -205,6 +242,8 @@ OLD DATA:
 
 NEW DATA:
 - Status: $newStatus
+- Ticked By: " . ($isCompleted === 1 ? $username : "-") . "
+- Completion Note: $completionNote
 
 IP Address: $ip
 Time: $time";

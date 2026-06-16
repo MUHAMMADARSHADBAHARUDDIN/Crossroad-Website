@@ -3,6 +3,8 @@ session_start();
 require_once "../includes/db_connect.php";
 require_once "../includes/activity_log.php";
 require_once "../includes/permissions.php";
+require_once "../includes/inventory_report_schema.php";
+require_once "../includes/date_helpers.php";
 
 if(!isset($_SESSION['username'])){
     header("Location: index.html");
@@ -15,6 +17,7 @@ if(!hasPermission($mysqli, "inventory_view")){
 
 $role = $_SESSION['role'] ?? "UNKNOWN";
 $username = $_SESSION['username'];
+ensureInventoryReportSchema($mysqli);
 
 if(!isset($_GET['id'])){
     die("Invalid request");
@@ -54,8 +57,9 @@ if(isset($_POST['update']) && $canEdit){
     $location = trim($_POST['location']);
     $status   = trim($_POST['status']);
     $remark   = trim($_POST['remark']);
-    $date     = trim($_POST['date_testing']);
+    $date     = appNormalizeDateInput($_POST['date_testing'] ?? "");
     $tester   = trim($_POST['tester']);
+    $receivedBy = trim($_POST['received_by'] ?? "");
 
     $updateStmt = $mysqli->prepare("
         UPDATE server_inventory SET
@@ -67,7 +71,8 @@ if(isset($_POST['update']) && $canEdit){
             status = ?,
             remark = ?,
             date_testing = ?,
-            tester = ?
+            tester = ?,
+            received_by = ?
         WHERE no = ?
     ");
 
@@ -76,7 +81,7 @@ if(isset($_POST['update']) && $canEdit){
     }
 
     $updateStmt->bind_param(
-        "sssssssssi",
+        "ssssssssssi",
         $server,
         $serial,
         $brand,
@@ -86,11 +91,45 @@ if(isset($_POST['update']) && $canEdit){
         $remark,
         $date,
         $tester,
+        $receivedBy,
         $id
     );
 
     if(!$updateStmt->execute()){
         die("Update failed: " . $mysqli->error);
+    }
+
+    $historyUpdateStmt = $mysqli->prepare("
+        UPDATE server_stockin_history SET
+            server_name = ?,
+            brand = ?,
+            machine_type = ?,
+            serial_number = ?,
+            location = ?,
+            status = ?,
+            remark = ?,
+            date_testing = ?,
+            tester = ?,
+            received_by = ?
+        WHERE server_inventory_id = ?
+    ");
+
+    if($historyUpdateStmt){
+        $historyUpdateStmt->bind_param(
+            "ssssssssssi",
+            $server,
+            $brand,
+            $machine,
+            $serial,
+            $location,
+            $status,
+            $remark,
+            $date,
+            $tester,
+            $receivedBy,
+            $id
+        );
+        $historyUpdateStmt->execute();
     }
 
     $ip = $_SERVER['REMOTE_ADDR'];
@@ -107,6 +146,7 @@ OLD DATA:
 - Location: {$row['location']}
 - Status: {$row['status']}
 - Tester: {$row['tester']}
+- Received By: {$row['received_by']}
 - Date Testing: {$row['date_testing']}
 - Remark: {$row['remark']}
 
@@ -118,6 +158,7 @@ NEW DATA:
 - Location: $location
 - Status: $status
 - Tester: $tester
+- Received By: $receivedBy
 - Date Testing: $date
 - Remark: $remark
 
@@ -142,6 +183,9 @@ Time: $time";
 <head>
 <title><?= $canEdit ? 'Edit Server' : 'View Server' ?></title>
 
+<link rel="icon" type="image/png" href="../image/logo.png">
+<link rel="shortcut icon" type="image/png" href="../image/logo.png">
+<link rel="apple-touch-icon" href="../image/logo.png">
 <link rel="stylesheet" href="style.css">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
@@ -196,7 +240,12 @@ Time: $time";
 
 <div class="col-md-6 mb-3">
 <label>Date Testing</label>
-<input type="date" name="date_testing" class="form-control" value="<?= htmlspecialchars($row['date_testing'] ?? '') ?>" <?= $canEdit ? '' : 'readonly' ?>>
+<input type="date" name="date_testing" class="form-control" value="<?= htmlspecialchars(appDateInputValue($row['date_testing'] ?? '')) ?>" <?= $canEdit ? '' : 'readonly' ?>>
+</div>
+
+<div class="col-md-6 mb-3">
+<label>Received By</label>
+<input type="text" name="received_by" class="form-control" value="<?= htmlspecialchars($row['received_by'] ?? '') ?>" <?= $canEdit ? '' : 'readonly' ?>>
 </div>
 
 <div class="col-md-12 mb-3">

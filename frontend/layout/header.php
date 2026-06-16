@@ -11,6 +11,12 @@ if(!isset($_SESSION['username'])){
 $role = $_SESSION['role'] ?? "";
 $username = $_SESSION['username'] ?? "";
 
+if(!isset($mysqli)){
+    require_once __DIR__ . "/../../includes/db_connect.php";
+}
+
+require_once __DIR__ . "/../../includes/permissions.php";
+
 /* =========================================================
    NICKNAME DISPLAY
    - Shows short name instead of full username
@@ -91,7 +97,9 @@ $nickname = getNickname($username);
 
     <title>Crossroad Solutions Inventory</title>
 
-    <link rel="icon" href="../image/logo.png">
+    <link rel="icon" type="image/png" href="../image/logo.png">
+    <link rel="shortcut icon" type="image/png" href="../image/logo.png">
+    <link rel="apple-touch-icon" href="../image/logo.png">
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
@@ -121,9 +129,9 @@ $nickname = getNickname($username);
 
     </div>
 
-    <div class="d-flex align-items-center gap-3">
+    <div class="topbar-right">
 
-        <span>
+        <span class="user-pill">
             <i class="fa fa-user"></i> <?= htmlspecialchars($nickname) ?>
         </span>
 

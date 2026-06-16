@@ -1,9 +1,12 @@
 <?php
-session_start();
+require_once "../includes/security.php";
+startSecureSession();
 
 require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
 require_once "../includes/activity_log.php";
+
+header("Content-Type: text/plain; charset=UTF-8");
 
 if(!isset($_SESSION['username'])){
     exit("No session");
@@ -18,13 +21,22 @@ function addTaskTableExists($mysqli, $tableName){
 function addTaskColumnExists($mysqli, $tableName, $columnName){
     $tableName = str_replace("`", "", $tableName);
     $columnName = $mysqli->real_escape_string($columnName);
-
     $result = $mysqli->query("SHOW COLUMNS FROM `$tableName` LIKE '$columnName'");
     return ($result && $result->num_rows > 0);
 }
 
+function validTaskDate($value){
+    if($value === ""){
+        return true;
+    }
+    $date = DateTime::createFromFormat('Y-m-d', $value);
+    return $date && $date->format('Y-m-d') === $value;
+}
+
 $contractId = isset($_POST['contract_id']) ? (int)$_POST['contract_id'] : 0;
 $taskText = trim($_POST['task_text'] ?? "");
+$taskStartDate = trim($_POST['task_start_date'] ?? "");
+$taskEndDate = trim($_POST['task_end_date'] ?? "");
 
 if($contractId <= 0){
     exit("Invalid contract.");
@@ -32,6 +44,22 @@ if($contractId <= 0){
 
 if($taskText === ""){
     exit("Task cannot be empty.");
+}
+
+if(!validTaskDate($taskStartDate) || !validTaskDate($taskEndDate)){
+    exit("Invalid task date.");
+}
+
+if($taskStartDate === "" && $taskEndDate !== ""){
+    exit("Please select a task start date first.");
+}
+
+if($taskStartDate !== "" && $taskEndDate === ""){
+    $taskEndDate = $taskStartDate;
+}
+
+if($taskStartDate !== "" && $taskEndDate < $taskStartDate){
+    exit("Task end date cannot be before the start date.");
 }
 
 if(!addTaskTableExists($mysqli, "contract_tasks")){
@@ -55,34 +83,26 @@ if(!$contractStmt){
 
 $contractStmt->bind_param("i", $contractId);
 $contractStmt->execute();
-$contractResult = $contractStmt->get_result();
+$contract = $contractStmt->get_result()->fetch_assoc();
 
-if($contractResult->num_rows <= 0){
+if(!$contract){
     exit("Contract not found.");
 }
 
-$contract = $contractResult->fetch_assoc();
 $createdBy = $contract['created_by'] ?? "";
-$projectName = $contract['project_name'] ?? "";
-$contractNo = $contract['contract_no'] ?? "";
-
 if(!hasContractTaskAddAccess($mysqli, $createdBy)){
     exit("Access denied. You do not have Task Add permission.");
 }
 
 if(addTaskColumnExists($mysqli, "contract_tasks", "task_text")){
     $textColumn = "task_text";
-}
-elseif(addTaskColumnExists($mysqli, "contract_tasks", "task_name")){
+}elseif(addTaskColumnExists($mysqli, "contract_tasks", "task_name")){
     $textColumn = "task_name";
-}
-elseif(addTaskColumnExists($mysqli, "contract_tasks", "title")){
+}elseif(addTaskColumnExists($mysqli, "contract_tasks", "title")){
     $textColumn = "title";
-}
-elseif(addTaskColumnExists($mysqli, "contract_tasks", "description")){
+}elseif(addTaskColumnExists($mysqli, "contract_tasks", "description")){
     $textColumn = "description";
-}
-else{
+}else{
     exit("Task text column not found.");
 }
 
@@ -91,19 +111,36 @@ $placeholders = ["?", "?"];
 $types = "is";
 $params = [$contractId, $taskText];
 
+$hasTaskDates = addTaskColumnExists($mysqli, "contract_tasks", "task_start_date")
+    && addTaskColumnExists($mysqli, "contract_tasks", "task_end_date");
+
+if(!$hasTaskDates && $taskStartDate !== ""){
+    exit("Please run upgrade_pm_stockout.sql first before assigning task dates.");
+}
+
+if($hasTaskDates){
+    $startValue = $taskStartDate !== "" ? $taskStartDate : null;
+    $endValue = $taskEndDate !== "" ? $taskEndDate : null;
+    $columns[] = "task_start_date";
+    $columns[] = "task_end_date";
+    $placeholders[] = "?";
+    $placeholders[] = "?";
+    $types .= "ss";
+    $params[] = $startValue;
+    $params[] = $endValue;
+}
+
 if(addTaskColumnExists($mysqli, "contract_tasks", "is_completed")){
     $columns[] = "is_completed";
     $placeholders[] = "?";
     $types .= "i";
     $params[] = 0;
-}
-elseif(addTaskColumnExists($mysqli, "contract_tasks", "completed")){
+}elseif(addTaskColumnExists($mysqli, "contract_tasks", "completed")){
     $columns[] = "completed";
     $placeholders[] = "?";
     $types .= "i";
     $params[] = 0;
-}
-elseif(addTaskColumnExists($mysqli, "contract_tasks", "status")){
+}elseif(addTaskColumnExists($mysqli, "contract_tasks", "status")){
     $columns[] = "status";
     $placeholders[] = "?";
     $types .= "s";
@@ -117,11 +154,7 @@ if(addTaskColumnExists($mysqli, "contract_tasks", "created_by")){
     $params[] = $_SESSION['username'];
 }
 
-$sql = "
-    INSERT INTO contract_tasks (`" . implode("`, `", $columns) . "`)
-    VALUES (" . implode(", ", $placeholders) . ")
-";
-
+$sql = "INSERT INTO contract_tasks (`" . implode("`, `", $columns) . "`) VALUES (" . implode(", ", $placeholders) . ")";
 $stmt = $mysqli->prepare($sql);
 
 if(!$stmt){
@@ -129,41 +162,34 @@ if(!$stmt){
 }
 
 $refs = [];
-
 foreach($params as $key => $value){
     $refs[$key] = &$params[$key];
 }
-
 array_unshift($refs, $types);
 call_user_func_array([$stmt, 'bind_param'], $refs);
 
-if($stmt->execute()){
-
-    $newTaskId = $stmt->insert_id;
-    $username = $_SESSION['username'];
-    $role = $_SESSION['role'] ?? "UNKNOWN";
-    $ip = $_SERVER['REMOTE_ADDR'];
-    $time = date("Y-m-d H:i:s");
-
-    $description = "User [$username] added a contract task.
-Contract ID: $contractId
-Contract No: $contractNo
-Project Name: $projectName
-Task ID: $newTaskId
-Task: $taskText
-Status: Pending
-IP Address: $ip
-Time: $time";
-
-    logActivity(
-        $mysqli,
-        $username,
-        $role,
-        "ADD CONTRACT TASK",
-        $description
-    );
-
-    exit("success");
+if(!$stmt->execute()){
+    exit("Failed to add task: " . $stmt->error);
 }
 
-exit("Failed to add task.");
+$newTaskId = $stmt->insert_id;
+$username = $_SESSION['username'];
+$role = $_SESSION['role'] ?? "UNKNOWN";
+$ip = $_SERVER['REMOTE_ADDR'] ?? "Unknown";
+$time = date("Y-m-d H:i:s");
+$dateText = $taskStartDate === "" ? "Not Assigned" : ($taskStartDate === $taskEndDate ? $taskStartDate : "$taskStartDate to $taskEndDate");
+
+$description = "User [$username] added a contract task.\n"
+    . "Contract ID: $contractId\n"
+    . "Contract No: " . ($contract['contract_no'] ?? "") . "\n"
+    . "Project Name: " . ($contract['project_name'] ?? "") . "\n"
+    . "Task ID: $newTaskId\n"
+    . "Task: $taskText\n"
+    . "Task Date: $dateText\n"
+    . "Status: Pending\n"
+    . "IP Address: $ip\n"
+    . "Time: $time";
+
+logActivity($mysqli, $username, $role, "ADD CONTRACT TASK", $description);
+exit("success");
+?>

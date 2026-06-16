@@ -9,6 +9,7 @@ if(!isset($_SESSION['username'])){
 
 require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
+require_once "../includes/date_helpers.php";
 
 if(!hasPermission($mysqli, "contracts_view")){
     die("Access denied");
@@ -21,22 +22,27 @@ $total = $mysqli->query("
     FROM project_inventory
 ")->fetch_assoc()['total'];
 
+$contractStartSql = appSqlDateValue("contract_start");
+$contractEndSql = appSqlDateValue("contract_end");
+
 $activeContracts = $mysqli->query("
 SELECT COUNT(*) as total
 FROM project_inventory
-WHERE CURDATE() BETWEEN contract_start AND contract_end
+WHERE $contractStartSql IS NOT NULL
+  AND $contractEndSql IS NOT NULL
+  AND CURDATE() BETWEEN $contractStartSql AND $contractEndSql
 ")->fetch_assoc()['total'];
 
 $expiringContracts = $mysqli->query("
 SELECT COUNT(*) as total
 FROM project_inventory
-WHERE contract_end BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)
+WHERE $contractEndSql BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)
 ")->fetch_assoc()['total'];
 
 $expiredContracts = $mysqli->query("
 SELECT COUNT(*) as total
 FROM project_inventory
-WHERE contract_end < CURDATE()
+WHERE $contractEndSql < CURDATE()
 ")->fetch_assoc()['total'];
 
 $totalAmount = 0;

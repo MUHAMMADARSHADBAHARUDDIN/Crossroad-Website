@@ -61,8 +61,12 @@ $permissionGroups = [
             "inventory_add" => "Add",
             "inventory_edit" => "Edit",
             "inventory_stockout" => "Stock Out",
+            "inventory_stockout_edit" => "Edit Stock Out Info",
+            "inventory_stockout_add_info" => "Add Stock Out Info",
+            "inventory_stockout_delete_info" => "Delete Stock Out Info",
             "inventory_delete" => "Delete",
-            "inventory_export" => "Export"
+            "inventory_export" => "Export",
+            "inventory_report" => "Report"
         ]
     ]
 ];
@@ -201,7 +205,9 @@ usort($accounts, function($a, $b){
 <meta charset="UTF-8">
 <title>Manage Users</title>
 
-<link rel="icon" href="../image/logo.png">
+<link rel="icon" type="image/png" href="../image/logo.png">
+<link rel="shortcut icon" type="image/png" href="../image/logo.png">
+<link rel="apple-touch-icon" href="../image/logo.png">
 <link rel="stylesheet" href="style.css">
 
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -557,12 +563,28 @@ if(in_array("inventory_full", $permissions, true)){
         $inventoryLabels[] = "Stock Out";
     }
 
+    if(in_array("inventory_stockout_edit", $permissions, true)){
+        $inventoryLabels[] = "Edit Stock Out Info";
+    }
+
+    if(in_array("inventory_stockout_add_info", $permissions, true)){
+        $inventoryLabels[] = "Add Stock Out Info";
+    }
+
+    if(in_array("inventory_stockout_delete_info", $permissions, true)){
+        $inventoryLabels[] = "Delete Stock Out Info";
+    }
+
     if(in_array("inventory_delete", $permissions, true)){
         $inventoryLabels[] = "Delete";
     }
 
     if(in_array("inventory_export", $permissions, true)){
         $inventoryLabels[] = "Export";
+    }
+
+    if(in_array("inventory_report", $permissions, true)){
+        $inventoryLabels[] = "Report";
     }
 
     if(!empty($inventoryLabels)){

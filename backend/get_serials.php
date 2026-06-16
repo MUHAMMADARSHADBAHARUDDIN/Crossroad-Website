@@ -2,6 +2,7 @@
 session_start();
 require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
+require_once "../includes/inventory_report_schema.php";
 
 if(!isset($_SESSION['username'])){
     exit("No session");
@@ -10,6 +11,8 @@ if(!isset($_SESSION['username'])){
 if(!hasPermission($mysqli, "inventory_view")){
     exit("Access denied");
 }
+
+ensureInventoryReportSchema($mysqli);
 
 function getSerialFormatDate($value){
     $value = trim((string)($value ?? ''));
@@ -34,7 +37,7 @@ $canStockOut = hasPermission($mysqli, "inventory_stockout");
 $canDelete = hasPermission($mysqli, "inventory_delete");
 
 $stmt = $mysqli->prepare("
-SELECT no, serial_number, location, brand, description, date_received
+SELECT no, serial_number, location, brand, description, date_received, received_by
 FROM asset_inventory
 WHERE part_number = ?
 ORDER BY date_received DESC
@@ -52,6 +55,7 @@ echo "
     <th>Brand</th>
     <th>Location</th>
     <th>Date</th>
+    <th>Received By</th>
     <th style='width:220px;'>Action</th>
 </tr>
 </thead>
@@ -70,6 +74,7 @@ while($row = $result->fetch_assoc()){
     echo "<td>" . htmlspecialchars($row['brand'] ?? '') . "</td>";
     echo "<td>" . htmlspecialchars($row['location'] ?? '') . "</td>";
     echo "<td>" . htmlspecialchars($dateReceived) . "</td>";
+    echo "<td>" . htmlspecialchars($row['received_by'] ?? '') . "</td>";
 
     echo "<td>";
 

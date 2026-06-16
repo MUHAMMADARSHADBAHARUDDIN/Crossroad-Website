@@ -3,6 +3,7 @@ session_start();
 require_once "../includes/db_connect.php";
 require_once "../includes/activity_log.php";
 require_once "../includes/permissions.php";
+require_once "../includes/inventory_report_schema.php";
 
 header('Content-Type: text/plain');
 
@@ -17,6 +18,7 @@ if(!hasPermission($mysqli, "inventory_delete")){
 $id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
 $username = $_SESSION['username'];
 $role = $_SESSION['role'] ?? "UNKNOWN";
+ensureInventoryReportSchema($mysqli);
 
 if(!$id){
     exit("error");
@@ -50,6 +52,7 @@ $description = "User [$username] deleted asset.
 Part Number: {$row['part_number']}
 Serial Number: {$row['serial_number']}
 Location: {$row['location']}
+Received By: {$row['received_by']}
 Deleted By Role: $role
 IP Address: $ip
 Time: $time";

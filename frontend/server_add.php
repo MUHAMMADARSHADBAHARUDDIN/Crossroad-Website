@@ -3,6 +3,8 @@ session_start();
 require_once "../includes/db_connect.php";
 require_once "../includes/activity_log.php";
 require_once "../includes/permissions.php";
+require_once "../includes/inventory_report_schema.php";
+require_once "../includes/date_helpers.php";
 
 if(!isset($_SESSION['username'])){
     header("Location: index.html");
@@ -11,6 +13,7 @@ if(!isset($_SESSION['username'])){
 
 $role = $_SESSION['role'] ?? "UNKNOWN";
 $username = $_SESSION['username'];
+ensureInventoryReportSchema($mysqli);
 
 if(!hasPermission($mysqli, "inventory_add")){
     header("Location: server_inventory.php");
@@ -28,8 +31,9 @@ if(isset($_POST['add'])){
     $location = trim($_POST['location']);
     $status   = trim($_POST['status']);
     $remark   = trim($_POST['remark']);
-    $date     = trim($_POST['date_testing']);
+    $date     = appNormalizeDateInput($_POST['date_testing'] ?? "");
     $tester   = trim($_POST['tester']);
+    $receivedBy = trim($_POST['received_by'] ?? "");
 
     if($server == "" || $serial == ""){
         $error = "Server Name and Serial Number are required!";
@@ -56,8 +60,8 @@ if(isset($_POST['add'])){
 
             $stmt = $mysqli->prepare("
                 INSERT INTO server_inventory
-                (server_name, serial_number, brand, machine_type, location, status, remark, date_testing, tester, created_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (server_name, serial_number, brand, machine_type, location, status, remark, date_testing, tester, created_by, received_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
 
             if(!$stmt){
@@ -65,7 +69,7 @@ if(isset($_POST['add'])){
             }
 
             $stmt->bind_param(
-                "ssssssssss",
+                "sssssssssss",
                 $server,
                 $serial,
                 $brand,
@@ -75,10 +79,39 @@ if(isset($_POST['add'])){
                 $remark,
                 $date,
                 $tester,
-                $username
+                $username,
+                $receivedBy
             );
 
             if($stmt->execute()){
+                $serverInventoryId = $stmt->insert_id;
+                $quantity = 1;
+
+                $historyStmt = $mysqli->prepare("
+                    INSERT INTO server_stockin_history
+                    (server_inventory_id, server_name, brand, machine_type, serial_number, location, status, remark, date_testing, tester, quantity, stock_in_by, received_by, stock_in_date)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                ");
+
+                if($historyStmt){
+                    $historyStmt->bind_param(
+                        "isssssssssiss",
+                        $serverInventoryId,
+                        $server,
+                        $brand,
+                        $machine,
+                        $serial,
+                        $location,
+                        $status,
+                        $remark,
+                        $date,
+                        $tester,
+                        $quantity,
+                        $username,
+                        $receivedBy
+                    );
+                    $historyStmt->execute();
+                }
 
                 $ip = $_SERVER['REMOTE_ADDR'];
                 $time = date("Y-m-d H:i:s");
@@ -91,6 +124,8 @@ Machine Type: $machine
 Location: $location
 Status: $status
 Tester: $tester
+Quantity: $quantity
+Received By: $receivedBy
 Date Testing: $date
 Remark: $remark
 IP Address: $ip
@@ -120,6 +155,9 @@ Time: $time";
 <head>
 <title>Add Server</title>
 
+<link rel="icon" type="image/png" href="../image/logo.png">
+<link rel="shortcut icon" type="image/png" href="../image/logo.png">
+<link rel="apple-touch-icon" href="../image/logo.png">
 <link rel="stylesheet" href="style.css">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
@@ -179,6 +217,11 @@ Time: $time";
 <div class="col-md-6 mb-3">
 <label>Date Testing</label>
 <input type="date" name="date_testing" class="form-control">
+</div>
+
+<div class="col-md-6 mb-3">
+<label>Received By</label>
+<input type="text" name="received_by" class="form-control">
 </div>
 
 <div class="col-md-12 mb-3">

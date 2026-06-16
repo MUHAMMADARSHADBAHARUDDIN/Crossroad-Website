@@ -262,6 +262,9 @@ if($format === "print"){
 <html>
 <head>
     <title>Server Report</title>
+    <link rel="icon" type="image/png" href="../image/logo.png">
+    <link rel="shortcut icon" type="image/png" href="../image/logo.png">
+    <link rel="apple-touch-icon" href="../image/logo.png">
     <style>
         body { font-family: Arial; }
         table {

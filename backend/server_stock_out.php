@@ -3,6 +3,7 @@ session_start();
 require_once "../includes/db_connect.php";
 require_once "../includes/activity_log.php";
 require_once "../includes/permissions.php";
+require_once "../includes/inventory_report_schema.php";
 
 header("Content-Type: text/plain");
 
@@ -19,6 +20,7 @@ $stockout_remark = isset($_POST['remark']) ? trim($_POST['remark']) : '';
 
 $username = $_SESSION['username'];
 $role = $_SESSION['role'] ?? "UNKNOWN";
+ensureInventoryReportSchema($mysqli);
 
 if($id <= 0){
     exit("Invalid ID");
@@ -42,12 +44,14 @@ if(!$row){
 
 $insertStmt = $mysqli->prepare("
 INSERT INTO server_stockout_history
-(server_name, machine_type, serial_number, location, status, remark, tester, stock_out_by)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+(server_name, machine_type, serial_number, location, status, remark, tester, quantity, stock_out_by)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 ");
 
+$quantity = 1;
+
 $insertStmt->bind_param(
-    "ssssssss",
+    "sssssssis",
     $row['server_name'],
     $row['machine_type'],
     $row['serial_number'],
@@ -55,6 +59,7 @@ $insertStmt->bind_param(
     $row['status'],
     $stockout_remark,
     $row['tester'],
+    $quantity,
     $username
 );
 
@@ -68,6 +73,7 @@ Server Name: {$row['server_name']}
 Machine Type: {$row['machine_type']}
 Serial Number: {$row['serial_number']}
 Location: {$row['location']}
+Quantity: $quantity
 Remark: $stockout_remark
 IP Address: $ip
 Time: $time";

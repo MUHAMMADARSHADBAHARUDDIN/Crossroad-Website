@@ -1,15 +1,17 @@
 <?php
-$DB_HOST = 'localhost';
-$DB_PORT = 3306;
-$DB_NAME = 'crossroad_solutions_inventory_management';
-$DB_USER = 'root';
-$DB_PASS = ''; // default XAMPP password is empty
+require_once __DIR__ . "/env.php";
 
-$mysqli = new mysqli($DB_HOST, $DB_USER, $DB_PASS, $DB_NAME, $DB_PORT);
+$host = getenv("CROSSROAD_DB_HOST") ?: "127.0.0.1";
+$user = getenv("CROSSROAD_DB_USER") ?: "root";
+$password = getenv("CROSSROAD_DB_PASS") ?: "";
+$database = getenv("CROSSROAD_DB_NAME") ?: "crossroad_solutions_inventory_management";
+$port = (int)(getenv("CROSSROAD_DB_PORT") ?: 3306);
 
-if ($mysqli->connect_errno) {
-    die("Database connection failed: (" . $mysqli->connect_errno . ") " . $mysqli->connect_error);
+$mysqli = new mysqli($host, $user, $password, $database, $port);
+
+if ($mysqli->connect_error) {
+    die("Database connection failed: " . $mysqli->connect_error);
 }
 
 $mysqli->set_charset("utf8mb4");
-?> 
+?>

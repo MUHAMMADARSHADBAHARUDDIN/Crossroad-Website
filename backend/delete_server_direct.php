@@ -3,6 +3,7 @@ session_start();
 require_once "../includes/db_connect.php";
 require_once "../includes/activity_log.php";
 require_once "../includes/permissions.php";
+require_once "../includes/inventory_report_schema.php";
 
 header("Content-Type: text/plain");
 
@@ -22,6 +23,7 @@ if($id <= 0){
 
 $username = $_SESSION['username'];
 $role = $_SESSION['role'] ?? "UNKNOWN";
+ensureInventoryReportSchema($mysqli);
 
 $stmt = $mysqli->prepare("
 SELECT *
@@ -54,6 +56,7 @@ Server Name: {$row['server_name']}
 Machine Type: {$row['machine_type']}
 Serial Number: {$row['serial_number']}
 Location: {$row['location']}
+Received By: {$row['received_by']}
 Deleted Without Stock Out: YES
 IP Address: $ip
 Time: $time";

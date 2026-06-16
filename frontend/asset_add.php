@@ -3,6 +3,8 @@ session_start();
 require_once "../includes/db_connect.php";
 require_once "../includes/activity_log.php";
 require_once "../includes/permissions.php";
+require_once "../includes/inventory_report_schema.php";
+require_once "../includes/date_helpers.php";
 
 if(!isset($_SESSION['username'])){
     header("Location: index.html");
@@ -11,6 +13,7 @@ if(!isset($_SESSION['username'])){
 
 $role = $_SESSION['role'] ?? "UNKNOWN";
 $username = $_SESSION['username'];
+ensureInventoryReportSchema($mysqli);
 
 if(!hasPermission($mysqli, "inventory_add")){
     header("Location: ../frontend/asset_inventory.php");
@@ -26,7 +29,8 @@ if(isset($_POST['add'])){
     $brand = trim($_POST['brand']);
     $desc = trim($_POST['desc']);
     $location = trim($_POST['location']);
-    $date = trim($_POST['date_received']);
+    $date = appNormalizeDateInput($_POST['date_received'] ?? "");
+    $receivedBy = trim($_POST['received_by'] ?? "");
 
     if($part == "" || $serial == ""){
         $error = "Part Number and Serial Number are required!";
@@ -48,8 +52,8 @@ if(isset($_POST['add'])){
 
             $stmt = $mysqli->prepare("
                 INSERT INTO asset_inventory
-                (part_number, serial_number, brand, description, location, date_received, created_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (part_number, serial_number, brand, description, location, date_received, created_by, received_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ");
 
             if(!$stmt){
@@ -57,17 +61,43 @@ if(isset($_POST['add'])){
             }
 
             $stmt->bind_param(
-                "sssssss",
+                "ssssssss",
                 $part,
                 $serial,
                 $brand,
                 $desc,
                 $location,
                 $date,
-                $username
+                $username,
+                $receivedBy
             );
 
             if($stmt->execute()){
+                $assetInventoryId = $stmt->insert_id;
+                $quantity = 1;
+
+                $historyStmt = $mysqli->prepare("
+                    INSERT INTO asset_stockin_history
+                    (asset_inventory_id, part_number, serial_number, brand, description, quantity, location, stock_in_by, received_by, date_received, stock_in_date)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                ");
+
+                if($historyStmt){
+                    $historyStmt->bind_param(
+                        "issssissss",
+                        $assetInventoryId,
+                        $part,
+                        $serial,
+                        $brand,
+                        $desc,
+                        $quantity,
+                        $location,
+                        $username,
+                        $receivedBy,
+                        $date
+                    );
+                    $historyStmt->execute();
+                }
 
                 $ip = $_SERVER['REMOTE_ADDR'];
                 $time = date("Y-m-d H:i:s");
@@ -77,7 +107,9 @@ Part Number: $part
 Serial Number: $serial
 Brand: $brand
 Description: $desc
+Quantity: $quantity
 Location: $location
+Received By: $receivedBy
 Date Received: $date
 IP Address: $ip
 Time: $time";
@@ -106,6 +138,9 @@ Time: $time";
 <head>
     <title>Add Asset</title>
 
+    <link rel="icon" type="image/png" href="../image/logo.png">
+    <link rel="shortcut icon" type="image/png" href="../image/logo.png">
+    <link rel="apple-touch-icon" href="../image/logo.png">
     <link rel="stylesheet" href="style.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
@@ -157,6 +192,11 @@ Time: $time";
                 <div class="col-12 mb-3">
                     <label>Date Received</label>
                     <input type="date" name="date_received" class="form-control">
+                </div>
+
+                <div class="col-12 mb-3">
+                    <label>Received By</label>
+                    <input type="text" name="received_by" class="form-control">
                 </div>
 
             </div>
