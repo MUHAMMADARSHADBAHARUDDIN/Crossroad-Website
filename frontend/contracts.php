@@ -183,15 +183,16 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
     $orderColumnMap = [
         0 => "pi.no",
         1 => "pi.year_awarded",
-        2 => "pi.project_name",
-        3 => "pi.project_owner",
-        4 => $projectManagerOrder,
-        5 => $accountManagerOrder,
-        6 => "progress_percent",
-        7 => "auto_status",
-        8 => "pi.contract_start",
-        9 => "pi.contract_end",
-        10 => "pi.amount"
+        2 => "pi.contract_no",
+        3 => "pi.project_name",
+        4 => "pi.project_owner",
+        5 => $projectManagerOrder,
+        6 => $accountManagerOrder,
+        7 => "pi.contract_start",
+        8 => "pi.contract_end",
+        9 => "auto_status",
+        10 => "progress_percent",
+        11 => "pi.amount"
     ];
 
     $orderBy = "pi.no DESC";
@@ -414,8 +415,11 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
         if($canEditThisContract){
             $actionsHtml .= '
                 <a href="contract_edit.php?id=' . contractEscape($row['no']) . '"
-                   class="btn btn-sm btn-primary contract-action-btn">
-                    &nbsp&nbsp;Edit&nbsp&nbsp;
+                   class="btn btn-sm btn-primary contract-action-btn"
+                   title="Edit contract"
+                   aria-label="Edit contract">
+                    <i class="fa fa-pen" aria-hidden="true"></i>
+                    <span class="visually-hidden">Edit</span>
                 </a>
             ';
         }
@@ -424,8 +428,11 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
             $actionsHtml .= '
                 <a href="../backend/contract_delete.php?id=' . contractEscape($row['no']) . '"
                    class="btn btn-sm btn-danger contract-action-btn"
+                   title="Delete contract"
+                   aria-label="Delete contract"
                    onclick="return confirm(\'Delete this contract?\')">
-                    Delete
+                    <i class="fa fa-trash" aria-hidden="true"></i>
+                    <span class="visually-hidden">Delete</span>
                 </a>
             ';
         }
@@ -440,6 +447,7 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
 
         $data[] = [
             "no" => contractEscape($row['no']),
+            "contract_no" => contractEscape($row['contract_no']),
             "year" => contractEscape($row['year_awarded']),
             "project_name" => contractEscape($row['project_name']),
             "owner" => contractEscape($row['project_owner']),
@@ -564,6 +572,7 @@ body{
 
 /* ✅ SMALLER NO + YEAR, BIGGER PROJECT NAME */
 #contractsTable .contract-col-no,
+#contractsTable .contract-col-contract-no,
 #contractsTable .contract-col-year{
     text-align:center;
 }
@@ -582,7 +591,13 @@ body{
 
 #contractsTable th:nth-child(3),
 #contractsTable td:nth-child(3){
-    width:24% !important;
+    width:9% !important;
+    max-width:110px !important;
+}
+
+#contractsTable th:nth-child(4),
+#contractsTable td:nth-child(4){
+    width:20% !important;
 }
 
 #contractsTable tbody tr{
@@ -605,6 +620,12 @@ body{
 .contract-action-btn{
     margin:2px;
     white-space:nowrap;
+    width:34px;
+    height:34px;
+    padding:0;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
 }
 
 .contract-progress{
@@ -956,7 +977,8 @@ body{
 
     .contract-action-btn{
         flex:1 1 auto;
-        min-width:80px;
+        min-width:44px;
+        max-width:64px;
         margin:0;
     }
 
@@ -1052,11 +1074,13 @@ body{
 <tr>
     <th>No</th>
     <th>Year</th>
+    <th>Contract No</th>
     <th>Project Name</th>
     <th>Owner</th>
     <th>Project Manager</th>
     <th>Account Manager</th>
-    <th>Progress</th>
+    <th>Start</th>
+    <th>End</th>
 
     <th>
         <span class="header-filter" id="statusHeaderFilter">
@@ -1064,8 +1088,7 @@ body{
         </span>
     </th>
 
-    <th>Start</th>
-    <th>End</th>
+    <th>Progress</th>
     <th>Amount</th>
     <th>Actions</th>
 </tr>
@@ -1482,19 +1505,21 @@ $(document).ready(function(){
         columnDefs: [
             { targets: 0, width: "4%" },
             { targets: 1, width: "5%" },
-            { targets: 2, width: "24%" }
+            { targets: 2, width: "9%" },
+            { targets: 3, width: "20%" }
         ],
         columns: [
             { data: "no", className: "contract-col-no" },
             { data: "year", className: "contract-col-year" },
+            { data: "contract_no", className: "contract-col-contract-no" },
             { data: "project_name", className: "contract-col-project" },
             { data: "owner", className: "contract-col-owner" },
             { data: "project_manager", className: "contract-col-project-manager" },
             { data: "account_manager", className: "contract-col-account-manager" },
-            { data: "progress", className: "contract-col-progress" },
-            { data: "status", className: "contract-col-status" },
             { data: "start", className: "contract-col-start" },
             { data: "end", className: "contract-col-end" },
+            { data: "status", className: "contract-col-status" },
+            { data: "progress", className: "contract-col-progress" },
             { data: "amount", className: "contract-col-amount" },
             {
                 data: "actions",
@@ -1523,16 +1548,17 @@ $(document).ready(function(){
 
             $("td:eq(0)", row).attr("data-label", "No");
             $("td:eq(1)", row).attr("data-label", "Year");
-            $("td:eq(2)", row).attr("data-label", "Project Name");
-            $("td:eq(3)", row).attr("data-label", "Owner");
-            $("td:eq(4)", row).attr("data-label", "Project Manager");
-            $("td:eq(5)", row).attr("data-label", "Account Manager");
-            $("td:eq(6)", row).attr("data-label", "Progress");
-            $("td:eq(7)", row).attr("data-label", "Status");
-            $("td:eq(8)", row).attr("data-label", "Start");
-            $("td:eq(9)", row).attr("data-label", "End");
-            $("td:eq(10)", row).attr("data-label", "Amount");
-            $("td:eq(11)", row).attr("data-label", "Actions");
+            $("td:eq(2)", row).attr("data-label", "Contract No");
+            $("td:eq(3)", row).attr("data-label", "Project Name");
+            $("td:eq(4)", row).attr("data-label", "Owner");
+            $("td:eq(5)", row).attr("data-label", "Project Manager");
+            $("td:eq(6)", row).attr("data-label", "Account Manager");
+            $("td:eq(7)", row).attr("data-label", "Start");
+            $("td:eq(8)", row).attr("data-label", "End");
+            $("td:eq(9)", row).attr("data-label", "Status");
+            $("td:eq(10)", row).attr("data-label", "Progress");
+            $("td:eq(11)", row).attr("data-label", "Amount");
+            $("td:eq(12)", row).attr("data-label", "Actions");
         }
     });
 
