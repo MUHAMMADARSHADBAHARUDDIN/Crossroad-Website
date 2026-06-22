@@ -5,6 +5,7 @@ startSecureSession();
 require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
 require_once "../includes/activity_log.php";
+require_once "../includes/contract_task_documents.php";
 
 header("Content-Type: text/plain; charset=UTF-8");
 
@@ -94,6 +95,20 @@ if(!hasContractTaskAddAccess($mysqli, $createdBy)){
     exit("Access denied. You do not have Task Add permission.");
 }
 
+$hasDocumentUpload = isset($_FILES['task_document']) && ($_FILES['task_document']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
+
+if($hasDocumentUpload && !hasContractTaskDocumentUploadAccess($mysqli, $createdBy)){
+    exit("Access denied. You do not have checklist document upload permission.");
+}
+
+if($hasDocumentUpload){
+    $uploadError = contractTaskDocumentValidateUpload($_FILES['task_document']);
+
+    if($uploadError !== ""){
+        exit($uploadError);
+    }
+}
+
 if(addTaskColumnExists($mysqli, "contract_tasks", "task_text")){
     $textColumn = "task_text";
 }elseif(addTaskColumnExists($mysqli, "contract_tasks", "task_name")){
@@ -173,6 +188,42 @@ if(!$stmt->execute()){
 }
 
 $newTaskId = $stmt->insert_id;
+$uploadedDocumentName = "";
+
+if($hasDocumentUpload){
+    ensureContractTaskDocumentSchema($mysqli);
+
+    $file = $_FILES['task_document'];
+    $originalName = basename($file['name']);
+    $storedName = contractTaskDocumentStoredFileName($originalName);
+    $uploadDir = contractTaskDocumentEnsureUploadDir();
+    $targetPath = $uploadDir . "/" . $storedName;
+
+    if(!move_uploaded_file($file['tmp_name'], $targetPath)){
+        exit("Failed to move uploaded file.");
+    }
+
+    $docStmt = $mysqli->prepare("
+        INSERT INTO contract_task_documents (contract_id, task_id, file_name, original_file_name, uploaded_by)
+        VALUES (?, ?, ?, ?, ?)
+    ");
+
+    if(!$docStmt){
+        @unlink($targetPath);
+        exit("SQL Error: " . $mysqli->error);
+    }
+
+    $uploadedBy = $_SESSION['username'];
+    $docStmt->bind_param("iisss", $contractId, $newTaskId, $storedName, $originalName, $uploadedBy);
+
+    if(!$docStmt->execute()){
+        @unlink($targetPath);
+        exit("Failed to save checklist document: " . $docStmt->error);
+    }
+
+    $uploadedDocumentName = $originalName;
+}
+
 $username = $_SESSION['username'];
 $role = $_SESSION['role'] ?? "UNKNOWN";
 $ip = $_SERVER['REMOTE_ADDR'] ?? "Unknown";
@@ -186,6 +237,7 @@ $description = "User [$username] added a contract task.\n"
     . "Task ID: $newTaskId\n"
     . "Task: $taskText\n"
     . "Task Date: $dateText\n"
+    . ($uploadedDocumentName !== "" ? "Attached Document: $uploadedDocumentName\n" : "")
     . "Status: Pending\n"
     . "IP Address: $ip\n"
     . "Time: $time";

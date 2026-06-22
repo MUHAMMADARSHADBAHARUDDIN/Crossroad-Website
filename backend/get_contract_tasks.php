@@ -10,6 +10,7 @@ if(!isset($_SESSION['username'])){
 }
 
 ensureContractTaskCompletionSchema($mysqli);
+ensureContractTaskDocumentSchema($mysqli);
 
 function taskEscape($value){
     return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
@@ -85,6 +86,11 @@ $createdBy = $contract['created_by'] ?? "";
 $canAddTask = hasContractTaskAddAccess($mysqli, $createdBy);
 $canEditTask = hasContractTaskEditAccess($mysqli, $createdBy);
 $canDeleteTask = hasContractTaskDeleteAccess($mysqli, $createdBy);
+$canViewTaskDocument = hasContractTaskDocumentViewAccess($mysqli, $createdBy);
+$canUploadTaskDocument = hasContractTaskDocumentUploadAccess($mysqli, $createdBy);
+$canDownloadTaskDocument = hasContractTaskDocumentDownloadAccess($mysqli, $createdBy);
+$canDeleteTaskDocument = hasContractTaskDocumentDeleteAccess($mysqli, $createdBy);
+$canOpenTaskDocument = $canViewTaskDocument || $canUploadTaskDocument || $canDownloadTaskDocument || $canDeleteTaskDocument;
 
 $idColumn = taskColumnExists($mysqli, "contract_tasks", "id") ? "id" : "no";
 if(!taskColumnExists($mysqli, "contract_tasks", $idColumn)){
@@ -153,6 +159,28 @@ while($row = $result->fetch_assoc()){
     $total++;
     if((int)$row['is_done'] === 1){ $done++; }
 }
+
+$documentCounts = [];
+
+if($canOpenTaskDocument){
+    $docCountStmt = $mysqli->prepare("
+        SELECT task_id, COUNT(*) AS document_count
+        FROM contract_task_documents
+        WHERE contract_id = ?
+        GROUP BY task_id
+    ");
+
+    if($docCountStmt){
+        $docCountStmt->bind_param("i", $contractId);
+        $docCountStmt->execute();
+        $docCountResult = $docCountStmt->get_result();
+
+        while($docRow = $docCountResult->fetch_assoc()){
+            $documentCounts[(int)$docRow['task_id']] = (int)$docRow['document_count'];
+        }
+    }
+}
+
 $percent = $total > 0 ? round(($done / $total) * 100) : 0;
 ?>
 <div class="task-checklist-header">
@@ -188,7 +216,14 @@ $percent = $total > 0 ? round(($done / $total) * 100) : 0;
             </button>
         </div>
     </div>
-    <small class="text-muted d-block mt-2">Assign a date range for Preventive Management items that must appear on the dashboard bulletin.</small>
+    <?php if($canUploadTaskDocument): ?>
+    <div class="mt-2">
+        <label class="form-label small mb-1">Attach Document</label>
+        <input type="file" id="newTaskDocument" class="form-control">
+        <small class="text-muted">Maximum file size 100MB. ZIP files are allowed.</small>
+    </div>
+    <?php endif; ?>
+    <small class="text-muted d-block mt-2">Assign a date range for Preventive Management items that must appear on the dashboard bulletin until completed.</small>
 </div>
 <?php endif; ?>
 
@@ -210,6 +245,7 @@ $percent = $total > 0 ? round(($done / $total) * 100) : 0;
     $completedBy = trim((string)($task['completed_by'] ?? ""));
     $completedAt = trim((string)($task['completed_at'] ?? ""));
     $isDone = (int)$task['is_done'] === 1;
+    $documentCount = $documentCounts[$taskId] ?? 0;
     $hasAssignedDate = !empty($taskStartDate) && $taskStartDate !== "0000-00-00";
     $completedAtText = taskFormatDateTime($completedAt);
     $taskDateText = (!$hasAssignedDate && $isDone && $completedAtText !== "")
@@ -228,7 +264,9 @@ $percent = $total > 0 ? round(($done / $total) * 100) : 0;
 
     }
     ?>
-    <div class="contract-task-item <?= $isDone ? 'task-completed' : '' ?>" data-task-id="<?= $taskId ?>" tabindex="-1">
+    <div class="contract-task-item <?= $isDone ? 'task-completed' : '' ?> <?= $canOpenTaskDocument ? 'contract-task-document-enabled' : '' ?>"
+         data-task-id="<?= $taskId ?>"
+         tabindex="-1">
         <div class="contract-task-left">
             <input type="checkbox" class="form-check-input contract-task-checkbox"
                    <?= $isDone ? 'checked' : '' ?> <?= !$canEditTask ? 'disabled' : '' ?>
@@ -238,6 +276,12 @@ $percent = $total > 0 ? round(($done / $total) * 100) : 0;
                 <div class="contract-task-meta">
                     <span class="me-2"><?= $isDone ? 'Completed' : 'Pending' ?></span>
                     <span><i class="fa fa-calendar-days"></i> <?= taskEscape($taskDateText) ?></span>
+                    <?php if($documentCount > 0): ?>
+                        <span class="task-document-indicator">
+                            <i class="fa fa-paperclip"></i>
+                            <?= $documentCount ?> document<?= $documentCount === 1 ? '' : 's' ?>
+                        </span>
+                    <?php endif; ?>
                 </div>
                 <?php if(!empty($taskMetaParts)): ?>
                     <div class="contract-task-meta">

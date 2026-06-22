@@ -5,6 +5,7 @@ session_start();
 require_once "../includes/db_connect.php";
 require_once "../includes/activity_log.php";
 require_once "../includes/permissions.php";
+require_once "../includes/contract_schema.php";
 require_once "../includes/contract_task_schema.php";
 require_once "../includes/date_helpers.php";
 require_once "../includes/fpdf/fpdf.php";
@@ -18,6 +19,7 @@ if(!hasContractViewAccess($mysqli)){
 }
 
 ensureContractTaskCompletionSchema($mysqli);
+ensureContractProjectSchema($mysqli);
 
 $reportType = strtolower(trim((string)($_GET["report_type"] ?? $_GET["type"] ?? "all")));
 $validReportTypes = ["all", "active", "pm", "project", "custom_range"];
@@ -354,6 +356,7 @@ function contractReportFetchContracts($mysqli, $reportType, $periodStart, $perio
         "
             SELECT
                 pi.no,
+                pi.project_code,
                 pi.year_awarded,
                 pi.project_name,
                 pi.project_owner,
@@ -370,7 +373,10 @@ function contractReportFetchContracts($mysqli, $reportType, $periodStart, $perio
                 $statusCase AS auto_status
             FROM project_inventory pi
             $whereSql
-            ORDER BY pi.project_name ASC, pi.no ASC
+            ORDER BY
+                CASE WHEN $contractStartSql IS NULL THEN 1 ELSE 0 END ASC,
+                $contractStartSql ASC,
+                pi.no ASC
         ",
         $types,
         $params
@@ -499,7 +505,10 @@ function contractReportFetchPmRows($mysqli, $periodStart, $periodEnd){
             FROM contract_tasks ct
             INNER JOIN project_inventory pi ON pi.no = ct.contract_id
             $whereSql
-            ORDER BY pi.project_name ASC, ct.`$idColumn` ASC
+            ORDER BY
+                CASE WHEN " . appSqlDateValue("pi.contract_start") . " IS NULL THEN 1 ELSE 0 END ASC,
+                " . appSqlDateValue("pi.contract_start") . " ASC,
+                ct.`$idColumn` ASC
         ",
         $types,
         $params
@@ -712,12 +721,12 @@ function contractReportRenderContractTable($pdf, $rows){
         return;
     }
 
-    $widths = [11, 50, 29, 29, 31, 22, 22, 22, 51];
-    $pdf->TableHeader(["No", "Project", "Owner", "Project Manager", "Contract No", "Start", "End", "Status", "Amount"], $widths);
+    $widths = [26, 40, 29, 29, 30, 22, 22, 22, 47];
+    $pdf->TableHeader(["Project Code", "Project", "Owner", "Project Manager", "Contract No", "Start", "End", "Status", "Amount"], $widths);
 
     foreach($rows as $row){
         $pdf->Row([
-            (string)($row["no"] ?? ""),
+            contractReportValue(contractProjectCodeDisplay($row["project_code"] ?? "")),
             contractReportValue($row["project_name"] ?? ""),
             contractReportValue($row["project_owner"] ?? ""),
             contractReportValue($row["project_manager"] ?? ""),

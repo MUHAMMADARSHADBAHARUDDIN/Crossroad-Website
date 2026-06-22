@@ -11,6 +11,9 @@ if(!isset($_SESSION['username'])){
 require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
 require_once "../includes/date_helpers.php";
+require_once "../includes/contract_schema.php";
+
+ensureContractProjectSchema($mysqli);
 
 if(!hasContractViewAccess($mysqli)){
     die("Access denied");
@@ -181,7 +184,7 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
     $accountManagerOrder = $hasAccountManager ? "pi.account_manager" : "pi.no";
 
     $orderColumnMap = [
-        0 => "pi.no",
+        0 => "pi.project_code",
         1 => "pi.year_awarded",
         2 => "pi.contract_no",
         3 => "pi.project_name",
@@ -239,6 +242,7 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
         $searchLike = "%" . $term . "%";
 
         $conditionParts = [
+            "pi.project_code LIKE ?",
             "CAST(pi.no AS CHAR) LIKE ?",
             "CAST(pi.year_awarded AS CHAR) LIKE ?",
             "pi.project_name LIKE ?",
@@ -312,6 +316,7 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
     $sql = "
         SELECT
             pi.no,
+            pi.project_code,
             pi.year_awarded,
             pi.project_name,
             pi.project_owner,
@@ -444,9 +449,11 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
         $formattedStart = contractFormatDate($row['contract_start']);
         $formattedEnd = contractFormatDate($row['contract_end']);
         $formattedPoDate = contractFormatDate($row['po_date']);
+        $displayProjectCode = contractProjectCodeDisplay($row['project_code'] ?? "");
 
         $data[] = [
             "no" => contractEscape($row['no']),
+            "project_code" => contractEscape($displayProjectCode),
             "contract_no" => contractEscape($row['contract_no']),
             "year" => contractEscape($row['year_awarded']),
             "project_name" => contractEscape($row['project_name']),
@@ -462,6 +469,7 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
 
             "meta" => [
                 "id" => $row['no'],
+                "projectcode" => $displayProjectCode,
                 "year" => $row['year_awarded'],
                 "project" => $row['project_name'],
                 "owner" => $row['project_owner'],
@@ -571,7 +579,7 @@ body{
 }
 
 /* ✅ SMALLER NO + YEAR, BIGGER PROJECT NAME */
-#contractsTable .contract-col-no,
+#contractsTable .contract-col-project-code,
 #contractsTable .contract-col-contract-no,
 #contractsTable .contract-col-year{
     text-align:center;
@@ -579,8 +587,8 @@ body{
 
 #contractsTable th:nth-child(1),
 #contractsTable td:nth-child(1){
-    width:4% !important;
-    max-width:50px !important;
+    width:8% !important;
+    max-width:105px !important;
 }
 
 #contractsTable th:nth-child(2),
@@ -790,6 +798,10 @@ body{
     box-shadow:0 4px 12px rgba(0,0,0,0.06);
 }
 
+.contract-task-document-enabled{
+    cursor:pointer;
+}
+
 .contract-task-item.contract-task-focus{
     border-color:#ffc107;
     background:#fff8e1;
@@ -825,6 +837,15 @@ body{
     font-size:12px;
     color:#6c757d;
     margin-top:4px;
+}
+
+.task-document-indicator{
+    display:inline-flex;
+    align-items:center;
+    gap:4px;
+    margin-left:8px;
+    color:#0d6efd;
+    font-weight:600;
 }
 
 .contract-task-actions{
@@ -866,6 +887,33 @@ body{
 .task-loading{
     color:#0d6efd;
     font-size:14px;
+}
+
+.task-document-upload-box{
+    background:#fff8e1;
+    border:1px solid #ffe69c;
+    border-radius:10px;
+    padding:10px;
+}
+
+.task-document-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    flex-wrap:wrap;
+}
+
+.task-document-info{
+    min-width:0;
+    overflow-wrap:anywhere;
+}
+
+.task-document-actions{
+    display:flex;
+    gap:6px;
+    flex-wrap:wrap;
+    justify-content:flex-end;
 }
 
 @media(max-width: 1200px){
@@ -1042,7 +1090,7 @@ body{
             id="liveContractSearch"
             name="search"
             class="form-control"
-            placeholder="Search contracts... Example: 2026, active"
+            placeholder="Search project code, contract no, project name... Example: PRO/IWK/001, 2026"
             value="<?= contractEscape($search) ?>"
             autocomplete="off"
         >
@@ -1054,7 +1102,8 @@ body{
 </form>
 
 <div class="contract-filter-hint mt-2 mb-2">
-    Use comma to search multiple terms, example: <b>2026, active</b>. Click the yellow Status header to filter status.
+    Search supports Project Code, Contract No, Project Name, year, owner, and status. Use comma for multiple terms, example: <b>PRO/IWK/001, active</b>.
+    Click the yellow Status header to filter status.
 </div>
 
 <div id="activeFilterBox" class="active-filter-box"></div>
@@ -1072,7 +1121,7 @@ body{
 
 <thead>
 <tr>
-    <th>No</th>
+    <th>Project Code</th>
     <th>Year</th>
     <th>Contract No</th>
     <th>Project Name</th>
@@ -1133,6 +1182,7 @@ body{
 
 <div class="row g-3">
 
+<div class="col-md-6"><b>Project Code</b><div id="m_projectcode"></div></div>
 <div class="col-md-6"><b>Year</b><div id="m_year"></div></div>
 <div class="col-md-6"><b>End User</b><div id="m_enduser"></div></div>
 <div class="col-md-6"><b>Contract No</b><div id="m_contractno"></div></div>
@@ -1206,7 +1256,7 @@ body{
         </div>
     </div>
     <small class="text-muted d-block mt-2">
-        Dated unfinished tasks scheduled in the current month appear in the Preventive Management dashboard bulletin.
+        Dated unfinished tasks appear in the Preventive Management dashboard bulletin until they are completed.
     </small>
 </div>
 
@@ -1215,6 +1265,31 @@ body{
     <button class="btn btn-warning" onclick="updateContractTask()">
         <i class="fa fa-save"></i> Save
     </button>
+</div>
+
+</div>
+</div>
+</div>
+
+<!-- TASK DOCUMENT MODAL -->
+<div class="modal fade" id="taskDocumentModal">
+<div class="modal-dialog modal-lg modal-dialog-centered">
+<div class="modal-content">
+
+<div class="modal-header bg-dark text-white">
+    <h5 class="modal-title">
+        <i class="fa fa-paperclip"></i> Checklist Documents
+    </h5>
+    <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+</div>
+
+<div class="modal-body">
+    <input type="hidden" id="taskDocumentTaskId">
+    <div id="taskDocumentContainer">
+        <div class="task-loading">
+            <i class="fa fa-spinner fa-spin"></i> Loading documents...
+        </div>
+    </div>
 </div>
 
 </div>
@@ -1233,11 +1308,25 @@ let contractsTable;
 const contractCsrfToken = <?= json_encode($csrfToken) ?>;
 const focusContractId = <?= json_encode($focusContractId) ?>;
 const focusTaskId = <?= json_encode($focusTaskId) ?>;
+const contractTaskDocumentMaxBytes = 100 * 1024 * 1024;
 
 function withContractCsrf(data){
     data = data || {};
     data.csrf_token = contractCsrfToken;
     return data;
+}
+
+function validateContractTaskDocumentFile(file){
+    if(!file){
+        return true;
+    }
+
+    if(file.size > contractTaskDocumentMaxBytes){
+        alert("Document is too large. Maximum checklist document size is 100MB.");
+        return false;
+    }
+
+    return true;
 }
 
 function focusContractTask(taskId){
@@ -1298,6 +1387,7 @@ function addContractTask(){
     let taskText = $("#newContractTaskText").val().trim();
     let taskStartDate = $("#newTaskStartDate").val();
     let taskEndDate = $("#newTaskEndDate").val();
+    let taskDocumentInput = document.getElementById("newTaskDocument");
 
     if(!contractId){
         alert("No contract selected.");
@@ -1319,18 +1409,39 @@ function addContractTask(){
         return;
     }
 
+    if(taskDocumentInput && taskDocumentInput.files.length > 0 && !validateContractTaskDocumentFile(taskDocumentInput.files[0])){
+        return;
+    }
+
     $("#addTaskBtn").prop("disabled", true).html("<i class='fa fa-spinner fa-spin'></i>");
 
-    $.post("../backend/add_contract_task.php", withContractCsrf({
-        contract_id: contractId,
-        task_text: taskText,
-        task_start_date: taskStartDate,
-        task_end_date: taskEndDate
-    }), function(data){
+    let formData = new FormData();
+    formData.append("csrf_token", contractCsrfToken);
+    formData.append("contract_id", contractId);
+    formData.append("task_text", taskText);
+    formData.append("task_start_date", taskStartDate);
+    formData.append("task_end_date", taskEndDate);
+
+    if(taskDocumentInput && taskDocumentInput.files.length > 0){
+        formData.append("task_document", taskDocumentInput.files[0]);
+    }
+
+    $.ajax({
+        url: "../backend/add_contract_task.php",
+        type: "POST",
+        data: formData,
+        processData: false,
+        contentType: false
+    }).done(function(data){
         if(data.trim() === "success"){
             $("#newContractTaskText").val("");
             $("#newTaskStartDate").val("");
             $("#newTaskEndDate").val("");
+
+            if(taskDocumentInput){
+                taskDocumentInput.value = "";
+            }
+
             loadContractTasks();
             reloadContractTableProgress();
         }else{
@@ -1437,6 +1548,90 @@ function deleteContractTask(id){
         alert("Failed to delete task.");
     });
 }
+
+function openContractTaskDocuments(taskId){
+    $("#taskDocumentTaskId").val(taskId);
+    $("#taskDocumentContainer").html("<div class='task-loading'><i class='fa fa-spinner fa-spin'></i> Loading documents...</div>");
+    bootstrap.Modal.getOrCreateInstance(document.getElementById("taskDocumentModal")).show();
+    loadContractTaskDocuments();
+}
+
+function loadContractTaskDocuments(){
+    let taskId = $("#taskDocumentTaskId").val();
+
+    if(!taskId){
+        $("#taskDocumentContainer").html("<div class='alert alert-warning mb-0'>No checklist item selected.</div>");
+        return;
+    }
+
+    $.post("../backend/get_contract_task_documents.php", {
+        task_id: taskId
+    }, function(data){
+        $("#taskDocumentContainer").html(data);
+    }).fail(function(){
+        $("#taskDocumentContainer").html("<div class='alert alert-danger mb-0'>Failed to load checklist documents.</div>");
+    });
+}
+
+function uploadContractTaskDocument(){
+    let taskId = $("#taskDocumentTaskId").val();
+    let fileInput = document.getElementById("taskDocumentFile");
+
+    if(!taskId || !fileInput || fileInput.files.length <= 0){
+        alert("Please choose a document.");
+        return;
+    }
+
+    if(!validateContractTaskDocumentFile(fileInput.files[0])){
+        return;
+    }
+
+    let formData = new FormData();
+    formData.append("csrf_token", contractCsrfToken);
+    formData.append("task_id", taskId);
+    formData.append("file", fileInput.files[0]);
+
+    $("#taskDocumentUploadBtn").prop("disabled", true).html("<i class='fa fa-spinner fa-spin'></i>");
+
+    $.ajax({
+        url: "../backend/upload_contract_task_document.php",
+        type: "POST",
+        data: formData,
+        processData: false,
+        contentType: false
+    }).done(function(data){
+        if(data.trim() === "success"){
+            loadContractTaskDocuments();
+            loadContractTasks();
+        }else{
+            alert(data);
+        }
+    }).fail(function(){
+        alert("Failed to upload checklist document.");
+    }).always(function(){
+        $("#taskDocumentUploadBtn").prop("disabled", false).html("<i class='fa fa-upload'></i> Upload");
+    });
+}
+
+function deleteContractTaskDocument(documentId){
+    if(!confirm("Delete this checklist document?")){
+        return;
+    }
+
+    $.post("../backend/delete_contract_task_document.php", withContractCsrf({
+        id: documentId
+    }), function(data){
+        if(data.trim() === "success"){
+            loadContractTaskDocuments();
+            loadContractTasks();
+        }else{
+            alert(data);
+        }
+    }).fail(function(){
+        alert("Failed to delete checklist document.");
+    });
+}
+
 function deleteContractFile(fileId, contractId){
     if(!confirm("Delete this document?")){
         return;
@@ -1487,7 +1682,7 @@ $(document).ready(function(){
         search: {
             search: initialSearch
         },
-        order: [[0, "desc"]],
+        order: [[0, "asc"]],
         dom:
             "t" +
             "<'contract-dt-footer d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3'ip>",
@@ -1503,13 +1698,13 @@ $(document).ready(function(){
             }
         },
         columnDefs: [
-            { targets: 0, width: "4%" },
+            { targets: 0, width: "8%" },
             { targets: 1, width: "5%" },
             { targets: 2, width: "9%" },
             { targets: 3, width: "20%" }
         ],
         columns: [
-            { data: "no", className: "contract-col-no" },
+            { data: "project_code", className: "contract-col-project-code" },
             { data: "year", className: "contract-col-year" },
             { data: "contract_no", className: "contract-col-contract-no" },
             { data: "project_name", className: "contract-col-project" },
@@ -1530,6 +1725,7 @@ $(document).ready(function(){
         ],
         createdRow: function(row, data){
             $(row).attr("data-id", data.meta.id);
+            $(row).attr("data-projectcode", data.meta.projectcode);
             $(row).attr("data-year", data.meta.year);
             $(row).attr("data-project", data.meta.project);
             $(row).attr("data-owner", data.meta.owner);
@@ -1546,7 +1742,7 @@ $(document).ready(function(){
             $(row).attr("data-status", data.meta.status);
             $(row).attr("data-amount", data.meta.amount);
 
-            $("td:eq(0)", row).attr("data-label", "No");
+            $("td:eq(0)", row).attr("data-label", "Project Code");
             $("td:eq(1)", row).attr("data-label", "Year");
             $("td:eq(2)", row).attr("data-label", "Contract No");
             $("td:eq(3)", row).attr("data-label", "Project Name");
@@ -1675,6 +1871,14 @@ $(document).ready(function(){
         }
     });
 
+    $(document).on("click", ".contract-task-item.contract-task-document-enabled", function(e){
+        if($(e.target).closest("input, button, a, textarea, label").length){
+            return;
+        }
+
+        openContractTaskDocuments($(this).data("task-id"));
+    });
+
     function openContractModal(data, options){
         options = options || {};
 
@@ -1684,6 +1888,7 @@ $(document).ready(function(){
 
         $('#m_project').text(meta.project || '');
         $('#m_owner').text(meta.owner || '');
+        $('#m_projectcode').text(meta.projectcode || '');
         $('#m_projectmanager').text(meta.projectmanager || '-');
         $('#m_accountmanager').text(meta.accountmanager || '-');
         $('#m_createdby').text(meta.createdby || '-');

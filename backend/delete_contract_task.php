@@ -5,6 +5,7 @@ startSecureSession();
 require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
 require_once "../includes/activity_log.php";
+require_once "../includes/contract_task_documents.php";
 
 if(!isset($_SESSION['username'])){
     exit("No session");
@@ -127,6 +128,35 @@ if(!hasContractTaskDeleteAccess($mysqli, $createdBy)){
     exit("Access denied. You do not have Task Delete permission.");
 }
 
+ensureContractTaskDocumentSchema($mysqli);
+
+$documentFiles = [];
+$docStmt = $mysqli->prepare("
+    SELECT file_name
+    FROM contract_task_documents
+    WHERE task_id = ?
+");
+
+if($docStmt){
+    $docStmt->bind_param("i", $id);
+    $docStmt->execute();
+    $docResult = $docStmt->get_result();
+
+    while($doc = $docResult->fetch_assoc()){
+        $documentFiles[] = $doc['file_name'] ?? "";
+    }
+}
+
+$deleteDocsStmt = $mysqli->prepare("
+    DELETE FROM contract_task_documents
+    WHERE task_id = ?
+");
+
+if($deleteDocsStmt){
+    $deleteDocsStmt->bind_param("i", $id);
+    $deleteDocsStmt->execute();
+}
+
 $stmt = $mysqli->prepare("
     DELETE FROM contract_tasks
     WHERE `$idColumn` = ?
@@ -139,6 +169,13 @@ if(!$stmt){
 $stmt->bind_param("i", $id);
 
 if($stmt->execute()){
+    foreach($documentFiles as $fileName){
+        $filePath = contractTaskDocumentDiskPath($fileName);
+
+        if(is_file($filePath)){
+            @unlink($filePath);
+        }
+    }
 
     $username = $_SESSION['username'];
     $role = $_SESSION['role'] ?? "UNKNOWN";

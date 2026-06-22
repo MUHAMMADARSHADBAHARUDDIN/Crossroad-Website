@@ -443,6 +443,108 @@ if(!function_exists('hasContractTaskAccess')){
 }
 
 /* =========================================================
+   CONTRACT TASK DOCUMENT ACCESS
+========================================================= */
+if(!function_exists('hasContractTaskDocumentViewAccess')){
+    function hasContractTaskDocumentViewAccess($mysqli, $created_by = ""){
+        $username = $_SESSION['username'] ?? "";
+
+        if(
+            hasPermission($mysqli, "contracts_full") ||
+            hasPermission($mysqli, "contracts_task_document_view")
+        ){
+            return true;
+        }
+
+        if(
+            hasPermission($mysqli, "contracts_personal") &&
+            $created_by !== "" &&
+            $username === $created_by
+        ){
+            return true;
+        }
+
+        return false;
+    }
+}
+
+if(!function_exists('hasContractTaskDocumentDownloadAccess')){
+    function hasContractTaskDocumentDownloadAccess($mysqli, $created_by = ""){
+        $username = $_SESSION['username'] ?? "";
+
+        if(
+            hasPermission($mysqli, "contracts_full") ||
+            hasPermission($mysqli, "contracts_task_document_download")
+        ){
+            return true;
+        }
+
+        if(
+            hasPermission($mysqli, "contracts_personal") &&
+            $created_by !== "" &&
+            $username === $created_by
+        ){
+            return true;
+        }
+
+        return false;
+    }
+}
+
+if(!function_exists('hasContractTaskDocumentUploadAccess')){
+    function hasContractTaskDocumentUploadAccess($mysqli, $created_by = ""){
+        $username = $_SESSION['username'] ?? "";
+
+        if(
+            hasPermission($mysqli, "contracts_full") ||
+            hasPermission($mysqli, "contracts_task_document_add") ||
+            hasPermission($mysqli, "contracts_task_document_upload")
+        ){
+            return true;
+        }
+
+        if(
+            hasPermission($mysqli, "contracts_personal") &&
+            $created_by !== "" &&
+            $username === $created_by
+        ){
+            return true;
+        }
+
+        return false;
+    }
+}
+
+if(!function_exists('hasContractTaskDocumentAddAccess')){
+    function hasContractTaskDocumentAddAccess($mysqli, $created_by = ""){
+        return hasContractTaskDocumentUploadAccess($mysqli, $created_by);
+    }
+}
+
+if(!function_exists('hasContractTaskDocumentDeleteAccess')){
+    function hasContractTaskDocumentDeleteAccess($mysqli, $created_by = ""){
+        $username = $_SESSION['username'] ?? "";
+
+        if(
+            hasPermission($mysqli, "contracts_full") ||
+            hasPermission($mysqli, "contracts_task_document_delete")
+        ){
+            return true;
+        }
+
+        if(
+            hasPermission($mysqli, "contracts_personal") &&
+            $created_by !== "" &&
+            $username === $created_by
+        ){
+            return true;
+        }
+
+        return false;
+    }
+}
+
+/* =========================================================
    STOCK OUT ADDITIONAL INFORMATION ACCESS
    Allows adding new information while original stock out text remains unchanged.
 ========================================================= */

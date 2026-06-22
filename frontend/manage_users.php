@@ -50,6 +50,11 @@ $permissionGroups = [
             "contracts_task" => "Task Add",
             "contracts_task_edit" => "Task Edit",
             "contracts_task_delete" => "Task Delete",
+            "contracts_task_document_add" => "Task Document Add",
+            "contracts_task_document_upload" => "Task Document Upload",
+            "contracts_task_document_view" => "Task Document View",
+            "contracts_task_document_download" => "Task Document Download",
+            "contracts_task_document_delete" => "Task Document Delete",
             "contracts_personal" => "Personal / Own"
         ]
     ],
@@ -233,6 +238,22 @@ html, body{
     white-space:normal !important;
     word-break:break-word;
     overflow-wrap:anywhere;
+}
+
+.user-sort-header{
+    cursor:pointer;
+    user-select:none;
+    white-space:nowrap !important;
+}
+
+.user-sort-header i{
+    margin-left:6px;
+    color:#adb5bd;
+    font-size:11px;
+}
+
+.user-sort-header.active i{
+    color:#ffc107;
 }
 
 .user-table tbody tr{
@@ -443,10 +464,10 @@ html, body{
 
 <thead>
 <tr>
-    <th>Username</th>
-    <th>Email</th>
-    <th>Role</th>
-    <th>Permission</th>
+    <th class="user-sort-header" data-sort-column="0">Username <i class="fa fa-sort"></i></th>
+    <th class="user-sort-header" data-sort-column="1">Email <i class="fa fa-sort"></i></th>
+    <th class="user-sort-header" data-sort-column="2">Role <i class="fa fa-sort"></i></th>
+    <th class="user-sort-header" data-sort-column="3">Permission <i class="fa fa-sort"></i></th>
     <th>Actions</th>
 </tr>
 </thead>
@@ -531,6 +552,26 @@ if(in_array("contracts_full", $permissions, true)){
 
     if(in_array("contracts_task_delete", $permissions, true)){
         $contractLabels[] = "Task Delete";
+    }
+
+    if(in_array("contracts_task_document_add", $permissions, true)){
+        $contractLabels[] = "Task Document Add";
+    }
+
+    if(in_array("contracts_task_document_upload", $permissions, true)){
+        $contractLabels[] = "Task Document Upload";
+    }
+
+    if(in_array("contracts_task_document_view", $permissions, true)){
+        $contractLabels[] = "Task Document View";
+    }
+
+    if(in_array("contracts_task_document_download", $permissions, true)){
+        $contractLabels[] = "Task Document Download";
+    }
+
+    if(in_array("contracts_task_document_delete", $permissions, true)){
+        $contractLabels[] = "Task Document Delete";
     }
 
     if(in_array("contracts_personal", $permissions, true)){
@@ -1070,6 +1111,75 @@ function toggleAddPassword(){
 
 const liveUserSearch = document.getElementById("liveUserSearch");
 const clearUserSearch = document.getElementById("clearUserSearch");
+let userSortColumn = null;
+let userSortDirection = "asc";
+
+function getUserSortValue(row, columnIndex){
+    if(columnIndex === 0){
+        return row.dataset.username || "";
+    }
+
+    if(columnIndex === 1){
+        return row.dataset.email || "";
+    }
+
+    if(columnIndex === 2){
+        const accountTypeRank = (row.dataset.accountType || "") === "administrator" ? "0" : "1";
+        return accountTypeRank + " " + (row.dataset.role || "");
+    }
+
+    const cells = row.querySelectorAll("td");
+    return cells[columnIndex] ? cells[columnIndex].innerText : "";
+}
+
+function updateUserSortHeaders(activeHeader){
+    document.querySelectorAll(".user-sort-header").forEach(header => {
+        const icon = header.querySelector("i");
+        header.classList.toggle("active", header === activeHeader);
+
+        if(!icon){
+            return;
+        }
+
+        if(header !== activeHeader){
+            icon.className = "fa fa-sort";
+            return;
+        }
+
+        icon.className = userSortDirection === "asc" ? "fa fa-sort-up" : "fa fa-sort-down";
+    });
+}
+
+function sortUserTable(columnIndex, activeHeader){
+    const tbody = document.querySelector(".user-table tbody");
+
+    if(!tbody){
+        return;
+    }
+
+    if(userSortColumn === columnIndex){
+        userSortDirection = userSortDirection === "asc" ? "desc" : "asc";
+    }else{
+        userSortColumn = columnIndex;
+        userSortDirection = "asc";
+    }
+
+    const direction = userSortDirection === "asc" ? 1 : -1;
+    const rows = Array.from(tbody.querySelectorAll("tr[data-username]"));
+
+    rows.sort((a, b) => {
+        const aValue = getUserSortValue(a, columnIndex).trim().toLowerCase();
+        const bValue = getUserSortValue(b, columnIndex).trim().toLowerCase();
+
+        return aValue.localeCompare(bValue, undefined, {
+            numeric: true,
+            sensitivity: "base"
+        }) * direction;
+    });
+
+    rows.forEach(row => tbody.appendChild(row));
+    updateUserSortHeaders(activeHeader);
+}
 
 function filterUserTable(){
     const keyword = liveUserSearch.value.toLowerCase().trim();
@@ -1103,6 +1213,12 @@ if(clearUserSearch){
         }
     });
 }
+
+document.querySelectorAll(".user-sort-header").forEach(header => {
+    header.addEventListener("click", function(){
+        sortUserTable(parseInt(this.dataset.sortColumn, 10), this);
+    });
+});
 </script>
 
 </body>

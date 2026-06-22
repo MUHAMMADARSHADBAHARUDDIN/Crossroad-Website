@@ -11,6 +11,9 @@ require_once "../includes/db_connect.php";
 require_once "../includes/activity_log.php";
 require_once "../includes/permissions.php";
 require_once "../includes/date_helpers.php";
+require_once "../includes/contract_schema.php";
+
+ensureContractProjectSchema($mysqli);
 
 if(!hasContractViewAccess($mysqli)){
     die("Access denied");
@@ -48,6 +51,9 @@ if(!$row){
 
 $created_by = $row['created_by'] ?? "";
 $canEdit = hasContractEditAccess($mysqli, $created_by);
+$currentProjectCode = contractProjectCodeNormalize($row['project_code'] ?? "");
+$currentProjectCodeMiddle = contractProjectCodeMiddleFromCode($row['project_code'] ?? "");
+$currentProjectCodeDisplay = contractProjectCodeDisplay($row['project_code'] ?? "");
 
 if(isset($_POST['submit'])){
 
@@ -62,11 +68,31 @@ if(isset($_POST['submit'])){
     $account_manager = trim($_POST['account_manager']);
     $end_user = trim($_POST['end_user']);
     $contract_no = trim($_POST['contract_no']);
+    $project_code_middle = contractProjectCodeMiddleNormalize($_POST['project_code_middle'] ?? "");
     $service = trim($_POST['service']);
     $po_date = appNormalizeDateInput($_POST['po_date'] ?? "");
     $contract_start = appNormalizeDateInput($_POST['contract_start'] ?? "");
     $contract_end = appNormalizeDateInput($_POST['contract_end'] ?? "");
     $amount = floatval($_POST['amount']);
+
+    if($project_code_middle === ""){
+        $project_code = null;
+    }
+    elseif(
+        $project_code_middle === $currentProjectCodeMiddle
+        && $currentProjectCode !== ""
+        && !contractProjectCodeIsPlaceholder($currentProjectCode)
+    ){
+        $project_code = $currentProjectCode;
+    }
+    else{
+        $project_code = contractProjectCodeGenerateFromMiddle($mysqli, $project_code_middle, $id);
+    }
+
+    if($project_code !== null && contractProjectCodeExists($mysqli, $project_code, $id)){
+        echo "<script>alert('Project Code already exists. Please use a unique project code.'); window.history.back();</script>";
+        exit();
+    }
 
     $today = date('Y-m-d');
 
@@ -85,6 +111,7 @@ if(isset($_POST['submit'])){
 
     $updateStmt = $mysqli->prepare("
         UPDATE project_inventory SET
+            project_code = ?,
             year_awarded = ?,
             project_name = ?,
             project_owner = ?,
@@ -106,7 +133,8 @@ if(isset($_POST['submit'])){
     }
 
     $updateStmt->bind_param(
-        "isssssssssssdi",
+        "sisssssssssssdi",
+        $project_code,
         $year_awarded,
         $project_name,
         $project_owner,
@@ -134,6 +162,8 @@ if(isset($_POST['submit'])){
 Contract No: $id
 
 OLD DATA:
+- Project Code: " . contractProjectCodeDisplay($row['project_code'] ?? '') . "
+- Project Code Middle: " . contractProjectCodeMiddleFromCode($row['project_code'] ?? '') . "
 - Year Awarded: {$row['year_awarded']}
 - Project Name: {$row['project_name']}
 - Project Owner: {$row['project_owner']}
@@ -149,6 +179,8 @@ OLD DATA:
 - Status: {$row['status']}
 
 NEW DATA:
+- Project Code: " . contractProjectCodeDisplay($project_code) . "
+- Project Code Middle: $project_code_middle
 - Year Awarded: $year_awarded
 - Project Name: $project_name
 - Project Owner: $project_owner
@@ -240,7 +272,7 @@ Time: $time";
 
 <form method="POST" class="form-card">
 
-<!-- FIRST ROW: NO + YEAR AWARDED -->
+<!-- FIRST ROW: PROJECT CODE + YEAR AWARDED -->
 <div class="form-section-title">Contract Basic Information</div>
 
 <div class="row g-3 mb-3">
@@ -248,16 +280,17 @@ Time: $time";
 <div class="col-md-6">
     <div class="form-floating">
         <input
-            type="number"
-            name="no"
+            type="text"
+            name="project_code_middle"
             class="form-control"
-            value="<?= htmlspecialchars($row['no']) ?>"
-            readonly
+            value="<?= htmlspecialchars($currentProjectCodeMiddle) ?>"
+            placeholder="IWK"
+            <?= $canEdit ? '' : 'readonly' ?>
         >
-        <label>No</label>
+        <label>Project Code Middle</label>
     </div>
     <div class="auto-no-note">
-        Contract number is fixed after creation.
+        Current Project Code: <?= htmlspecialchars($currentProjectCodeDisplay) ?>.
     </div>
 </div>
 

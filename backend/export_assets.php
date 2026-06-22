@@ -13,109 +13,167 @@ if(!hasPermission($mysqli, "inventory_export")){
     die("Access denied");
 }
 
-$format = $_GET['format'] ?? 'excel';
+$format = strtolower(trim($_GET['format'] ?? 'excel'));
+$movement = strtolower(trim($_GET['movement'] ?? 'all'));
+
+if(!in_array($format, ["excel", "pdf", "print"], true)){
+    $format = "excel";
+}
+
+if(!in_array($movement, ["stock_in", "stock_out", "all"], true)){
+    $movement = "all";
+}
 
 $username = $_SESSION['username'];
 $role = $_SESSION['role'] ?? 'Unknown';
-
-$ip = $_SERVER['REMOTE_ADDR'];
+$ip = $_SERVER['REMOTE_ADDR'] ?? "CLI";
 $time = date("Y-m-d H:i:s");
 
-$asset = $mysqli->query("SELECT * FROM asset_inventory");
-$stock = $mysqli->query("SELECT * FROM stock_out_history");
+function assetExportEscape($value){
+    return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
+}
 
-/* =======================
-   EXCEL
-======================= */
+function assetExportFetchRows($mysqli, $sql){
+    $result = $mysqli->query($sql);
+    $rows = [];
+
+    if($result){
+        while($row = $result->fetch_assoc()){
+            $rows[] = $row;
+        }
+    }
+
+    return $rows;
+}
+
+function assetExportSections($mysqli, $movement){
+    $sections = [];
+
+    if($movement === "stock_in" || $movement === "all"){
+        $sections[] = [
+            "title" => "ASSET STOCK IN",
+            "file_label" => "asset_stock_in",
+            "header_color" => "#4CAF50",
+            "sub_color" => "#d9ead3",
+            "columns" => [
+                "stock_in_date" => "Date",
+                "stock_in_by" => "Stock In By",
+                "part_number" => "Part Number",
+                "serial_number" => "Serial Number",
+                "brand" => "Brand",
+                "quantity" => "Qty",
+                "location" => "Location"
+            ],
+            "pdf_widths" => [32, 34, 42, 45, 32, 16, 45],
+            "rows" => assetExportFetchRows($mysqli, "
+                SELECT stock_in_date, stock_in_by, part_number, serial_number, brand, quantity, location
+                FROM asset_stockin_history
+                ORDER BY stock_in_date ASC, id ASC
+            ")
+        ];
+    }
+
+    if($movement === "stock_out" || $movement === "all"){
+        $sections[] = [
+            "title" => "ASSET STOCK OUT",
+            "file_label" => "asset_stock_out",
+            "header_color" => "#c00000",
+            "sub_color" => "#f4cccc",
+            "columns" => [
+                "stock_out_date" => "Date",
+                "stock_out_by" => "Stock Out By",
+                "part_number" => "Part Number",
+                "serial_number" => "Serial Number",
+                "quantity" => "Qty",
+                "location" => "Location",
+                "remark" => "Remark"
+            ],
+            "pdf_widths" => [34, 34, 44, 45, 20, 38, 50],
+            "rows" => assetExportFetchRows($mysqli, "
+                SELECT stock_out_date, stock_out_by, part_number, serial_number, COALESCE(quantity, 1) AS quantity, location, remark
+                FROM stock_out_history
+                ORDER BY stock_out_date ASC, id ASC
+            ")
+        ];
+    }
+
+    return $sections;
+}
+
+function assetExportFileLabel($sections, $movement){
+    if($movement === "stock_in"){
+        return "asset_stock_in";
+    }
+
+    if($movement === "stock_out"){
+        return "asset_stock_out";
+    }
+
+    return "asset_stock_movement";
+}
+
+$sections = assetExportSections($mysqli, $movement);
+$fileLabel = assetExportFileLabel($sections, $movement);
+$movementLabel = $movement === "stock_in" ? "Stock In" : ($movement === "stock_out" ? "Stock Out" : "Stock Movement");
+
 if($format === "excel"){
-
     header("Content-Type: application/vnd.ms-excel");
-    header("Content-Disposition: attachment; filename=assets_report.xls");
+    header("Content-Disposition: attachment; filename={$fileLabel}.xls");
 
-    echo "
-    <table border='1'>
-        <tr style='background-color:#4CAF50; color:white;'>
-            <th colspan='4'>ASSET INVENTORY</th>
-        </tr>
-        <tr style='background-color:#d9ead3;'>
-            <th>Part Number</th>
-            <th>Serial Number</th>
-            <th>Brand</th>
-            <th>Quantity</th>
-        </tr>
-    ";
+    foreach($sections as $section){
+        echo "<table border='1'>";
+        echo "<tr style='background-color:" . assetExportEscape($section['header_color']) . "; color:white;'>";
+        echo "<th colspan='" . count($section['columns']) . "'>" . assetExportEscape($section['title']) . "</th>";
+        echo "</tr><tr style='background-color:" . assetExportEscape($section['sub_color']) . ";'>";
 
-    while($a = $asset->fetch_assoc()){
-        echo "
-        <tr>
-            <td>{$a['part_number']}</td>
-            <td>{$a['serial_number']}</td>
-            <td>{$a['brand']}</td>
-            <td>{$a['quantity']}</td>
-        </tr>
-        ";
+        foreach($section['columns'] as $label){
+            echo "<th>" . assetExportEscape($label) . "</th>";
+        }
+
+        echo "</tr>";
+
+        foreach($section['rows'] as $row){
+            echo "<tr>";
+
+            foreach(array_keys($section['columns']) as $field){
+                echo "<td>" . assetExportEscape($row[$field] ?? "") . "</td>";
+            }
+
+            echo "</tr>";
+        }
+
+        echo "</table><br><br>";
     }
 
-    echo "</table><br><br>";
-
-    echo "
-    <table border='1'>
-        <tr style='background-color:#c00000; color:white;'>
-            <th colspan='4'>STOCK OUT HISTORY</th>
-        </tr>
-        <tr style='background-color:#f4cccc;'>
-            <th>Part Number</th>
-            <th>Serial</th>
-            <th>Remark</th>
-            <th>Date</th>
-        </tr>
-    ";
-
-    while($s = $stock->fetch_assoc()){
-        echo "
-        <tr>
-            <td>{$s['part_number']}</td>
-            <td>{$s['serial_number']}</td>
-            <td>{$s['remark']}</td>
-            <td>{$s['stock_out_date']}</td>
-        </tr>
-        ";
-    }
-
-    echo "</table>";
-
-    $description = "User [$username] exported asset report (EXCEL).
+    $description = "User [$username] exported asset $movementLabel (EXCEL).
 IP Address: $ip
 Time: $time";
 
-    logActivity($mysqli, $username, $role, "EXPORT EXCEL", $description);
+    logActivity($mysqli, $username, $role, "EXPORT ASSET EXCEL", $description);
     exit();
 }
 
-/* =======================
-   PDF
-======================= */
 if($format === "pdf"){
-
     require('../includes/fpdf/fpdf.php');
 
-    class PDF extends FPDF {
+    class AssetExportPDF extends FPDF {
         function Row($data, $widths){
             $nb = 0;
-            for($i=0;$i<count($data);$i++){
-                $nb = max($nb, $this->NbLines($widths[$i], $data[$i]));
+
+            for($i = 0; $i < count($data); $i++){
+                $nb = max($nb, $this->NbLines($widths[$i], (string)$data[$i]));
             }
 
             $h = 6 * $nb;
             $this->CheckPageBreak($h);
 
-            for($i=0;$i<count($data);$i++){
+            for($i = 0; $i < count($data); $i++){
                 $w = $widths[$i];
                 $x = $this->GetX();
                 $y = $this->GetY();
 
                 $this->Rect($x, $y, $w, $h);
-                $this->MultiCell($w, 6, $data[$i], 0);
+                $this->MultiCell($w, 6, (string)$data[$i], 0);
                 $this->SetXY($x + $w, $y);
             }
 
@@ -124,7 +182,7 @@ if($format === "pdf"){
 
         function CheckPageBreak($h){
             if($this->GetY() + $h > $this->PageBreakTrigger){
-                $this->AddPage();
+                $this->AddPage('L');
             }
         }
 
@@ -165,14 +223,14 @@ if($format === "pdf"){
                     $sep = $i;
                 }
 
-                $l += $cw[$c];
+                $l += $cw[$c] ?? 0;
 
                 if($l > $wmax){
                     if($sep == -1){
                         if($i == $j){
                             $i++;
                         }
-                    } else {
+                    }else{
                         $i = $sep + 1;
                     }
 
@@ -180,7 +238,7 @@ if($format === "pdf"){
                     $j = $i;
                     $l = 0;
                     $nl++;
-                } else {
+                }else{
                     $i++;
                 }
             }
@@ -189,141 +247,85 @@ if($format === "pdf"){
         }
     }
 
-    $pdf = new PDF();
-    $pdf->AddPage();
-    $pdf->SetFont('Arial','B',12);
+    $pdf = new AssetExportPDF('L');
+    $pdf->AddPage('L');
 
-    $pdf->Cell(0,10,'ASSET INVENTORY',0,1,'C');
+    foreach($sections as $index => $section){
+        if($index > 0){
+            $pdf->AddPage('L');
+        }
 
-    $pdf->SetFont('Arial','B',9);
-    $widths = [45, 55, 45, 25];
+        $pdf->SetFont('Arial', 'B', 12);
+        $pdf->Cell(0, 10, $section['title'], 0, 1, 'C');
+        $pdf->SetFont('Arial', 'B', 8);
+        $pdf->Row(array_values($section['columns']), $section['pdf_widths']);
+        $pdf->SetFont('Arial', '', 8);
 
-    $pdf->Row(['Part No', 'Serial', 'Brand', 'Qty'], $widths);
+        foreach($section['rows'] as $row){
+            $line = [];
 
-    $pdf->SetFont('Arial','',8);
+            foreach(array_keys($section['columns']) as $field){
+                $line[] = $row[$field] ?? "";
+            }
 
-    while($a = $asset->fetch_assoc()){
-        $pdf->Row([
-            $a['part_number'],
-            $a['serial_number'],
-            $a['brand'],
-            $a['quantity']
-        ], $widths);
+            $pdf->Row($line, $section['pdf_widths']);
+        }
     }
 
-    $pdf->Ln(10);
-
-    $pdf->SetFont('Arial','B',12);
-    $pdf->Cell(0,10,'STOCK OUT HISTORY',0,1,'C');
-
-    $pdf->SetFont('Arial','B',9);
-    $widths2 = [40, 50, 65, 35];
-
-    $pdf->Row(['Part No', 'Serial', 'Remark', 'Date'], $widths2);
-
-    $pdf->SetFont('Arial','',8);
-
-    while($s = $stock->fetch_assoc()){
-        $pdf->Row([
-            $s['part_number'],
-            $s['serial_number'],
-            $s['remark'],
-            $s['stock_out_date']
-        ], $widths2);
-    }
-
-    $pdf->Output();
-
-    $description = "User [$username] exported asset report (PDF).
+    $description = "User [$username] exported asset $movementLabel (PDF).
 IP Address: $ip
 Time: $time";
 
-    logActivity($mysqli, $username, $role, "EXPORT PDF", $description);
+    logActivity($mysqli, $username, $role, "EXPORT ASSET PDF", $description);
+    $pdf->Output('I', $fileLabel . ".pdf");
     exit();
 }
 
-/* =======================
-   PRINT
-======================= */
 if($format === "print"){
 ?>
+<!DOCTYPE html>
 <html>
 <head>
-    <title>Print Asset Report</title>
+    <title>Print <?= assetExportEscape($movementLabel) ?> Asset Report</title>
     <link rel="icon" type="image/png" href="../image/logo.png">
     <link rel="shortcut icon" type="image/png" href="../image/logo.png">
     <link rel="apple-touch-icon" href="../image/logo.png">
     <style>
-        body { font-family: Arial; }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 30px;
-        }
-        th, td {
-            border: 1px solid black;
-            padding: 8px;
-            text-align: left;
-        }
-        h2 {
-            text-align: center;
-        }
-        @media print {
-            @page { size: A4; margin: 20mm; }
-        }
+        body { font-family: Arial, sans-serif; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+        th, td { border: 1px solid black; padding: 8px; text-align: left; }
+        h2 { text-align: center; }
+        @media print { @page { size: A4 landscape; margin: 12mm; } }
     </style>
 </head>
 <body onload="window.print()">
 
-<h2>ASSET INVENTORY</h2>
-
-<table>
-<tr>
-    <th>Part Number</th>
-    <th>Serial</th>
-    <th>Brand</th>
-    <th>Qty</th>
-</tr>
-
-<?php while($a = $asset->fetch_assoc()){ ?>
-<tr>
-    <td><?= $a['part_number'] ?></td>
-    <td><?= $a['serial_number'] ?></td>
-    <td><?= $a['brand'] ?></td>
-    <td><?= $a['quantity'] ?></td>
-</tr>
-<?php } ?>
-</table>
-
-<h2>STOCK OUT HISTORY</h2>
-
-<table>
-<tr>
-    <th>Part Number</th>
-    <th>Serial</th>
-    <th>Remark</th>
-    <th>Date</th>
-</tr>
-
-<?php while($s = $stock->fetch_assoc()){ ?>
-<tr>
-    <td><?= $s['part_number'] ?></td>
-    <td><?= $s['serial_number'] ?></td>
-    <td><?= $s['remark'] ?></td>
-    <td><?= $s['stock_out_date'] ?></td>
-</tr>
-<?php } ?>
-</table>
+<?php foreach($sections as $section): ?>
+    <h2><?= assetExportEscape($section['title']) ?></h2>
+    <table>
+        <tr>
+            <?php foreach($section['columns'] as $label): ?>
+                <th><?= assetExportEscape($label) ?></th>
+            <?php endforeach; ?>
+        </tr>
+        <?php foreach($section['rows'] as $row): ?>
+            <tr>
+                <?php foreach(array_keys($section['columns']) as $field): ?>
+                    <td><?= assetExportEscape($row[$field] ?? "") ?></td>
+                <?php endforeach; ?>
+            </tr>
+        <?php endforeach; ?>
+    </table>
+<?php endforeach; ?>
 
 </body>
 </html>
 <?php
-
-$description = "User [$username] printed asset report.
+    $description = "User [$username] printed asset $movementLabel.
 IP Address: $ip
 Time: $time";
 
-logActivity($mysqli, $username, $role, "PRINT REPORT", $description);
-exit();
+    logActivity($mysqli, $username, $role, "PRINT ASSET REPORT", $description);
+    exit();
 }
 ?>

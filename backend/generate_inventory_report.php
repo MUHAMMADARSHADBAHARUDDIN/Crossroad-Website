@@ -24,6 +24,12 @@ if(!in_array($type, ["asset", "server"], true)){
     die("Invalid report type");
 }
 
+$movement = strtolower(trim($_GET['movement'] ?? 'all'));
+
+if(!in_array($movement, ["stock_in", "stock_out", "all"], true)){
+    $movement = "all";
+}
+
 function reportPdfText($value){
     $value = (string)($value ?? "");
     $value = str_replace(["\r\n", "\r"], "\n", $value);
@@ -591,40 +597,71 @@ function reportRenderDateRange($pdf, $periodLabel, $periodStart, $periodEnd){
     );
 }
 
-function reportRenderMovementTotals($pdf, $stockInRows, $stockOutRows){
+function reportRenderMovementTotals($pdf, $stockInRows, $stockOutRows, $movement){
     $pdf->SectionTitle("Monthly Movement Totals");
 
     $totals = reportMonthlyTotals($stockInRows, "stock_in_date", $stockOutRows, "stock_out_date");
 
     if(empty($totals)){
-        reportRenderEmpty($pdf, "No stock in or stock out movement was found for this reporting period.");
+        $emptyText = $movement === "stock_in"
+            ? "No stock in movement was found for this reporting period."
+            : ($movement === "stock_out"
+                ? "No stock out movement was found for this reporting period."
+                : "No stock in or stock out movement was found for this reporting period.");
+
+        reportRenderEmpty($pdf, $emptyText);
         return;
     }
 
-    $widths = [100, 60, 60];
+    $widths = $movement === "all" ? [100, 60, 60] : [120, 70];
     $grandStockIn = 0;
     $grandStockOut = 0;
 
-    $pdf->TableHeader(["Month", "Total Stock In", "Total Stock Out"], $widths);
+    if($movement === "stock_in"){
+        $pdf->TableHeader(["Month", "Total Stock In"], $widths);
+    }
+    elseif($movement === "stock_out"){
+        $pdf->TableHeader(["Month", "Total Stock Out"], $widths);
+    }
+    else{
+        $pdf->TableHeader(["Month", "Total Stock In", "Total Stock Out"], $widths);
+    }
 
     foreach($totals as $row){
         $grandStockIn += (int)$row["stock_in"];
         $grandStockOut += (int)$row["stock_out"];
 
-        $pdf->Row([
-            $row["label"],
-            (string)$row["stock_in"],
-            (string)$row["stock_out"]
-        ], $widths, 5.6);
+        if($movement === "stock_in"){
+            $pdf->Row([$row["label"], (string)$row["stock_in"]], $widths, 5.6);
+        }
+        elseif($movement === "stock_out"){
+            $pdf->Row([$row["label"], (string)$row["stock_out"]], $widths, 5.6);
+        }
+        else{
+            $pdf->Row([
+                $row["label"],
+                (string)$row["stock_in"],
+                (string)$row["stock_out"]
+            ], $widths, 5.6);
+        }
     }
 
     $pdf->SetFillColor(233, 236, 239);
     $pdf->SetFont('Arial', 'B', 8);
-    $pdf->Row([
-        "Grand Total",
-        (string)$grandStockIn,
-        (string)$grandStockOut
-    ], $widths, 5.8, true);
+
+    if($movement === "stock_in"){
+        $pdf->Row(["Grand Total", (string)$grandStockIn], $widths, 5.8, true);
+    }
+    elseif($movement === "stock_out"){
+        $pdf->Row(["Grand Total", (string)$grandStockOut], $widths, 5.8, true);
+    }
+    else{
+        $pdf->Row([
+            "Grand Total",
+            (string)$grandStockIn,
+            (string)$grandStockOut
+        ], $widths, 5.8, true);
+    }
 }
 
 if($type === "asset"){
@@ -654,8 +691,20 @@ if($type === "asset"){
         $periodEnd
     );
 
-    $reportName = "Asset Inventory Movement Report";
-    $inventoryLabel = "asset inventory";
+    if($movement === "stock_in"){
+        $stockOutRows = [];
+        $reportName = "Asset Stock In Report";
+        $inventoryLabel = "asset stock in";
+    }
+    elseif($movement === "stock_out"){
+        $stockInRows = [];
+        $reportName = "Asset Stock Out Report";
+        $inventoryLabel = "asset stock out";
+    }
+    else{
+        $reportName = "Asset Inventory Movement Report";
+        $inventoryLabel = "asset inventory";
+    }
 } else {
     $stockInRows = reportFetchRows(
         $mysqli,
@@ -683,8 +732,20 @@ if($type === "asset"){
         $periodEnd
     );
 
-    $reportName = "Server Inventory Movement Report";
-    $inventoryLabel = "server inventory";
+    if($movement === "stock_in"){
+        $stockOutRows = [];
+        $reportName = "Server Stock In Report";
+        $inventoryLabel = "server stock in";
+    }
+    elseif($movement === "stock_out"){
+        $stockInRows = [];
+        $reportName = "Server Stock Out Report";
+        $inventoryLabel = "server stock out";
+    }
+    else{
+        $reportName = "Server Inventory Movement Report";
+        $inventoryLabel = "server inventory";
+    }
 }
 
 $pdf = new InventoryReportPDF('L', 'mm', 'A4');
@@ -712,28 +773,46 @@ $pdf->Ln(4);
 $pdf->SectionTitle("Introduction");
 
 if($type === "asset"){
+    $movementPhrase = $movement === "stock_in"
+        ? "new stock in records"
+        : ($movement === "stock_out" ? "stock out records" : "new stock in records from stock out records");
+
     $pdf->Paragraph(
         "Asset inventory is the record used to monitor company parts, equipment, and related items that are received into stock or removed from stock. "
-        . "This report explains the asset inventory movement for the selected reporting period (" . $periodLabel . ") by separating new stock in records from stock out records. "
+        . "This report explains the asset inventory movement for the selected reporting period (" . $periodLabel . ") by showing " . $movementPhrase . ". "
         . "Each monthly table shows only the items recorded during that month so the latest stock in and stock out movement can be reviewed clearly without listing unrelated inventory records."
     );
 } else {
+    $movementPhrase = $movement === "stock_in"
+        ? "new stock in records"
+        : ($movement === "stock_out" ? "stock out records" : "new stock in records from stock out records");
+
     $pdf->Paragraph(
         "Server inventory is the record used to monitor company server assets, machine types, serial numbers, status, and related movement activities. "
-        . "This report explains the server inventory movement for the selected reporting period (" . $periodLabel . ") by separating new stock in records from stock out records. "
+        . "This report explains the server inventory movement for the selected reporting period (" . $periodLabel . ") by showing " . $movementPhrase . ". "
         . "Each monthly table shows only the servers recorded during that month so the latest stock in and stock out movement can be reviewed clearly without listing unrelated inventory records."
     );
 }
 
 reportRenderDateRange($pdf, $periodLabel, $periodStart, $periodEnd);
-reportRenderMovementTotals($pdf, $stockInRows, $stockOutRows);
+reportRenderMovementTotals($pdf, $stockInRows, $stockOutRows, $movement);
 
 if($type === "asset"){
-    reportRenderAssetStockIn($pdf, $stockInRows);
-    reportRenderAssetStockOut($pdf, $stockOutRows);
+    if($movement !== "stock_out"){
+        reportRenderAssetStockIn($pdf, $stockInRows);
+    }
+
+    if($movement !== "stock_in"){
+        reportRenderAssetStockOut($pdf, $stockOutRows);
+    }
 } else {
-    reportRenderServerStockIn($pdf, $stockInRows);
-    reportRenderServerStockOut($pdf, $stockOutRows);
+    if($movement !== "stock_out"){
+        reportRenderServerStockIn($pdf, $stockInRows);
+    }
+
+    if($movement !== "stock_in"){
+        reportRenderServerStockOut($pdf, $stockOutRows);
+    }
 }
 
 $username = $_SESSION['username'];
@@ -743,6 +822,7 @@ $time = date("Y-m-d H:i:s");
 $actionLabel = $type === "asset" ? "GENERATE ASSET REPORT" : "GENERATE SERVER REPORT";
 $description = "User [$username] generated " . $inventoryLabel . " movement report.
 Report Period: $periodLabel
+Movement: $movement
 Date Range: " . reportFormatDateOnly($periodStart) . " to " . reportFormatDateOnly(date("Y-m-d H:i:s", strtotime($periodEnd . " -1 second"))) . "
 IP Address: $ip
 Time: $time";
@@ -751,7 +831,9 @@ if(PHP_SAPI !== "cli"){
     logActivity($mysqli, $username, $role, $actionLabel, $description);
 }
 
-$filename = $type === "asset" ? "asset_inventory_movement_report.pdf" : "server_inventory_movement_report.pdf";
+$filenamePrefix = $type === "asset" ? "asset" : "server";
+$filenameMovement = $movement === "stock_in" ? "stock_in" : ($movement === "stock_out" ? "stock_out" : "inventory_movement");
+$filename = $filenamePrefix . "_" . $filenameMovement . "_report.pdf";
 
 while(ob_get_level() > 0){
     ob_end_clean();

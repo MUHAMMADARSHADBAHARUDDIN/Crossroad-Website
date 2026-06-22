@@ -12,6 +12,21 @@ Header always set Referrer-Policy "same-origin"
 Header always set Permissions-Policy "geolocation=(), microphone=(), camera=()"
 </IfModule>
 
+<IfModule php_module>
+php_value upload_max_filesize 100M
+php_value post_max_size 105M
+</IfModule>
+
+<IfModule php7_module>
+php_value upload_max_filesize 100M
+php_value post_max_size 105M
+</IfModule>
+
+<IfModule php8_module>
+php_value upload_max_filesize 100M
+php_value post_max_size 105M
+</IfModule>
+
 <FilesMatch "(^\.env|composer\.(json|lock)|package(-lock)?\.json|.*\.(sql|bak|ini|log|sh)|README\.md)$">
     Require all denied
 </FilesMatch>

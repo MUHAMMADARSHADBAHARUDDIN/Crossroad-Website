@@ -85,10 +85,10 @@ function dashboardTaskUrgency($startDate, $endDate){
     }
 
     return [
-        "label" => "This Month",
+        "label" => "Scheduled",
         "class" => "info",
         "icon" => "fa-calendar-check",
-        "caption" => "Scheduled this month"
+        "caption" => "Future schedule"
     ];
 }
 
@@ -186,8 +186,6 @@ if($pmFeatureReady){
         INNER JOIN project_inventory pi ON pi.no = ct.contract_id
         WHERE ct.is_completed = 0
           AND $taskStartSql IS NOT NULL
-          AND $taskStartSql <= LAST_DAY(CURDATE())
-          AND COALESCE($taskEndSql, $taskStartSql) >= DATE_FORMAT(CURDATE(), '%Y-%m-01')
         ORDER BY $taskStartSql ASC, ct.id ASC
     ");
 
@@ -201,7 +199,6 @@ if($pmFeatureReady){
     }
 }
 
-$currentMonthName = date("F Y");
 $pmTaskCount = count($pmTasks);
 ?>
 <!DOCTYPE html>
@@ -773,7 +770,7 @@ $pmTaskCount = count($pmTasks);
 
 <div class="main" id="main">
     <div class="banner mb-4">
-        <h2><strong>Crossroad Solutions Inventory Management</strong></h2>
+        <h2><strong>Crossroad Solutions Operation Management</strong></h2>
         <p>Manage contracts, assets, and tenders in one centralized system.</p>
     </div>
 
@@ -793,14 +790,14 @@ $pmTaskCount = count($pmTasks);
                         <h3 class="pm-alert-title">Task Bulletin</h3>
 
                         <p class="pm-alert-subtitle">
-                            Pending monthly PM tasks stay here until the checklist is completed.
+                            Pending dated PM tasks stay here until the checklist is completed.
                         </p>
                     </div>
                 </div>
 
                 <div class="pm-alert-summary">
                     <span class="pm-month-pill">
-                        <i class="fa fa-calendar-days"></i> <?= dashboardEscape($currentMonthName) ?>
+                        <i class="fa fa-calendar-days"></i> All Dated Tasks
                     </span>
 
                     <span class="pm-count-pill">
@@ -960,8 +957,8 @@ $pmTaskCount = count($pmTasks);
                     </div>
 
                     <div>
-                        <strong>No pending Preventive Management task for <?= dashboardEscape($currentMonthName) ?>.</strong>
-                        <span>Dated checklist tasks will appear here automatically when they are scheduled for the current month.</span>
+                        <strong>No pending dated Preventive Management task.</strong>
+                        <span>Dated checklist tasks will appear here automatically until they are completed.</span>
                     </div>
                 </div>
             <?php endif; ?>
@@ -1005,7 +1002,7 @@ $pmTaskCount = count($pmTasks);
     <div class="section-divider"></div>
 
     <?php if($canViewInventory): ?>
-        <h4>Asset Inventory Overview</h4>
+        <h4>Inventory Overview</h4>
 
         <div class="row text-center mb-4">
             <div class="col-lg-3 col-md-6 col-12 mb-3">
@@ -1046,24 +1043,51 @@ $pmTaskCount = count($pmTasks);
                 <p id="exportText" class="mb-3"></p>
 
                 <?php if($isExportAllowed): ?>
-                    <button class="btn btn-success w-100 mb-2" onclick="exportData('excel')">
+                    <button class="btn btn-success w-100 mb-2" onclick="chooseOutputFormat('excel')">
                         <i class="fa fa-file-excel"></i> Excel
                     </button>
 
-                    <button class="btn btn-danger w-100 mb-2" onclick="exportData('pdf')">
+                    <button class="btn btn-danger w-100 mb-2" onclick="chooseOutputFormat('pdf')">
                         <i class="fa fa-file-pdf"></i> PDF
                     </button>
 
-                    <button class="btn btn-primary w-100 mb-2" onclick="exportData('print')">
+                    <button class="btn btn-primary w-100 mb-2" onclick="chooseOutputFormat('print')">
                         <i class="fa fa-print"></i> Print
                     </button>
                 <?php endif; ?>
 
                 <?php if($isReportAllowed): ?>
-                    <button class="btn btn-dark w-100" onclick="generateReport()">
+                    <button class="btn btn-dark w-100" onclick="chooseOutputFormat('report')">
                         <i class="fa fa-file-lines"></i> Report
                     </button>
                 <?php endif; ?>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="stockMovementModal">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title">Choose Stock Movement</h5>
+                <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body text-center">
+                <p id="stockMovementText" class="mb-3"></p>
+
+                <button class="btn btn-outline-success w-100 mb-2" onclick="chooseStockMovement('stock_in')">
+                    <i class="fa fa-arrow-down"></i> Stock In
+                </button>
+
+                <button class="btn btn-outline-danger w-100 mb-2" onclick="chooseStockMovement('stock_out')">
+                    <i class="fa fa-arrow-up"></i> Stock Out
+                </button>
+
+                <button class="btn btn-outline-dark w-100" onclick="chooseStockMovement('all')">
+                    <i class="fa fa-arrows-up-down"></i> Both Stock In & Stock Out
+                </button>
             </div>
         </div>
     </div>
@@ -1485,6 +1509,8 @@ function generateContractCustomReport(){
 }
 
 let exportType = "";
+let exportFormat = "";
+let exportMovement = "";
 let isExportAllowed = <?= json_encode($isExportAllowed) ?>;
 let isReportAllowed = <?= json_encode($isReportAllowed) ?>;
 
@@ -1494,20 +1520,76 @@ function openExportModal(type){
     }
 
     exportType = type;
+    exportFormat = "";
+    exportMovement = "";
 
     document.getElementById("exportText").innerText = type === "asset"
-        ? "Export TOTAL ASSETS (Inventory + Stock Out)"
-        : "Export SERVERS (Inventory + Stock Out)";
+        ? "Choose output for asset stock movement"
+        : "Choose output for server stock movement";
 
     new bootstrap.Modal(document.getElementById('exportModal')).show();
 }
 
-function exportData(format){
-    let url = exportType === "asset"
-        ? "../backend/export_assets.php?format=" + format
-        : "../backend/export_servers.php?format=" + format;
+function chooseOutputFormat(format){
+    if(format === "report"){
+        if(!isReportAllowed){
+            return;
+        }
+    }else if(!isExportAllowed){
+        return;
+    }
 
-    if(format === "pdf" || format === "print"){
+    exportFormat = format;
+    exportMovement = "";
+
+    document.getElementById("stockMovementText").innerText = (exportType === "asset" ? "Asset" : "Server")
+        + " " + format.toUpperCase()
+        + ": choose Stock In, Stock Out, or Both.";
+
+    let exportModalElement = document.getElementById("exportModal");
+    let movementModalElement = document.getElementById("stockMovementModal");
+    let exportModal = bootstrap.Modal.getInstance(exportModalElement);
+    let showMovementModal = function(){
+        bootstrap.Modal.getOrCreateInstance(movementModalElement).show();
+    };
+
+    if(exportModal){
+        exportModalElement.addEventListener("hidden.bs.modal", showMovementModal, { once: true });
+        exportModal.hide();
+    }else{
+        showMovementModal();
+    }
+}
+
+function chooseStockMovement(movement){
+    exportMovement = movement;
+
+    if(exportFormat === "report"){
+        generateReport();
+        return;
+    }
+
+    exportData();
+}
+
+function exportData(){
+    if(exportType === "" || exportFormat === "" || exportMovement === ""){
+        return;
+    }
+
+    let url = exportType === "asset"
+        ? "../backend/export_assets.php?format=" + encodeURIComponent(exportFormat)
+        : "../backend/export_servers.php?format=" + encodeURIComponent(exportFormat);
+
+    url += "&movement=" + encodeURIComponent(exportMovement);
+
+    let movementModal = bootstrap.Modal.getInstance(document.getElementById("stockMovementModal"));
+
+    if(movementModal){
+        movementModal.hide();
+    }
+
+    if(exportFormat === "pdf" || exportFormat === "print"){
         window.open(url, "_blank");
     }else{
         window.location.href = url;
@@ -1515,26 +1597,34 @@ function exportData(format){
 }
 
 function generateReport(){
-    if(!isReportAllowed || exportType === ""){
+    if(!isReportAllowed || exportType === "" || exportMovement === ""){
         return;
     }
 
-    document.getElementById("reportRangeText").innerText = exportType === "asset"
-        ? "Generate ASSET INVENTORY report"
-        : "Generate SERVER INVENTORY report";
+    let typeLabel = exportType === "asset" ? "ASSET" : "SERVER";
+    let movementLabel = "STOCK IN & STOCK OUT";
+
+    if(exportMovement === "stock_in"){
+        movementLabel = "STOCK IN";
+    }
+    else if(exportMovement === "stock_out"){
+        movementLabel = "STOCK OUT";
+    }
+
+    document.getElementById("reportRangeText").innerText = "Generate " + typeLabel + " " + movementLabel + " report";
 
     resetCustomReportRange();
 
-    let exportModalElement = document.getElementById("exportModal");
+    let movementModalElement = document.getElementById("stockMovementModal");
     let reportRangeModalElement = document.getElementById("reportRangeModal");
-    let exportModal = bootstrap.Modal.getInstance(exportModalElement);
+    let movementModal = bootstrap.Modal.getInstance(movementModalElement);
     let showReportRangeModal = function(){
         bootstrap.Modal.getOrCreateInstance(reportRangeModalElement).show();
     };
 
-    if(exportModal){
-        exportModalElement.addEventListener("hidden.bs.modal", showReportRangeModal, { once: true });
-        exportModal.hide();
+    if(movementModal){
+        movementModalElement.addEventListener("hidden.bs.modal", showReportRangeModal, { once: true });
+        movementModal.hide();
     }else{
         showReportRangeModal();
     }
@@ -1544,7 +1634,9 @@ function buildReportUrl(period, startDate = "", endDate = ""){
     let url = "../backend/generate_inventory_report.php?type="
         + encodeURIComponent(exportType)
         + "&period="
-        + encodeURIComponent(period);
+        + encodeURIComponent(period)
+        + "&movement="
+        + encodeURIComponent(exportMovement);
 
     if(period === "custom"){
         url += "&start_date=" + encodeURIComponent(startDate)

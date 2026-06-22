@@ -117,11 +117,11 @@ $nickname = getNickname($username);
 
     <div class="header-left">
 
-        <div class="menu-btn" id="menuBtn" onclick="toggleSidebar()">
+        <button type="button" class="menu-btn" id="menuBtn" aria-label="Toggle navigation menu" aria-controls="sidebar" aria-expanded="false">
             <span></span>
             <span></span>
             <span></span>
-        </div>
+        </button>
 
         <img src="../image/logo.png" class="header-logo">
 
@@ -142,3 +142,171 @@ $nickname = getNickname($username);
     </div>
 
 </div>
+
+<script>
+(function(){
+    if(window.CrossroadSidebarShell){
+        return;
+    }
+
+    function getShellElements(){
+        return {
+            sidebar: document.getElementById("sidebar"),
+            main: document.getElementById("main") || document.querySelector(".main"),
+            btn: document.getElementById("menuBtn")
+        };
+    }
+
+    function isMobile(){
+        return window.matchMedia && window.matchMedia("(max-width: 768px)").matches;
+    }
+
+    let wasMobile = null;
+
+    function setButtonState(btn, isOpen){
+        if(!btn){
+            return;
+        }
+
+        btn.classList.toggle("active", isOpen);
+        btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    }
+
+    function closeMobileMenu(){
+        const shell = getShellElements();
+
+        if(!shell.sidebar){
+            return;
+        }
+
+        shell.sidebar.classList.remove("mobile-open");
+        document.body.classList.remove("sidebar-open", "sidebar-mobile-open");
+        setButtonState(shell.btn, false);
+    }
+
+    function syncShell(forceClose){
+        const shell = getShellElements();
+
+        if(!shell.sidebar){
+            return;
+        }
+
+        const mobile = isMobile();
+
+        if(mobile){
+            shell.sidebar.classList.remove("collapsed");
+
+            if(shell.main){
+                shell.main.classList.add("expanded");
+            }
+
+            if(forceClose || wasMobile !== true){
+                closeMobileMenu();
+            }
+
+            wasMobile = true;
+            return;
+        }
+
+        shell.sidebar.classList.remove("mobile-open");
+        document.body.classList.remove("sidebar-open", "sidebar-mobile-open");
+
+        if(shell.main){
+            shell.main.classList.toggle("expanded", shell.sidebar.classList.contains("collapsed"));
+        }
+
+        setButtonState(shell.btn, shell.sidebar.classList.contains("collapsed"));
+        wasMobile = false;
+    }
+
+    function toggleShell(event){
+        if(event){
+            event.preventDefault();
+        }
+
+        const shell = getShellElements();
+
+        if(!shell.sidebar || !shell.btn){
+            return false;
+        }
+
+        if(isMobile()){
+            const isOpen = !shell.sidebar.classList.contains("mobile-open");
+
+            shell.sidebar.classList.remove("collapsed");
+            shell.sidebar.classList.toggle("mobile-open", isOpen);
+            document.body.classList.toggle("sidebar-open", isOpen);
+            document.body.classList.toggle("sidebar-mobile-open", isOpen);
+
+            if(shell.main){
+                shell.main.classList.add("expanded");
+            }
+
+            setButtonState(shell.btn, isOpen);
+            return false;
+        }
+
+        shell.sidebar.classList.toggle("collapsed");
+
+        if(shell.main){
+            shell.main.classList.toggle("expanded", shell.sidebar.classList.contains("collapsed"));
+        }
+
+        setButtonState(shell.btn, shell.sidebar.classList.contains("collapsed"));
+        return false;
+    }
+
+    function handleMenuButtonClick(event){
+        const btn = document.getElementById("menuBtn");
+
+        if(!btn || (event.target !== btn && !btn.contains(event.target))){
+            return;
+        }
+
+        event.stopImmediatePropagation();
+        toggleShell(event);
+    }
+
+    function handleDocumentClick(event){
+        const shell = getShellElements();
+
+        if(!isMobile() || !shell.sidebar || !shell.sidebar.classList.contains("mobile-open")){
+            return;
+        }
+
+        if(shell.sidebar.contains(event.target) || (shell.btn && shell.btn.contains(event.target))){
+            return;
+        }
+
+        closeMobileMenu();
+    }
+
+    function handleKeydown(event){
+        if(event.key === "Escape"){
+            closeMobileMenu();
+        }
+    }
+
+    window.CrossroadSidebarShell = {
+        toggle: toggleShell,
+        close: closeMobileMenu,
+        sync: syncShell
+    };
+
+    window.toggleSidebar = toggleShell;
+    document.addEventListener("click", handleMenuButtonClick, true);
+    document.addEventListener("click", handleDocumentClick);
+    document.addEventListener("keydown", handleKeydown);
+    window.addEventListener("resize", syncShell);
+
+    if(document.readyState === "loading"){
+        document.addEventListener("DOMContentLoaded", function(){
+            window.toggleSidebar = toggleShell;
+            syncShell(true);
+        });
+    }else{
+        window.toggleSidebar = toggleShell;
+        syncShell(true);
+    }
+})();
+</script>

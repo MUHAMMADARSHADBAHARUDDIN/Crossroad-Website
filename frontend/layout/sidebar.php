@@ -133,3 +133,5 @@ $menu = [
 <?php endforeach; ?>
 
 </div>
+
+<button type="button" class="sidebar-scrim" id="sidebarScrim" aria-label="Close navigation menu"></button>

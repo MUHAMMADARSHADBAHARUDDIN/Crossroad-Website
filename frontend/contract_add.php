@@ -11,6 +11,9 @@ require_once "../includes/db_connect.php";
 require_once "../includes/activity_log.php";
 require_once "../includes/permissions.php";
 require_once "../includes/date_helpers.php";
+require_once "../includes/contract_schema.php";
+
+ensureContractProjectSchema($mysqli);
 
 if(!hasContractAddAccess($mysqli)){
     header("Location: contracts.php");
@@ -84,11 +87,24 @@ if(isset($_POST['submit'])){
     $account_manager = trim($_POST['account_manager']);
     $end_user = trim($_POST['end_user']);
     $contract_no = trim($_POST['contract_no']);
+    $project_code_middle = contractProjectCodeMiddleNormalize($_POST['project_code_middle'] ?? "");
     $service = trim($_POST['service']);
     $po_date = appNormalizeDateInput($_POST['po_date'] ?? "");
     $contract_start = appNormalizeDateInput($_POST['contract_start'] ?? "");
     $contract_end = appNormalizeDateInput($_POST['contract_end'] ?? "");
     $amount = floatval($_POST['amount']);
+
+    if($project_code_middle === ""){
+        echo "<script>alert('Please enter the project code middle part, for example IWK or PERKESO.'); window.history.back();</script>";
+        exit();
+    }
+
+    $project_code = contractProjectCodeGenerateFromMiddle($mysqli, $project_code_middle);
+
+    if(contractProjectCodeExists($mysqli, $project_code)){
+        echo "<script>alert('Project Code already exists. Please use a unique project code.'); window.history.back();</script>";
+        exit();
+    }
 
     $today = date('Y-m-d');
 
@@ -127,9 +143,9 @@ if(isset($_POST['submit'])){
 
     $stmt = $mysqli->prepare("
         INSERT INTO project_inventory
-        (no, year_awarded, project_name, project_owner, project_manager, account_manager, end_user,
+        (no, project_code, year_awarded, project_name, project_owner, project_manager, account_manager, end_user,
         contract_no, service, po_date, contract_start, contract_end, status, amount, created_by)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ");
 
     if(!$stmt){
@@ -137,8 +153,9 @@ if(isset($_POST['submit'])){
     }
 
     $stmt->bind_param(
-        "iisssssssssssds",
+        "isisssssssssssds",
         $no,
+        $project_code,
         $year_awarded,
         $project_name,
         $project_owner,
@@ -167,6 +184,8 @@ if(isset($_POST['submit'])){
 
     $description = "User [$adminUser] created new contract.
 Contract No: $no
+Project Code Middle: $project_code_middle
+Generated Project Code: $project_code
 Project Name: $project_name
 Year Awarded: $year_awarded
 Project Owner: $project_owner
@@ -256,7 +275,7 @@ Time: $time";
 
 <form method="POST" class="form-card">
 
-<!-- FIRST ROW: NO + YEAR AWARDED -->
+<!-- FIRST ROW: PROJECT CODE + YEAR AWARDED -->
 <div class="form-section-title">Contract Basic Information</div>
 
 <div class="row g-3 mb-3">
@@ -264,17 +283,16 @@ Time: $time";
 <div class="col-md-6">
     <div class="form-floating">
         <input
-            type="number"
-            name="no"
+            type="text"
+            name="project_code_middle"
             class="form-control"
-            value="<?= htmlspecialchars($nextContractNo) ?>"
-            readonly
+            placeholder="IWK"
             required
         >
-        <label>No</label>
+        <label>Project Code Middle</label>
     </div>
     <div class="auto-no-note">
-        Auto detected from current total contracts.
+        Enter only the middle part. The system will save it as PRO/IWK/001, PRO/IWK/002, and so on.
     </div>
 </div>
 

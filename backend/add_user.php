@@ -63,6 +63,11 @@ function allowedPermissionsList()
         "contracts_task_add",
         "contracts_task_edit",
         "contracts_task_delete",
+        "contracts_task_document_add",
+        "contracts_task_document_upload",
+        "contracts_task_document_view",
+        "contracts_task_document_download",
+        "contracts_task_document_delete",
 
         "inventory_full",
         "inventory_view",
