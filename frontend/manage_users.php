@@ -47,6 +47,7 @@ $permissionGroups = [
             "contracts_delete" => "Delete",
             "contracts_upload" => "Upload",
             "contracts_download" => "Download",
+            "contracts_claim_view" => "View Claim",
             "contracts_task" => "Task Add",
             "contracts_task_edit" => "Task Edit",
             "contracts_task_delete" => "Task Delete",
@@ -265,7 +266,8 @@ html, body{
 }
 
 .table-responsive{
-    overflow-x:hidden !important;
+    overflow-x:auto !important;
+    -webkit-overflow-scrolling:touch;
 }
 
 .badge-user{
@@ -382,41 +384,70 @@ html, body{
 
 @media(max-width: 768px){
     .user-table thead{
-        display:none;
+        display:table-header-group;
     }
 
     .user-table,
     .user-table tbody,
     .user-table tr,
     .user-table td{
-        display:block;
-        width:100%;
+        width:auto;
+    }
+
+    .user-table{
+        display:table;
+        min-width:860px;
+        table-layout:auto;
+    }
+
+    .user-table th,
+    .user-table td{
+        display:table-cell;
+    }
+
+    .user-table tbody{
+        display:table-row-group;
     }
 
     .user-table tr{
-        border:1px solid #dee2e6;
-        border-radius:10px;
-        margin-bottom:12px;
-        padding:10px;
-        background:#fff;
+        display:table-row;
+    }
+
+    .user-table tr{
+        border:0;
+        border-radius:0;
+        margin-bottom:0;
+        padding:0;
+        background:inherit;
     }
 
     .user-table td{
-        border:none;
-        border-bottom:1px solid #f1f1f1;
-        padding:8px 4px;
+        display:table-cell;
+        border-bottom-width:1px;
+        padding:8px 10px;
+        white-space:normal !important;
+        max-width:320px;
+        word-break:break-word;
+        overflow-wrap:anywhere;
     }
 
     .user-table td:last-child{
-        border-bottom:none;
+        white-space:nowrap !important;
+        max-width:none;
+    }
+
+    .user-table td:last-child{
+        border-bottom-width:1px;
     }
 
     .user-table td::before{
-        content:attr(data-label);
-        display:block;
-        font-weight:700;
-        color:#555;
-        margin-bottom:4px;
+        content:none !important;
+        display:none !important;
+    }
+
+    .table-responsive{
+        overflow-x:auto !important;
+        -webkit-overflow-scrolling:touch;
     }
 }
 </style>
@@ -540,6 +571,10 @@ if(in_array("contracts_full", $permissions, true)){
 
     if(in_array("contracts_download", $permissions, true)){
         $contractLabels[] = "Download";
+    }
+
+    if(in_array("contracts_claim_view", $permissions, true)){
+        $contractLabels[] = "View Claim";
     }
 
     if(in_array("contracts_task", $permissions, true)){

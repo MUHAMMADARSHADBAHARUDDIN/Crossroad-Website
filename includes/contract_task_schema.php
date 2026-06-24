@@ -38,6 +38,13 @@ if(!function_exists('ensureContractTaskCompletionSchema')){
             ");
         }
 
+        if(!contractTaskSchemaColumnExists($mysqli, "contract_tasks", "claim_amount")){
+            $mysqli->query("
+                ALTER TABLE `contract_tasks`
+                ADD COLUMN `claim_amount` decimal(15,2) DEFAULT NULL
+            ");
+        }
+
         $done = true;
     }
 }

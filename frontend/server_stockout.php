@@ -83,11 +83,12 @@ if(serverAdditionalInfoTableExists($mysqli)){
 <style>
 html, body{ overflow-x:hidden !important; }
 .main{ overflow-x:hidden !important; max-width:100%; }
-.table-responsive{ overflow-x:hidden !important; width:100%; }
+.table-responsive{ overflow-x:auto !important; overflow-y:hidden; width:100%; -webkit-overflow-scrolling:touch; overscroll-behavior-x:contain; }
 
 #serverStockOutTable{
     width:100% !important;
-    table-layout:fixed;
+    min-width:900px;
+    table-layout:auto;
 }
 
 #serverStockOutTable th,
@@ -105,7 +106,7 @@ html, body{ overflow-x:hidden !important; }
 
 #serverStockOutTable_wrapper{
     width:100%;
-    overflow-x:hidden !important;
+    overflow-x:visible !important;
 }
 
 #serverStockOutTable_wrapper .row{
@@ -281,7 +282,50 @@ html, body{ overflow-x:hidden !important; }
     background:#dc3545;
 }
 
-@media(max-width:768px){
+@media(max-width:992px){
+    .table-responsive{
+        overflow-x:auto !important;
+        -webkit-overflow-scrolling:touch;
+    }
+
+    #serverStockOutTable{
+        min-width:940px !important;
+        max-width:none !important;
+    }
+
+    #serverStockOutTable th{
+        white-space:nowrap !important;
+        min-width:140px;
+        max-width:none !important;
+        word-break:normal !important;
+        overflow-wrap:normal !important;
+    }
+
+    #serverStockOutTable td{
+        white-space:normal !important;
+        min-width:140px;
+        max-width:360px !important;
+        word-break:break-word !important;
+        overflow-wrap:anywhere !important;
+    }
+
+    #serverStockOutTable th:nth-child(3),
+    #serverStockOutTable td:nth-child(3){
+        min-width:320px;
+    }
+
+    #serverStockOutTable th:nth-child(4),
+    #serverStockOutTable td:nth-child(4){
+        min-width:170px;
+    }
+
+    #serverStockOutTable td:nth-child(4){
+        white-space:nowrap !important;
+        max-width:none !important;
+        word-break:normal !important;
+        overflow-wrap:normal !important;
+    }
+
     #serverStockOutTable_wrapper .server-stockout-bottom-row{
         gap:10px;
     }

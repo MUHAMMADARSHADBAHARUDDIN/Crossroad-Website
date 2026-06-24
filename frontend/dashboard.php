@@ -3,6 +3,7 @@ session_start();
 require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
 require_once "../includes/date_helpers.php";
+require_once "../includes/project_dashboard_data.php";
 
 if(!isset($_SESSION['username'])){
     header("Location: ../frontend/index.html");
@@ -133,6 +134,10 @@ $totalDevices = 0;
 $servers = 0;
 $storage = 0;
 $contractReportProjects = [];
+$contractReportSuggestions = [
+    "project_codes" => [],
+    "owners" => []
+];
 
 if($canViewContracts){
     $contractStartSql = appSqlDateValue("contract_start");
@@ -154,6 +159,8 @@ if($canViewContracts){
             $contractReportProjects[] = $projectRow;
         }
     }
+
+    $contractReportSuggestions = projectDashboardFetchSuggestions($mysqli);
 }
 
 if($canViewInventory){
@@ -1192,28 +1199,34 @@ $pmTaskCount = count($pmTasks);
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header bg-dark text-white">
-                <h5 class="modal-title">Choose Project</h5>
+                <h5 class="modal-title">Choose Project Code or Owner</h5>
                 <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
 
             <div class="modal-body">
-                <label for="contractReportProject" class="form-label">Project</label>
-                <select id="contractReportProject" class="form-select">
-                    <option value="">Select project</option>
-                    <?php foreach($contractReportProjects as $project): ?>
-                        <?php
-                            $projectLabel = trim((string)($project['project_name'] ?? ''));
-                            $contractNo = trim((string)($project['contract_no'] ?? ''));
-
-                            if($contractNo !== ""){
-                                $projectLabel .= " (" . $contractNo . ")";
-                            }
-                        ?>
-                        <option value="<?= (int)$project['no'] ?>">
-                            <?= dashboardEscape($projectLabel) ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
+                <div class="row g-2">
+                    <div class="col-md-4">
+                        <label for="contractReportProjectFilterType" class="form-label">View By</label>
+                        <select id="contractReportProjectFilterType" class="form-select">
+                            <option value="project_code">Project Code</option>
+                            <option value="owner">Owner</option>
+                        </select>
+                    </div>
+                    <div class="col-md-8">
+                        <label for="contractReportProjectFilterValue" class="form-label">Value</label>
+                        <input type="text" id="contractReportProjectFilterValue" class="form-control" list="contractReportProjectCodeOptions" autocomplete="off">
+                        <datalist id="contractReportProjectCodeOptions">
+                            <?php foreach($contractReportSuggestions['project_codes'] as $code): ?>
+                                <option value="<?= dashboardEscape($code) ?>"></option>
+                            <?php endforeach; ?>
+                        </datalist>
+                        <datalist id="contractReportOwnerOptions">
+                            <?php foreach($contractReportSuggestions['owners'] as $owner): ?>
+                                <option value="<?= dashboardEscape($owner) ?>"></option>
+                            <?php endforeach; ?>
+                        </datalist>
+                    </div>
+                </div>
 
                 <button class="btn btn-dark w-100 mt-3" onclick="continueContractProjectReport()">
                     Continue
@@ -1327,12 +1340,14 @@ function handlePmTaskKey(event, url){
 let isContractReportAllowed = <?= json_encode($canViewContracts) ?>;
 let contractReportType = "";
 let contractReportProjectId = "";
+let contractReportProjectFilterType = "project_code";
+let contractReportProjectFilterValue = "";
 
 const contractReportLabels = {
     all: "All Total Contract",
     active: "Active Contract",
     pm: "PM Only Based on Contract",
-    project: "Specific Project",
+    project: "Specific Project / Owner",
     custom_range: "Custom Range Date"
 };
 
@@ -1374,6 +1389,8 @@ function openContractReportModal(){
 
     contractReportType = "";
     contractReportProjectId = "";
+    contractReportProjectFilterType = "project_code";
+    contractReportProjectFilterValue = "";
     showDashboardModal("contractReportTypeModal");
 }
 
@@ -1386,6 +1403,8 @@ function openContractReportPeriod(type){
 
     if(type !== "project"){
         contractReportProjectId = "";
+        contractReportProjectFilterType = "project_code";
+        contractReportProjectFilterValue = "";
     }
 
     let label = contractReportLabels[type] || "Contract";
@@ -1407,19 +1426,38 @@ function openContractProjectPicker(){
 
     contractReportType = "project";
     contractReportProjectId = "";
+    contractReportProjectFilterType = "project_code";
+    contractReportProjectFilterValue = "";
+
+    let typeSelect = document.getElementById("contractReportProjectFilterType");
+    let valueInput = document.getElementById("contractReportProjectFilterValue");
+
+    if(typeSelect){
+        typeSelect.value = "project_code";
+    }
+
+    if(valueInput){
+        valueInput.value = "";
+    }
+
+    syncContractReportProjectDatalist();
     hideDashboardModal("contractReportTypeModal");
     showDashboardModal("contractReportProjectModal");
 }
 
 function continueContractProjectReport(){
-    let select = document.getElementById("contractReportProject");
+    let typeSelect = document.getElementById("contractReportProjectFilterType");
+    let valueInput = document.getElementById("contractReportProjectFilterValue");
+    let filterValue = valueInput ? valueInput.value.trim() : "";
 
-    if(!select || select.value === ""){
-        alert("Please choose a project.");
+    if(filterValue === ""){
+        alert("Please enter a project code or owner.");
         return;
     }
 
-    contractReportProjectId = select.value;
+    contractReportProjectId = "";
+    contractReportProjectFilterType = typeSelect && typeSelect.value === "owner" ? "owner" : "project_code";
+    contractReportProjectFilterValue = filterValue;
     openContractReportPeriod("project");
 }
 
@@ -1432,6 +1470,8 @@ function openContractReportCustomRange(type){
 
     if(contractReportType !== "project"){
         contractReportProjectId = "";
+        contractReportProjectFilterType = "project_code";
+        contractReportProjectFilterValue = "";
     }
 
     let label = contractReportLabels[contractReportType] || "Contract";
@@ -1473,12 +1513,42 @@ function buildContractReportUrl(period, startDate = "", endDate = ""){
         params.set("project_id", contractReportProjectId);
     }
 
+    if(contractReportType === "project" && contractReportProjectFilterValue !== ""){
+        params.set("project_filter_type", contractReportProjectFilterType);
+        params.set("project_filter_value", contractReportProjectFilterValue);
+    }
+
     if(period === "custom"){
         params.set("start_date", startDate);
         params.set("end_date", endDate);
     }
 
     return "../backend/generate_contract_report.php?" + params.toString();
+}
+
+function syncContractReportProjectDatalist(){
+    let typeSelect = document.getElementById("contractReportProjectFilterType");
+    let valueInput = document.getElementById("contractReportProjectFilterValue");
+
+    if(!typeSelect || !valueInput){
+        return;
+    }
+
+    valueInput.setAttribute("list", typeSelect.value === "owner" ? "contractReportOwnerOptions" : "contractReportProjectCodeOptions");
+}
+
+let contractReportProjectTypeSelect = document.getElementById("contractReportProjectFilterType");
+if(contractReportProjectTypeSelect){
+    contractReportProjectTypeSelect.addEventListener("change", function(){
+        let valueInput = document.getElementById("contractReportProjectFilterValue");
+
+        if(valueInput){
+            valueInput.value = "";
+        }
+
+        syncContractReportProjectDatalist();
+    });
+    syncContractReportProjectDatalist();
 }
 
 function generateContractReportByPeriod(period){

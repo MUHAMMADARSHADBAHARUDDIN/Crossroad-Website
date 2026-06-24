@@ -103,13 +103,17 @@ html, body{
 }
 
 .table-responsive{
-    overflow-x:hidden !important;
+    overflow-x:auto !important;
+    overflow-y:hidden;
+    -webkit-overflow-scrolling:touch;
+    overscroll-behavior-x:contain;
     width:100%;
 }
 
 #assetInventoryTable{
     width:100% !important;
-    table-layout:fixed;
+    min-width:780px;
+    table-layout:auto;
 }
 
 #assetInventoryTable th,
@@ -130,7 +134,7 @@ html, body{
 
 #assetInventoryTable_wrapper{
     width:100%;
-    overflow-x:hidden !important;
+    overflow-x:visible !important;
 }
 
 #assetInventoryTable_wrapper .row{
@@ -170,7 +174,38 @@ html, body{
     margin-bottom:15px;
 }
 
-@media(max-width:768px){
+@media(max-width:992px){
+    .table-responsive{
+        overflow-x:auto !important;
+        -webkit-overflow-scrolling:touch;
+    }
+
+    #assetInventoryTable{
+        min-width:820px !important;
+        max-width:none !important;
+    }
+
+    #assetInventoryTable th{
+        white-space:nowrap !important;
+        min-width:130px;
+        max-width:none !important;
+        word-break:normal !important;
+        overflow-wrap:normal !important;
+    }
+
+    #assetInventoryTable td{
+        white-space:normal !important;
+        min-width:130px;
+        max-width:320px !important;
+        word-break:break-word !important;
+        overflow-wrap:anywhere !important;
+    }
+
+    #assetInventoryTable th:nth-child(3),
+    #assetInventoryTable td:nth-child(3){
+        min-width:260px;
+    }
+
     #assetInventoryTable_wrapper .asset-bottom-row{
         gap:10px;
     }

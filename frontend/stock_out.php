@@ -85,11 +85,12 @@ if(stockoutAdditionalInfoTableExists($mysqli)){
 <style>
 html, body{ overflow-x:hidden !important; }
 .main{ overflow-x:hidden !important; max-width:100%; }
-.table-responsive{ overflow-x:hidden !important; width:100%; }
+.table-responsive{ overflow-x:auto !important; overflow-y:hidden; width:100%; -webkit-overflow-scrolling:touch; overscroll-behavior-x:contain; }
 
 #stockOutTable{
     width:100% !important;
-    table-layout:fixed;
+    min-width:900px;
+    table-layout:auto;
 }
 
 #stockOutTable th,
@@ -107,7 +108,7 @@ html, body{ overflow-x:hidden !important; }
 
 #stockOutTable_wrapper{
     width:100%;
-    overflow-x:hidden !important;
+    overflow-x:visible !important;
 }
 
 #stockOutTable_wrapper .row{
@@ -252,7 +253,50 @@ html, body{ overflow-x:hidden !important; }
     word-break:break-word;
 }
 
-@media(max-width:768px){
+@media(max-width:992px){
+    .table-responsive{
+        overflow-x:auto !important;
+        -webkit-overflow-scrolling:touch;
+    }
+
+    #stockOutTable{
+        min-width:940px !important;
+        max-width:none !important;
+    }
+
+    #stockOutTable th{
+        white-space:nowrap !important;
+        min-width:140px;
+        max-width:none !important;
+        word-break:normal !important;
+        overflow-wrap:normal !important;
+    }
+
+    #stockOutTable td{
+        white-space:normal !important;
+        min-width:140px;
+        max-width:360px !important;
+        word-break:break-word !important;
+        overflow-wrap:anywhere !important;
+    }
+
+    #stockOutTable th:nth-child(3),
+    #stockOutTable td:nth-child(3){
+        min-width:320px;
+    }
+
+    #stockOutTable th:nth-child(4),
+    #stockOutTable td:nth-child(4){
+        min-width:170px;
+    }
+
+    #stockOutTable td:nth-child(4){
+        white-space:nowrap !important;
+        max-width:none !important;
+        word-break:normal !important;
+        overflow-wrap:normal !important;
+    }
+
     #stockOutTable_wrapper .stockout-bottom-row{
         gap:10px;
     }

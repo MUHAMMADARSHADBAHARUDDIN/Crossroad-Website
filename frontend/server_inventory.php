@@ -91,13 +91,17 @@ html, body{
 }
 
 .table-responsive{
-    overflow-x:hidden !important;
+    overflow-x:auto !important;
+    overflow-y:hidden;
+    -webkit-overflow-scrolling:touch;
+    overscroll-behavior-x:contain;
     width:100%;
 }
 
 #serverInventoryTable{
     width:100% !important;
-    table-layout:fixed;
+    min-width:860px;
+    table-layout:auto;
 }
 
 #serverInventoryTable th,
@@ -118,7 +122,7 @@ html, body{
 
 #serverInventoryTable_wrapper{
     width:100%;
-    overflow-x:hidden !important;
+    overflow-x:visible !important;
 }
 
 #serverInventoryTable_wrapper .row{
@@ -158,7 +162,46 @@ html, body{
     margin-bottom:15px;
 }
 
-@media(max-width:768px){
+@media(max-width:992px){
+    .table-responsive{
+        overflow-x:auto !important;
+        -webkit-overflow-scrolling:touch;
+    }
+
+    #serverInventoryTable{
+        min-width:900px !important;
+        max-width:none !important;
+    }
+
+    #serverInventoryTable th{
+        white-space:nowrap !important;
+        min-width:140px;
+        max-width:none !important;
+        word-break:normal !important;
+        overflow-wrap:normal !important;
+    }
+
+    #serverInventoryTable td{
+        white-space:normal !important;
+        min-width:140px;
+        max-width:320px !important;
+        word-break:break-word !important;
+        overflow-wrap:anywhere !important;
+    }
+
+    #serverInventoryTable th:nth-child(4),
+    #serverInventoryTable td:nth-child(4){
+        min-width:180px;
+    }
+
+    #serverInventoryTable td:nth-child(4),
+    #serverInventoryTable td:nth-child(5){
+        white-space:nowrap !important;
+        max-width:none !important;
+        word-break:normal !important;
+        overflow-wrap:normal !important;
+    }
+
     #serverInventoryTable_wrapper .server-bottom-row{
         gap:10px;
     }

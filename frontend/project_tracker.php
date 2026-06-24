@@ -10,12 +10,14 @@ if(!isset($_SESSION['username'])){
 require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
 require_once "../includes/date_helpers.php";
+require_once "../includes/project_dashboard_data.php";
 
 if(!hasPermission($mysqli, "contracts_view")){
     die("Access denied");
 }
 
 $faviconVersion = file_exists("../image/logo.png") ? filemtime("../image/logo.png") : time();
+$projectTrackerSuggestions = projectDashboardFetchSuggestions($mysqli);
 
 $total = $mysqli->query("
     SELECT COUNT(*) as total
@@ -131,19 +133,15 @@ function percent($value, $total){
 
 <style>
 body{
-    background:linear-gradient(135deg,#eef2f7,#f8fbff);
+    background:#f4f6f9;
     font-family:'Segoe UI';
 }
 .card-modern{
-    border-radius:20px;
+    border-radius:12px;
     padding:20px;
-    background:rgba(255,255,255,0.75);
-    backdrop-filter:blur(12px);
-    box-shadow:0 10px 30px rgba(0,0,0,0.08);
-    transition:0.3s;
-}
-.card-modern:hover{
-    transform:translateY(-5px) scale(1.01);
+    background:#fff;
+    border:1px solid #e5e7eb;
+    box-shadow:0 4px 14px rgba(0,0,0,0.06);
 }
 .kpi{
     font-size:32px;
@@ -152,6 +150,16 @@ body{
 .progress{
     height:12px;
     border-radius:10px;
+}
+.tracker-action-card{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:16px;
+    flex-wrap:wrap;
+}
+.tracker-chart canvas{
+    max-height:300px;
 }
 </style>
 </head>
@@ -180,22 +188,74 @@ body{
     <small class="text-muted">Click to view yearly breakdown</small>
 </div>
 
+<div class="card-modern tracker-action-card mb-4">
+    <div>
+        <h5 class="mb-1">Project / Owner Dashboard</h5>
+        <small class="text-muted">Open a focused dashboard by project code or owner.</small>
+    </div>
+    <button type="button" class="btn btn-dark" data-bs-toggle="modal" data-bs-target="#trackerFilterModal">
+        <i class="fa fa-filter"></i> View Project / Owner
+    </button>
+</div>
+
 <div class="row g-4">
 <div class="col-md-6">
-<div class="card-modern">
+<div class="card-modern tracker-chart">
 <h5>Status Distribution</h5>
 <canvas id="statusChart"></canvas>
 </div>
 </div>
 
 <div class="col-md-6">
-<div class="card-modern">
+<div class="card-modern tracker-chart">
 <h5>Projects by Year</h5>
 <canvas id="yearChart"></canvas>
 </div>
 </div>
 </div>
 
+</div>
+
+<div class="modal fade" id="trackerFilterModal">
+<div class="modal-dialog modal-dialog-centered">
+<div class="modal-content">
+
+<div class="modal-header bg-dark text-white">
+<h5 class="modal-title"><i class="fa fa-chart-pie"></i> Choose Dashboard View</h5>
+<button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+</div>
+
+<div class="modal-body">
+    <div class="row g-2">
+        <div class="col-md-4">
+            <label class="form-label" for="trackerFilterType">View By</label>
+            <select id="trackerFilterType" class="form-select">
+                <option value="project_code">Project Code</option>
+                <option value="owner">Owner</option>
+            </select>
+        </div>
+        <div class="col-md-8">
+            <label class="form-label" for="trackerFilterValue">Value</label>
+            <input type="text" id="trackerFilterValue" class="form-control" list="trackerProjectCodeOptions" autocomplete="off">
+            <datalist id="trackerProjectCodeOptions">
+                <?php foreach($projectTrackerSuggestions['project_codes'] as $code): ?>
+                    <option value="<?= projectDashboardEscape($code) ?>"></option>
+                <?php endforeach; ?>
+            </datalist>
+            <datalist id="trackerOwnerOptions">
+                <?php foreach($projectTrackerSuggestions['owners'] as $owner): ?>
+                    <option value="<?= projectDashboardEscape($owner) ?>"></option>
+                <?php endforeach; ?>
+            </datalist>
+        </div>
+    </div>
+    <button type="button" class="btn btn-warning w-100 mt-3 fw-semibold" onclick="openTrackerInsightDashboard()">
+        Open Dashboard
+    </button>
+</div>
+
+</div>
+</div>
 </div>
 
 <div class="modal fade" id="yearValueModal">
@@ -234,6 +294,7 @@ body{
 
 <hr>
 
+<div class="table-responsive">
 <table class="table table-bordered text-center">
 <thead><tr><th>Year</th><th>Total Value (RM)</th></tr></thead>
 <tbody>
@@ -245,6 +306,7 @@ body{
 <?php endforeach; ?>
 </tbody>
 </table>
+</div>
 
 </div>
 
@@ -276,6 +338,7 @@ new Chart(document.getElementById('statusChart'), {
         }]
     },
     options:{
+        animation:false,
         plugins:{
             legend:{
                 position:'bottom'
@@ -294,6 +357,7 @@ new Chart(document.getElementById('yearChart'), {
         }]
     },
     options:{
+        animation:false,
         plugins:{
             legend:{
                 display:true,
@@ -318,6 +382,7 @@ document.getElementById('yearValueModal').addEventListener('shown.bs.modal', fun
             }]
         },
         options:{
+            animation:false,
             plugins:{
                 legend:{
                     display:true,
@@ -328,6 +393,43 @@ document.getElementById('yearValueModal').addEventListener('shown.bs.modal', fun
     });
 
 });
+
+const trackerFilterType = document.getElementById("trackerFilterType");
+const trackerFilterValue = document.getElementById("trackerFilterValue");
+
+function syncTrackerFilterDatalist(){
+    if(!trackerFilterType || !trackerFilterValue){
+        return;
+    }
+
+    trackerFilterValue.setAttribute("list", trackerFilterType.value === "owner" ? "trackerOwnerOptions" : "trackerProjectCodeOptions");
+}
+
+function openTrackerInsightDashboard(){
+    if(!trackerFilterType || !trackerFilterValue){
+        return;
+    }
+
+    const value = trackerFilterValue.value.trim();
+
+    if(value === ""){
+        alert("Please enter a project code or owner.");
+        return;
+    }
+
+    const params = new URLSearchParams();
+    params.set("filter_type", trackerFilterType.value);
+    params.set("filter_value", value);
+    window.location.href = "project_insights.php?" + params.toString();
+}
+
+if(trackerFilterType){
+    trackerFilterType.addEventListener("change", function(){
+        trackerFilterValue.value = "";
+        syncTrackerFilterDatalist();
+    });
+    syncTrackerFilterDatalist();
+}
 </script>
 
 <script>

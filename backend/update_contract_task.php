@@ -5,12 +5,15 @@ startSecureSession();
 require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
 require_once "../includes/activity_log.php";
+require_once "../includes/contract_task_schema.php";
 
 header("Content-Type: text/plain; charset=UTF-8");
 
 if(!isset($_SESSION['username'])){
     exit("No session");
 }
+
+ensureContractTaskCompletionSchema($mysqli);
 
 function updateTaskTableExists($mysqli, $tableName){
     $tableName = $mysqli->real_escape_string($tableName);
@@ -37,9 +40,20 @@ $id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
 $taskText = trim($_POST['task_text'] ?? "");
 $taskStartDate = trim($_POST['task_start_date'] ?? "");
 $taskEndDate = trim($_POST['task_end_date'] ?? "");
+$claimAmountRaw = trim((string)($_POST['claim_amount'] ?? ""));
+$claimAmount = null;
 
 if($id <= 0){ exit("Invalid task."); }
 if($taskText === ""){ exit("Task cannot be empty."); }
+if($claimAmountRaw !== ""){
+    $claimAmountRaw = str_replace([",", " "], "", $claimAmountRaw);
+
+    if(!is_numeric($claimAmountRaw) || (float)$claimAmountRaw < 0){
+        exit("Claim amount must be a positive number.");
+    }
+
+    $claimAmount = round((float)$claimAmountRaw, 2);
+}
 if(!updateTaskValidDate($taskStartDate) || !updateTaskValidDate($taskEndDate)){ exit("Invalid task date."); }
 if($taskStartDate === "" && $taskEndDate !== ""){ exit("Please select a task start date first."); }
 if($taskStartDate !== "" && $taskEndDate === ""){ $taskEndDate = $taskStartDate; }
@@ -64,10 +78,12 @@ if(updateTaskColumnExists($mysqli, "contract_tasks", "task_text")){
 
 $hasTaskDates = updateTaskColumnExists($mysqli, "contract_tasks", "task_start_date")
     && updateTaskColumnExists($mysqli, "contract_tasks", "task_end_date");
+$hasClaimAmount = updateTaskColumnExists($mysqli, "contract_tasks", "claim_amount");
 $dateSelect = $hasTaskDates ? ", task_start_date, task_end_date" : "";
+$claimSelect = $hasClaimAmount ? ", claim_amount" : "";
 
 $taskStmt = $mysqli->prepare("
-    SELECT contract_id, `$textColumn` AS old_task_text $dateSelect
+    SELECT contract_id, `$textColumn` AS old_task_text $dateSelect $claimSelect
     FROM contract_tasks
     WHERE `$idColumn` = ?
     LIMIT 1
@@ -90,25 +106,53 @@ if(!hasContractTaskEditAccess($mysqli, $contract['created_by'] ?? "")){
     exit("Access denied. You do not have Task Edit permission.");
 }
 
+$canViewClaim = hasContractClaimViewAccess($mysqli);
+if(!$canViewClaim && $claimAmountRaw !== ""){
+    exit("Access denied. You do not have View Claim permission.");
+}
+
 if(!$hasTaskDates && $taskStartDate !== ""){
     exit("Please run upgrade_pm_stockout.sql first before assigning task dates.");
 }
 
+$setParts = ["`$textColumn` = ?"];
+$types = "s";
+$params = [$taskText];
+
 if($hasTaskDates){
     $startValue = $taskStartDate !== "" ? $taskStartDate : null;
     $endValue = $taskEndDate !== "" ? $taskEndDate : null;
-    $stmt = $mysqli->prepare("
-        UPDATE contract_tasks
-        SET `$textColumn` = ?, task_start_date = ?, task_end_date = ?
-        WHERE `$idColumn` = ?
-    ");
-    if(!$stmt){ exit("SQL Error: " . $mysqli->error); }
-    $stmt->bind_param("sssi", $taskText, $startValue, $endValue, $id);
-}else{
-    $stmt = $mysqli->prepare("UPDATE contract_tasks SET `$textColumn` = ? WHERE `$idColumn` = ?");
-    if(!$stmt){ exit("SQL Error: " . $mysqli->error); }
-    $stmt->bind_param("si", $taskText, $id);
+    $setParts[] = "task_start_date = ?";
+    $setParts[] = "task_end_date = ?";
+    $types .= "ss";
+    $params[] = $startValue;
+    $params[] = $endValue;
 }
+
+if($hasClaimAmount && $canViewClaim){
+    $setParts[] = "claim_amount = ?";
+    $types .= "d";
+    $params[] = $claimAmount;
+} elseif($claimAmount !== null){
+    exit("claim_amount column not found.");
+}
+
+$types .= "i";
+$params[] = $id;
+
+$stmt = $mysqli->prepare("
+    UPDATE contract_tasks
+    SET " . implode(", ", $setParts) . "
+    WHERE `$idColumn` = ?
+");
+if(!$stmt){ exit("SQL Error: " . $mysqli->error); }
+
+$refs = [];
+foreach($params as $key => $value){
+    $refs[$key] = &$params[$key];
+}
+array_unshift($refs, $types);
+call_user_func_array([$stmt, 'bind_param'], $refs);
 
 if(!$stmt->execute()){
     exit("Failed to update task: " . $stmt->error);
@@ -122,14 +166,23 @@ $oldStart = $task['task_start_date'] ?? "";
 $oldEnd = $task['task_end_date'] ?? "";
 $oldDateText = $oldStart === "" ? "Not Assigned" : ($oldStart === $oldEnd ? $oldStart : "$oldStart to $oldEnd");
 $newDateText = $taskStartDate === "" ? "Not Assigned" : ($taskStartDate === $taskEndDate ? $taskStartDate : "$taskStartDate to $taskEndDate");
+$oldClaimText = "Unchanged";
+$newClaimText = "Unchanged";
+
+if($canViewClaim){
+    $oldClaimText = isset($task['claim_amount']) && $task['claim_amount'] !== null && $task['claim_amount'] !== ""
+        ? number_format((float)$task['claim_amount'], 2)
+        : "Not Assigned";
+    $newClaimText = $claimAmount === null ? "Not Assigned" : number_format($claimAmount, 2);
+}
 
 $description = "User [$username] edited a contract task.\n"
     . "Contract ID: $contractId\n"
     . "Contract No: " . ($contract['contract_no'] ?? "") . "\n"
     . "Project Name: " . ($contract['project_name'] ?? "") . "\n"
     . "Task ID: $id\n\n"
-    . "OLD DATA:\n- Task: " . ($task['old_task_text'] ?? "") . "\n- Task Date: $oldDateText\n\n"
-    . "NEW DATA:\n- Task: $taskText\n- Task Date: $newDateText\n\n"
+    . "OLD DATA:\n- Task: " . ($task['old_task_text'] ?? "") . "\n- Task Date: $oldDateText\n- Claim Amount: $oldClaimText\n\n"
+    . "NEW DATA:\n- Task: $taskText\n- Task Date: $newDateText\n- Claim Amount: $newClaimText\n\n"
     . "IP Address: $ip\nTime: $time";
 
 logActivity($mysqli, $username, $role, "EDIT CONTRACT TASK", $description);

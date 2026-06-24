@@ -91,6 +91,7 @@ $canUploadTaskDocument = hasContractTaskDocumentUploadAccess($mysqli, $createdBy
 $canDownloadTaskDocument = hasContractTaskDocumentDownloadAccess($mysqli, $createdBy);
 $canDeleteTaskDocument = hasContractTaskDocumentDeleteAccess($mysqli, $createdBy);
 $canOpenTaskDocument = $canViewTaskDocument || $canUploadTaskDocument || $canDownloadTaskDocument || $canDeleteTaskDocument;
+$canViewClaim = hasContractClaimViewAccess($mysqli);
 
 $idColumn = taskColumnExists($mysqli, "contract_tasks", "id") ? "id" : "no";
 if(!taskColumnExists($mysqli, "contract_tasks", $idColumn)){
@@ -117,6 +118,7 @@ $hasTaskDates = taskColumnExists($mysqli, "contract_tasks", "task_start_date")
 $hasCreatedBy = taskColumnExists($mysqli, "contract_tasks", "created_by");
 $hasCompletedBy = taskColumnExists($mysqli, "contract_tasks", "completed_by");
 $hasCompletedAt = taskColumnExists($mysqli, "contract_tasks", "completed_at");
+$hasClaimAmount = taskColumnExists($mysqli, "contract_tasks", "claim_amount");
 
 if($hasIsCompleted){
     $completeSql = "CASE WHEN is_completed = 1 THEN 1 ELSE 0 END AS is_done";
@@ -131,6 +133,7 @@ if($hasIsCompleted){
 $dateSelect = $hasTaskDates
     ? ", task_start_date, task_end_date"
     : ", NULL AS task_start_date, NULL AS task_end_date";
+$claimSelect = ($hasClaimAmount && $canViewClaim) ? ", claim_amount" : ", NULL AS claim_amount";
 $metaSelect = ""
     . ($hasCreatedBy ? ", created_by" : ", '' AS created_by")
     . ($hasCompletedBy ? ", completed_by" : ", '' AS completed_by")
@@ -138,7 +141,7 @@ $metaSelect = ""
 $orderColumn = taskColumnExists($mysqli, "contract_tasks", "created_at") ? "created_at" : $idColumn;
 
 $sql = "
-    SELECT `$idColumn` AS task_id, `$textColumn` AS task_text, $completeSql $dateSelect $metaSelect
+    SELECT `$idColumn` AS task_id, `$textColumn` AS task_text, $completeSql $dateSelect $claimSelect $metaSelect
     FROM contract_tasks
     WHERE contract_id = ?
     ORDER BY `$orderColumn` ASC
@@ -198,32 +201,68 @@ $percent = $total > 0 ? round(($done / $total) * 100) : 0;
 
 <?php if($canAddTask): ?>
 <div class="task-add-box">
-    <div class="mb-2">
-        <input type="text" id="newContractTaskText" class="form-control" placeholder="Add new checklist item..." autocomplete="off">
+    <div class="row g-2 align-items-end mb-2">
+        <div class="col-md-4">
+            <label class="form-label small mb-1">Checklist Type</label>
+            <select id="newTaskType" class="form-select">
+                <option value="">Select type</option>
+                <option value="preventive">Preventive Maintenance</option>
+                <option value="corrective">Corrective Maintenance</option>
+                <option value="claim">Claim</option>
+                <option value="other">Other</option>
+            </select>
+        </div>
+
+        <div class="col-md-4 task-entry-field task-maintenance-field d-none">
+            <label class="form-label small mb-1" id="newTaskMaintenanceLabel">Preventive Maintenance Number</label>
+            <select id="newTaskMaintenanceNumber" class="form-select">
+                <option value="">Select number</option>
+                <?php for($number = 1; $number <= 20; $number++): ?>
+                    <option value="<?= $number ?>"><?= $number ?></option>
+                <?php endfor; ?>
+            </select>
+        </div>
+
+        <div class="col-md-8 task-entry-field task-claim-field d-none">
+            <label class="form-label small mb-1">Claim Remark</label>
+            <input type="text" id="newTaskClaimRemark" class="form-control" placeholder="Claim for..." autocomplete="off">
+        </div>
+
+        <div class="col-md-8 task-entry-field task-other-field d-none">
+            <label class="form-label small mb-1">Checklist Item</label>
+            <input type="text" id="newContractTaskText" class="form-control" placeholder="Add new checklist item..." autocomplete="off">
+        </div>
     </div>
+
     <div class="row g-2 align-items-end">
-        <div class="col-md-5">
+        <div class="col-md-3 task-entry-field task-common-field d-none">
             <label class="form-label small mb-1">Task Start Date</label>
             <input type="date" id="newTaskStartDate" class="form-control">
         </div>
-        <div class="col-md-5">
+        <div class="col-md-3 task-entry-field task-common-field d-none">
             <label class="form-label small mb-1">Task End Date</label>
             <input type="date" id="newTaskEndDate" class="form-control">
         </div>
-        <div class="col-md-2 d-grid">
+        <?php if($canViewClaim): ?>
+            <div class="col-md-4 task-entry-field task-claim-field d-none">
+                <label class="form-label small mb-1">Claim Amount</label>
+                <input type="number" id="newTaskClaimAmount" class="form-control" min="0.01" step="0.01" placeholder="0.00">
+            </div>
+        <?php endif; ?>
+        <div class="col-md-2 d-grid task-entry-field task-common-field d-none">
             <button type="button" class="btn btn-warning" id="addTaskBtn" onclick="addContractTask()">
                 <i class="fa fa-plus"></i> Add
             </button>
         </div>
     </div>
     <?php if($canUploadTaskDocument): ?>
-    <div class="mt-2">
+    <div class="mt-2 task-entry-field task-common-field d-none">
         <label class="form-label small mb-1">Attach Document</label>
         <input type="file" id="newTaskDocument" class="form-control">
         <small class="text-muted">Maximum file size 100MB. ZIP files are allowed.</small>
     </div>
     <?php endif; ?>
-    <small class="text-muted d-block mt-2">Assign a date range for Preventive Management items that must appear on the dashboard bulletin until completed.</small>
+    <small class="text-muted d-block mt-2">Choose a checklist type first. Only the required fields for that type will appear.</small>
 </div>
 <?php endif; ?>
 
@@ -244,6 +283,9 @@ $percent = $total > 0 ? round(($done / $total) * 100) : 0;
     $taskCreatedBy = trim((string)($task['created_by'] ?? ""));
     $completedBy = trim((string)($task['completed_by'] ?? ""));
     $completedAt = trim((string)($task['completed_at'] ?? ""));
+    $claimAmount = $task['claim_amount'];
+    $claimAmountValue = ($claimAmount === null || $claimAmount === "") ? "" : number_format((float)$claimAmount, 2, '.', '');
+    $claimAmountText = $claimAmountValue !== "" && (float)$claimAmountValue > 0 ? "RM " . number_format((float)$claimAmountValue, 2) : "";
     $isDone = (int)$task['is_done'] === 1;
     $documentCount = $documentCounts[$taskId] ?? 0;
     $hasAssignedDate = !empty($taskStartDate) && $taskStartDate !== "0000-00-00";
@@ -282,6 +324,12 @@ $percent = $total > 0 ? round(($done / $total) * 100) : 0;
                             <?= $documentCount ?> document<?= $documentCount === 1 ? '' : 's' ?>
                         </span>
                     <?php endif; ?>
+                    <?php if($canViewClaim && $claimAmountText !== ""): ?>
+                        <span class="task-document-indicator task-claim-indicator">
+                            <i class="fa fa-coins"></i>
+                            <?= taskEscape($claimAmountText) ?>
+                        </span>
+                    <?php endif; ?>
                 </div>
                 <?php if(!empty($taskMetaParts)): ?>
                     <div class="contract-task-meta">
@@ -294,7 +342,7 @@ $percent = $total > 0 ? round(($done / $total) * 100) : 0;
         <div class="contract-task-actions">
             <?php if($canEditTask): ?>
                 <button type="button" class="btn btn-sm btn-primary task-icon-btn" title="Edit task"
-                        onclick='openEditTaskModal(<?= $taskId ?>, <?= taskEscape(json_encode($taskText)) ?>, <?= taskEscape(json_encode($taskStartDate)) ?>, <?= taskEscape(json_encode($taskEndDate)) ?>)'>
+                        onclick='openEditTaskModal(<?= $taskId ?>, <?= taskEscape(json_encode($taskText)) ?>, <?= taskEscape(json_encode($taskStartDate)) ?>, <?= taskEscape(json_encode($taskEndDate)) ?>, <?= taskEscape(json_encode($claimAmountValue)) ?>)'>
                     <i class="fa fa-pen"></i>
                 </button>
             <?php endif; ?>

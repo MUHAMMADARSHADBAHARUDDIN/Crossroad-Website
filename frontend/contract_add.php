@@ -69,7 +69,80 @@ function getNextContractNo($mysqli){
     return $nextNo;
 }
 
+function contractAddEscape($value){
+    return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
+}
+
+function contractAddFetchDistinctValues($mysqli, $columnName){
+    $allowedColumns = ["project_name", "project_owner"];
+
+    if(!in_array($columnName, $allowedColumns, true)){
+        return [];
+    }
+
+    $values = [];
+    $result = $mysqli->query("
+        SELECT DISTINCT `$columnName` AS value
+        FROM project_inventory
+        WHERE `$columnName` IS NOT NULL
+          AND TRIM(`$columnName`) <> ''
+        ORDER BY `$columnName` ASC
+        LIMIT 500
+    ");
+
+    if($result){
+        while($row = $result->fetch_assoc()){
+            $value = trim((string)($row['value'] ?? ""));
+
+            if($value !== ""){
+                $values[] = $value;
+            }
+        }
+    }
+
+    return $values;
+}
+
+function contractAddFetchProjectCodeMiddles($mysqli){
+    $values = [];
+    $result = $mysqli->query("
+        SELECT DISTINCT project_code
+        FROM project_inventory
+        WHERE project_code IS NOT NULL
+          AND TRIM(project_code) <> ''
+        ORDER BY project_code ASC
+        LIMIT 500
+    ");
+
+    if($result){
+        while($row = $result->fetch_assoc()){
+            $middle = contractProjectCodeMiddleFromCode($row['project_code'] ?? "");
+
+            if($middle !== "" && !in_array($middle, $values, true)){
+                $values[] = $middle;
+            }
+        }
+    }
+
+    sort($values, SORT_NATURAL | SORT_FLAG_CASE);
+
+    return $values;
+}
+
+function contractAddDropdownValue($fieldName){
+    $selected = trim((string)($_POST[$fieldName . '_select'] ?? ""));
+
+    if($selected === "__other__"){
+        return trim((string)($_POST[$fieldName . '_other'] ?? ""));
+    }
+
+    return trim((string)$selected);
+}
+
 $nextContractNo = getNextContractNo($mysqli);
+$projectCodeMiddleOptions = contractAddFetchProjectCodeMiddles($mysqli);
+$projectNameOptions = contractAddFetchDistinctValues($mysqli, "project_name");
+$projectOwnerOptions = contractAddFetchDistinctValues($mysqli, "project_owner");
 
 if(isset($_POST['submit'])){
 
@@ -81,13 +154,13 @@ if(isset($_POST['submit'])){
     $no = getNextContractNo($mysqli);
 
     $year_awarded = intval($_POST['year_awarded']);
-    $project_name = trim($_POST['project_name']);
-    $project_owner = trim($_POST['project_owner']);
+    $project_name = contractAddDropdownValue("project_name");
+    $project_owner = contractAddDropdownValue("project_owner");
     $project_manager = trim($_POST['project_manager']);
     $account_manager = trim($_POST['account_manager']);
     $end_user = trim($_POST['end_user']);
     $contract_no = trim($_POST['contract_no']);
-    $project_code_middle = contractProjectCodeMiddleNormalize($_POST['project_code_middle'] ?? "");
+    $project_code_middle = contractProjectCodeMiddleNormalize(contractAddDropdownValue("project_code_middle"));
     $service = trim($_POST['service']);
     $po_date = appNormalizeDateInput($_POST['po_date'] ?? "");
     $contract_start = appNormalizeDateInput($_POST['contract_start'] ?? "");
@@ -96,6 +169,11 @@ if(isset($_POST['submit'])){
 
     if($project_code_middle === ""){
         echo "<script>alert('Please enter the project code middle part, for example IWK or PERKESO.'); window.history.back();</script>";
+        exit();
+    }
+
+    if($project_name === ""){
+        echo "<script>alert('Please select a project name or choose Others to enter a new one.'); window.history.back();</script>";
         exit();
     }
 
@@ -255,6 +333,14 @@ Time: $time";
     margin-top:5px;
 }
 
+.contract-other-field{
+    display:none;
+}
+
+.contract-other-field.is-visible{
+    display:block;
+}
+
 @media(max-width:768px){
     .form-card{
         padding:18px;
@@ -282,17 +368,34 @@ Time: $time";
 
 <div class="col-md-6">
     <div class="form-floating">
-        <input
-            type="text"
-            name="project_code_middle"
-            class="form-control"
-            placeholder="IWK"
+        <select
+            name="project_code_middle_select"
+            id="projectCodeMiddleSelect"
+            class="form-select contract-other-select"
+            data-other-target="projectCodeMiddleOtherWrap"
+            data-other-required="1"
             required
         >
+            <option value="">Select Project Code Middle</option>
+            <?php foreach($projectCodeMiddleOptions as $middle): ?>
+                <option value="<?= contractAddEscape($middle) ?>"><?= contractAddEscape($middle) ?></option>
+            <?php endforeach; ?>
+            <option value="__other__">Others</option>
+        </select>
         <label>Project Code Middle</label>
     </div>
+    <div id="projectCodeMiddleOtherWrap" class="form-floating contract-other-field mt-2">
+        <input
+            type="text"
+            name="project_code_middle_other"
+            id="projectCodeMiddleOther"
+            class="form-control"
+            placeholder="IWK"
+        >
+        <label>New Project Code Middle</label>
+    </div>
     <div class="auto-no-note">
-        Enter only the middle part. The system will save it as PRO/IWK/001, PRO/IWK/002, and so on.
+        Choose an existing middle part or select Others to add a new one. The system will save it as PRO/IWK/001, PRO/IWK/002, and so on.
     </div>
 </div>
 
@@ -354,8 +457,30 @@ Time: $time";
 
 <div class="col-md-12">
     <div class="form-floating">
-        <textarea name="project_name" class="form-control project-name-box" required></textarea>
+        <select
+            name="project_name_select"
+            id="projectNameSelect"
+            class="form-select contract-other-select"
+            data-other-target="projectNameOtherWrap"
+            data-other-required="1"
+            required
+        >
+            <option value="">Select Project Name</option>
+            <?php foreach($projectNameOptions as $projectNameOption): ?>
+                <option value="<?= contractAddEscape($projectNameOption) ?>"><?= contractAddEscape($projectNameOption) ?></option>
+            <?php endforeach; ?>
+            <option value="__other__">Others</option>
+        </select>
         <label>Project Name</label>
+    </div>
+    <div id="projectNameOtherWrap" class="form-floating contract-other-field mt-2">
+        <textarea
+            name="project_name_other"
+            id="projectNameOther"
+            class="form-control project-name-box"
+            placeholder="Project Name"
+        ></textarea>
+        <label>New Project Name</label>
     </div>
 </div>
 
@@ -367,8 +492,24 @@ Time: $time";
 <div class="col-md-6">
 
 <div class="form-floating">
-<input type="text" name="project_owner" class="form-control">
+<select
+    name="project_owner_select"
+    id="projectOwnerSelect"
+    class="form-select contract-other-select"
+    data-other-target="projectOwnerOtherWrap"
+    data-other-required="1"
+>
+    <option value="">Select Project Owner</option>
+    <?php foreach($projectOwnerOptions as $projectOwnerOption): ?>
+        <option value="<?= contractAddEscape($projectOwnerOption) ?>"><?= contractAddEscape($projectOwnerOption) ?></option>
+    <?php endforeach; ?>
+    <option value="__other__">Others</option>
+</select>
 <label>Project Owner</label>
+</div>
+<div id="projectOwnerOtherWrap" class="form-floating contract-other-field mt-2">
+<input type="text" name="project_owner_other" id="projectOwnerOther" class="form-control" placeholder="Project Owner">
+<label>New Project Owner</label>
 </div>
 
 <div class="form-floating mt-3">
@@ -421,6 +562,35 @@ Time: $time";
 </div>
 
 <?php include "layout/footer.php"; ?>
+
+<script>
+document.querySelectorAll(".contract-other-select").forEach(function(select){
+    function syncOtherField(){
+        var target = document.getElementById(select.dataset.otherTarget || "");
+
+        if(!target){
+            return;
+        }
+
+        var fields = target.querySelectorAll("input, textarea");
+        var showOther = select.value === "__other__";
+        var requireOther = select.dataset.otherRequired === "1";
+
+        target.classList.toggle("is-visible", showOther);
+
+        fields.forEach(function(field){
+            field.required = showOther && requireOther;
+
+            if(!showOther){
+                field.value = "";
+            }
+        });
+    }
+
+    select.addEventListener("change", syncOtherField);
+    syncOtherField();
+});
+</script>
 
 </body>
 </html>

@@ -13,6 +13,8 @@ if(!isset($_SESSION['username'])){
     exit("No session");
 }
 
+ensureContractTaskCompletionSchema($mysqli);
+
 function addTaskTableExists($mysqli, $tableName){
     $tableName = $mysqli->real_escape_string($tableName);
     $result = $mysqli->query("SHOW TABLES LIKE '$tableName'");
@@ -38,6 +40,8 @@ $contractId = isset($_POST['contract_id']) ? (int)$_POST['contract_id'] : 0;
 $taskText = trim($_POST['task_text'] ?? "");
 $taskStartDate = trim($_POST['task_start_date'] ?? "");
 $taskEndDate = trim($_POST['task_end_date'] ?? "");
+$claimAmountRaw = trim((string)($_POST['claim_amount'] ?? ""));
+$claimAmount = null;
 
 if($contractId <= 0){
     exit("Invalid contract.");
@@ -45,6 +49,16 @@ if($contractId <= 0){
 
 if($taskText === ""){
     exit("Task cannot be empty.");
+}
+
+if($claimAmountRaw !== ""){
+    $claimAmountRaw = str_replace([",", " "], "", $claimAmountRaw);
+
+    if(!is_numeric($claimAmountRaw) || (float)$claimAmountRaw < 0){
+        exit("Claim amount must be a positive number.");
+    }
+
+    $claimAmount = round((float)$claimAmountRaw, 2);
 }
 
 if(!validTaskDate($taskStartDate) || !validTaskDate($taskEndDate)){
@@ -93,6 +107,11 @@ if(!$contract){
 $createdBy = $contract['created_by'] ?? "";
 if(!hasContractTaskAddAccess($mysqli, $createdBy)){
     exit("Access denied. You do not have Task Add permission.");
+}
+
+$canViewClaim = hasContractClaimViewAccess($mysqli);
+if(!$canViewClaim && $claimAmountRaw !== ""){
+    exit("Access denied. You do not have View Claim permission.");
 }
 
 $hasDocumentUpload = isset($_FILES['task_document']) && ($_FILES['task_document']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
@@ -169,6 +188,15 @@ if(addTaskColumnExists($mysqli, "contract_tasks", "created_by")){
     $params[] = $_SESSION['username'];
 }
 
+if(addTaskColumnExists($mysqli, "contract_tasks", "claim_amount") && $canViewClaim){
+    $columns[] = "claim_amount";
+    $placeholders[] = "?";
+    $types .= "d";
+    $params[] = $claimAmount;
+} elseif($claimAmount !== null){
+    exit("claim_amount column not found.");
+}
+
 $sql = "INSERT INTO contract_tasks (`" . implode("`, `", $columns) . "`) VALUES (" . implode(", ", $placeholders) . ")";
 $stmt = $mysqli->prepare($sql);
 
@@ -237,6 +265,7 @@ $description = "User [$username] added a contract task.\n"
     . "Task ID: $newTaskId\n"
     . "Task: $taskText\n"
     . "Task Date: $dateText\n"
+    . "Claim Amount: " . ($claimAmount === null ? "Not Assigned" : number_format($claimAmount, 2)) . "\n"
     . ($uploadedDocumentName !== "" ? "Attached Document: $uploadedDocumentName\n" : "")
     . "Status: Pending\n"
     . "IP Address: $ip\n"

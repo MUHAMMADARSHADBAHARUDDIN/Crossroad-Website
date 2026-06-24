@@ -16,6 +16,17 @@ if(!isset($mysqli)){
 }
 
 require_once __DIR__ . "/../../includes/permissions.php";
+require_once __DIR__ . "/../../includes/auth_schema.php";
+
+$currentScript = basename($_SERVER['SCRIPT_NAME'] ?? "");
+if($currentScript !== "change_password.php" && authCurrentAccountMustChangePassword($mysqli)){
+    if(!headers_sent()){
+        header("Location: change_password.php");
+    } else {
+        echo "<script>window.location.href='change_password.php';</script>";
+    }
+    exit();
+}
 
 /* =========================================================
    NICKNAME DISPLAY
@@ -163,12 +174,14 @@ $nickname = getNickname($username);
 
     let wasMobile = null;
 
-    function setButtonState(btn, isOpen){
+    function setButtonState(btn, isOpen, iconActive){
         if(!btn){
             return;
         }
 
-        btn.classList.toggle("active", isOpen);
+        const visualActive = typeof iconActive === "boolean" ? iconActive : isOpen;
+
+        btn.classList.toggle("active", visualActive);
         btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
     }
 
@@ -181,7 +194,7 @@ $nickname = getNickname($username);
 
         shell.sidebar.classList.remove("mobile-open");
         document.body.classList.remove("sidebar-open", "sidebar-mobile-open");
-        setButtonState(shell.btn, false);
+        setButtonState(shell.btn, false, true);
     }
 
     function syncShell(forceClose){
@@ -242,7 +255,7 @@ $nickname = getNickname($username);
                 shell.main.classList.add("expanded");
             }
 
-            setButtonState(shell.btn, isOpen);
+            setButtonState(shell.btn, isOpen, !isOpen);
             return false;
         }
 
@@ -307,6 +320,86 @@ $nickname = getNickname($username);
     }else{
         window.toggleSidebar = toggleShell;
         syncShell(true);
+    }
+})();
+</script>
+
+<script>
+(function(){
+    if(window.CrossroadResponsiveTables){
+        return;
+    }
+
+    window.CrossroadResponsiveTables = true;
+
+    function hasScrollShell(table){
+        return table.closest(".table-responsive, .contract-table-responsive, .contracts-table-wrap, .responsive-table-scroll, .dataTables_wrapper, .dataTables_scroll");
+    }
+
+    function wrapTable(table){
+        if(!table || table.tagName !== "TABLE" || !table.classList.contains("table") || hasScrollShell(table)){
+            return;
+        }
+
+        const parent = table.parentNode;
+
+        if(!parent){
+            return;
+        }
+
+        const wrapper = document.createElement("div");
+        wrapper.className = "responsive-table-scroll";
+        parent.insertBefore(wrapper, table);
+        wrapper.appendChild(table);
+    }
+
+    function enhanceTables(root){
+        const scope = root && root.querySelectorAll ? root : document;
+
+        if(scope.matches && scope.matches("table.table")){
+            wrapTable(scope);
+        }
+
+        scope.querySelectorAll("table.table").forEach(wrapTable);
+    }
+
+    function observeTables(){
+        if(!window.MutationObserver || !document.body){
+            return;
+        }
+
+        let queued = false;
+        const schedule = window.requestAnimationFrame || function(callback){
+            return window.setTimeout(callback, 16);
+        };
+
+        const observer = new MutationObserver(function(){
+            if(queued){
+                return;
+            }
+
+            queued = true;
+            schedule(function(){
+                queued = false;
+                enhanceTables(document);
+            });
+        });
+
+        observer.observe(document.body, {
+            childList:true,
+            subtree:true
+        });
+    }
+
+    function start(){
+        enhanceTables(document);
+        observeTables();
+    }
+
+    if(document.readyState === "loading"){
+        document.addEventListener("DOMContentLoaded", start);
+    }else{
+        start();
     }
 })();
 </script>

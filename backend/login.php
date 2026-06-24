@@ -4,6 +4,9 @@ startSecureSession(false);
 
 require_once "../includes/db_connect.php";
 require_once "../includes/activity_log.php";
+require_once "../includes/auth_schema.php";
+
+ensureFirstLoginPasswordSchema($mysqli);
 
 /* Only process POST requests */
 if($_SERVER["REQUEST_METHOD"] === "POST"){
@@ -25,11 +28,11 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
     foreach($tables as $table => $role_name){
 
         if($table === "user"){
-            $stmt = $mysqli->prepare("SELECT username, password, role FROM user WHERE email=?");
+            $stmt = $mysqli->prepare("SELECT username, password, role, must_change_password FROM user WHERE email=?");
         } elseif($table === "system_admin"){
-            $stmt = $mysqli->prepare("SELECT username, password FROM system_admin WHERE email=?");
+            $stmt = $mysqli->prepare("SELECT username, password, must_change_password FROM system_admin WHERE email=?");
         } else {
-            $stmt = $mysqli->prepare("SELECT username, password FROM administrator WHERE email=?");
+            $stmt = $mysqli->prepare("SELECT username, password, must_change_password FROM administrator WHERE email=?");
         }
 
         if(!$stmt){
@@ -43,9 +46,9 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
         if($stmt->num_rows === 1){
 
             if($table === "user"){
-                $stmt->bind_result($db_username, $db_password, $role);
+                $stmt->bind_result($db_username, $db_password, $role, $mustChangePassword);
             } else {
-                $stmt->bind_result($db_username, $db_password);
+                $stmt->bind_result($db_username, $db_password, $mustChangePassword);
                 $role = $role_name;
             }
 
@@ -61,6 +64,7 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
                 $_SESSION['username'] = $db_username;
                 $_SESSION['email'] = $email;
                 $_SESSION['role'] = $role;
+                $_SESSION['must_change_password'] = (int)$mustChangePassword;
 
                 /*
                     New account-based permission system.
@@ -86,7 +90,11 @@ Time: $time";
 
                 logActivity($mysqli, $db_username, $role, "LOGIN SUCCESS", $description);
 
-                header("Location: ../frontend/dashboard.php");
+                if((int)$mustChangePassword === 1){
+                    header("Location: ../frontend/change_password.php");
+                } else {
+                    header("Location: ../frontend/dashboard.php");
+                }
                 exit();
             }
         }

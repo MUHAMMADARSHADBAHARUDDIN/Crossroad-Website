@@ -343,6 +343,20 @@ if(!function_exists('hasContractDownloadAccess')){
 }
 
 /* =========================================================
+   CONTRACT CLAIM AMOUNT VIEW ACCESS
+   Controls visibility of checklist claim amounts.
+========================================================= */
+if(!function_exists('hasContractClaimViewAccess')){
+    function hasContractClaimViewAccess($mysqli){
+
+        return (
+            hasPermission($mysqli, "contracts_full") ||
+            hasPermission($mysqli, "contracts_claim_view")
+        );
+    }
+}
+
+/* =========================================================
    CONTRACT TASK ADD ACCESS
    ✅ contracts_task is kept for existing function compatibility
    ✅ contracts_task_add also supported if you use it later

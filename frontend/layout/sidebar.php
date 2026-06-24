@@ -49,6 +49,12 @@ $menu = [
             "link" => "project_tracker.php",
             "show" => $canViewContracts
         ],
+        [
+            "name" => "Master Budget",
+            "icon" => "fa-wallet",
+            "link" => "master_budget.php",
+            "show" => $canViewContracts
+        ],
     ],
 
     "TECHNICAL" => [

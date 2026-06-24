@@ -12,8 +12,10 @@ require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
 require_once "../includes/date_helpers.php";
 require_once "../includes/contract_schema.php";
+require_once "../includes/contract_task_schema.php";
 
 ensureContractProjectSchema($mysqli);
+ensureContractTaskCompletionSchema($mysqli);
 
 if(!hasContractViewAccess($mysqli)){
     die("Access denied");
@@ -23,6 +25,7 @@ $role = $_SESSION['role'] ?? "UNKNOWN";
 $username = $_SESSION['username'];
 
 $canAddContract = hasContractAddAccess($mysqli);
+$canViewClaim = hasContractClaimViewAccess($mysqli);
 
 function contractEscape($value){
     return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
@@ -85,6 +88,7 @@ $hasContractTaskContractId = $hasContractTasksTable && contractColumnExists($mys
 $hasTaskIsCompleted = $hasContractTasksTable && contractColumnExists($mysqli, "contract_tasks", "is_completed");
 $hasTaskCompleted = $hasContractTasksTable && contractColumnExists($mysqli, "contract_tasks", "completed");
 $hasTaskStatus = $hasContractTasksTable && contractColumnExists($mysqli, "contract_tasks", "status");
+$hasTaskClaimAmount = $hasContractTasksTable && contractColumnExists($mysqli, "contract_tasks", "claim_amount");
 
 $canUseContractTasks = ($hasContractTasksTable && $hasContractTaskContractId);
 
@@ -113,6 +117,7 @@ END
 $taskJoinSql = "";
 $taskTotalSelect = "0 AS task_total";
 $taskDoneSelect = "0 AS task_done";
+$taskClaimSelect = "0 AS claim_total";
 $progressSelect = "NULL AS progress_percent";
 
 if($canUseContractTasks){
@@ -130,12 +135,17 @@ if($canUseContractTasks){
         $taskDoneSql = "SUM(0)";
     }
 
+    $taskClaimSql = ($hasTaskClaimAmount && $canViewClaim)
+        ? "SUM(COALESCE(claim_amount, 0))"
+        : "SUM(0)";
+
     $taskJoinSql = "
         LEFT JOIN (
             SELECT
                 contract_id,
                 COUNT(*) AS task_total,
-                $taskDoneSql AS task_done
+                $taskDoneSql AS task_done,
+                $taskClaimSql AS claim_total
             FROM contract_tasks
             GROUP BY contract_id
         ) task_summary ON task_summary.contract_id = pi.no
@@ -143,6 +153,7 @@ if($canUseContractTasks){
 
     $taskTotalSelect = "COALESCE(task_summary.task_total, 0) AS task_total";
     $taskDoneSelect = "COALESCE(task_summary.task_done, 0) AS task_done";
+    $taskClaimSelect = "COALESCE(task_summary.claim_total, 0) AS claim_total";
 
     $progressSelect = "
         CASE
@@ -333,6 +344,7 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
             $statusCase AS auto_status,
             $taskTotalSelect,
             $taskDoneSelect,
+            $taskClaimSelect,
             $progressSelect
         FROM project_inventory pi
         $taskJoinSql
@@ -387,6 +399,9 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
 
         $taskTotal = (int)($row['task_total'] ?? 0);
         $taskDone = (int)($row['task_done'] ?? 0);
+        $claimTotal = (float)($row['claim_total'] ?? 0);
+        $contractAmount = (float)($row['amount'] ?? 0);
+        $leftoverAmount = max(0, $contractAmount - $claimTotal);
         $progressPercent = $row['progress_percent'];
 
         if($taskTotal <= 0 || $progressPercent === null){
@@ -451,6 +466,34 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
         $formattedPoDate = contractFormatDate($row['po_date']);
         $displayProjectCode = contractProjectCodeDisplay($row['project_code'] ?? "");
 
+        $meta = [
+            "id" => $row['no'],
+            "projectcode" => $displayProjectCode,
+            "year" => $row['year_awarded'],
+            "project" => $row['project_name'],
+            "owner" => $row['project_owner'],
+            "projectmanager" => $row['project_manager'] ?? '',
+            "accountmanager" => $row['account_manager'] ?? '',
+            "createdby" => $created_by,
+            "canupload" => $canUploadThisContract ? "1" : "0",
+            "enduser" => $row['end_user'],
+            "contractno" => $row['contract_no'],
+            "service" => $row['service'],
+            "podate" => $formattedPoDate,
+            "start" => $formattedStart,
+            "end" => $formattedEnd,
+            "status" => $auto_status,
+            "amount" => $row['amount'],
+            "tasktotal" => $taskTotal,
+            "taskdone" => $taskDone,
+            "progresspercent" => $progressPercent
+        ];
+
+        if($canViewClaim){
+            $meta["claimamount"] = $claimTotal;
+            $meta["leftoveramount"] = $leftoverAmount;
+        }
+
         $data[] = [
             "no" => contractEscape($row['no']),
             "project_code" => contractEscape($displayProjectCode),
@@ -466,29 +509,7 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
             "end" => contractEscape($formattedEnd),
             "amount" => "RM " . number_format((float)$row['amount'], 2),
             "actions" => $actionsHtml,
-
-            "meta" => [
-                "id" => $row['no'],
-                "projectcode" => $displayProjectCode,
-                "year" => $row['year_awarded'],
-                "project" => $row['project_name'],
-                "owner" => $row['project_owner'],
-                "projectmanager" => $row['project_manager'] ?? '',
-                "accountmanager" => $row['account_manager'] ?? '',
-                "createdby" => $created_by,
-                "canupload" => $canUploadThisContract ? "1" : "0",
-                "enduser" => $row['end_user'],
-                "contractno" => $row['contract_no'],
-                "service" => $row['service'],
-                "podate" => $formattedPoDate,
-                "start" => $formattedStart,
-                "end" => $formattedEnd,
-                "status" => $auto_status,
-                "amount" => $row['amount'],
-                "tasktotal" => $taskTotal,
-                "taskdone" => $taskDone,
-                "progresspercent" => $progressPercent
-            ]
+            "meta" => $meta
         ];
     }
 
@@ -516,6 +537,7 @@ $csrfToken = ensureCsrfToken();
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Contracts</title>
 
 <link rel="icon" type="image/png" href="../image/logo.png">
@@ -548,19 +570,41 @@ body{
     border-radius:14px;
     box-shadow:0 4px 14px rgba(0,0,0,0.06);
     padding:0;
+    width:100%;
+    max-width:100%;
+    min-width:0;
     overflow:hidden;
 }
 
 .contract-table-responsive{
     width:100%;
     max-width:100%;
+    min-width:0;
     overflow-x:hidden !important;
+    overflow-y:hidden;
+}
+
+.contract-table-scroll{
+    display:block;
+    width:100%;
+    max-width:100%;
+    min-width:0;
+    overflow-x:auto !important;
+    overflow-y:hidden;
+    -webkit-overflow-scrolling:touch;
+    overscroll-behavior-x:contain;
 }
 
 #contractsTable{
     width:100% !important;
-    table-layout:fixed;
+    min-width:0 !important;
+    max-width:100% !important;
+    table-layout:fixed !important;
     margin-bottom:0 !important;
+}
+
+.contract-search-form{
+    width:100%;
 }
 
 #contractsTable thead{
@@ -610,12 +654,12 @@ body{
 
 #contractsTable tbody tr{
     cursor:pointer;
-    transition:0.2s ease;
+    transition:background-color 0.18s ease, box-shadow 0.18s ease;
 }
 
 #contractsTable tbody tr:hover{
     background:#fff3cd !important;
-    transform:scale(1.003);
+    box-shadow:inset 3px 0 0 #ffc107;
 }
 
 #contractsTable tbody tr.contract-focus-row{
@@ -650,7 +694,14 @@ body{
 #contractsTable_wrapper{
     width:100%;
     max-width:100%;
+    min-width:0;
     overflow-x:hidden !important;
+}
+
+#contractsTable_wrapper .dataTables_scroll,
+#contractsTable_wrapper .dataTables_scrollBody{
+    width:100%;
+    max-width:100%;
 }
 
 #contractsTable_wrapper .dataTables_info{
@@ -848,6 +899,10 @@ body{
     font-weight:600;
 }
 
+.task-claim-indicator{
+    color:#f59f00;
+}
+
 .contract-task-actions{
     display:flex;
     gap:6px;
@@ -916,9 +971,16 @@ body{
     justify-content:flex-end;
 }
 
+.contract-mobile-modal-footer{
+    display:none;
+}
+
 @media(max-width: 1200px){
     #contractsTable th,
     #contractsTable td{
+        white-space:normal !important;
+        word-break:break-word !important;
+        overflow-wrap:anywhere !important;
         font-size:11px;
         padding:7px 5px;
     }
@@ -930,27 +992,101 @@ body{
 }
 
 @media(max-width: 768px){
+    html,
+    body{
+        width:100%;
+        max-width:100%;
+        overflow-x:hidden !important;
+        overscroll-behavior-x:none;
+    }
+
+    body.modal-open{
+        width:100%;
+        max-width:100%;
+        overflow-x:hidden !important;
+    }
+
+    .topbar,
+    .main,
+    .main.expanded,
+    .contract-page-wrap{
+        width:100%;
+        max-width:100%;
+        min-width:0;
+        overflow-x:hidden !important;
+    }
 
     .main{
         padding-left:14px !important;
         padding-right:14px !important;
     }
 
-    .input-group{
+    .contract-search-form .input-group{
         flex-direction:column;
         gap:8px;
     }
 
-    .input-group input,
-    .input-group button{
+    .contract-search-form .input-group input,
+    .contract-search-form .input-group button{
         width:100%;
         border-radius:8px !important;
     }
 
+    .contract-search-form .form-control,
+    .contract-search-form .btn{
+        min-height:44px;
+    }
+
     .contract-table-card{
-        background:transparent;
-        box-shadow:none;
-        overflow:visible;
+        width:100%;
+        max-width:100%;
+        min-width:0;
+        background:#fff;
+        box-shadow:0 4px 14px rgba(0,0,0,0.06);
+        overflow-x:hidden !important;
+        overflow-y:hidden;
+    }
+
+    .contract-table-responsive{
+        display:block;
+        width:100%;
+        max-width:100%;
+        min-width:0;
+        overflow-x:hidden !important;
+        overflow-y:hidden;
+    }
+
+    .contract-table-scroll{
+        display:block;
+        width:100%;
+        max-width:100%;
+        min-width:0;
+        overflow-x:auto !important;
+        overflow-y:hidden;
+        -webkit-overflow-scrolling:touch;
+        overscroll-behavior-x:contain;
+        contain:paint;
+    }
+
+    #contractsTable_wrapper,
+    .contract-dt-footer{
+        width:100% !important;
+        max-width:100% !important;
+        min-width:0 !important;
+        overflow-x:hidden !important;
+    }
+
+    .contract-table-responsive .row,
+    .contract-table-responsive .dataTables_info,
+    .contract-table-responsive .dataTables_paginate{
+        max-width:100%;
+    }
+
+    .contract-table-responsive #contractsTable_wrapper{
+        width:100% !important;
+        min-width:0 !important;
+        max-width:100% !important;
+        overflow-x:hidden !important;
     }
 
     #contractsTable,
@@ -959,27 +1095,53 @@ body{
     #contractsTable th,
     #contractsTable td,
     #contractsTable tr{
-        display:block;
-        width:100% !important;
+        width:auto !important;
     }
 
     #contractsTable thead{
-        display:none;
+        display:table-header-group !important;
+    }
+
+    #contractsTable tbody{
+        display:table-row-group !important;
+    }
+
+    #contractsTable th{
+        display:table-cell !important;
+        min-width:110px;
+        max-width:none !important;
+        white-space:nowrap !important;
+        word-break:normal !important;
+        overflow-wrap:normal !important;
+    }
+
+    #contractsTable td{
+        display:table-cell !important;
+        min-width:110px;
+        max-width:260px !important;
+        white-space:normal !important;
+        word-break:break-word !important;
+        overflow-wrap:anywhere !important;
     }
 
     #contractsTable{
-        table-layout:auto;
-        border-collapse:separate !important;
-        border-spacing:0 12px !important;
+        display:table !important;
+        width:max-content !important;
+        min-width:1360px !important;
+        max-width:none !important;
+        table-layout:auto !important;
+        border-collapse:collapse !important;
+        border-spacing:0 !important;
     }
 
     #contractsTable tbody tr{
-        background:#fff;
-        border:1px solid #e5e7eb;
-        border-radius:14px;
-        padding:12px;
-        margin-bottom:12px;
-        box-shadow:0 4px 14px rgba(0,0,0,0.06);
+        display:table-row !important;
+        background:inherit;
+        border:0;
+        border-radius:0;
+        padding:0;
+        margin-bottom:0;
+        box-shadow:none;
         transform:none !important;
     }
 
@@ -989,45 +1151,60 @@ body{
     }
 
     #contractsTable td{
-        border:none !important;
-        border-bottom:1px solid #f1f1f1 !important;
-        padding:9px 2px !important;
-        max-width:100% !important;
-        font-size:14px;
+        display:table-cell !important;
+        border-bottom-width:1px !important;
+        padding:8px 6px !important;
+        max-width:260px !important;
+        min-width:110px;
+        font-size:12px;
+    }
+
+    #contractsTable .contract-col-project,
+    #contractsTable .contract-col-owner,
+    #contractsTable .contract-col-project-manager,
+    #contractsTable .contract-col-account-manager{
+        min-width:170px;
+    }
+
+    #contractsTable .contract-col-actions{
+        min-width:150px;
+    }
+
+    #contractsTable .contract-col-year,
+    #contractsTable .contract-col-start,
+    #contractsTable .contract-col-end,
+    #contractsTable .contract-col-status,
+    #contractsTable .contract-col-progress,
+    #contractsTable .contract-col-amount,
+    #contractsTable .contract-col-actions{
+        white-space:nowrap !important;
+        max-width:none !important;
+        word-break:normal !important;
+        overflow-wrap:normal !important;
     }
 
     #contractsTable td:last-child{
-        border-bottom:none !important;
+        border-bottom-width:1px !important;
     }
 
     #contractsTable td::before{
-        content:attr(data-label);
-        display:block;
-        font-weight:700;
-        color:#555;
-        margin-bottom:3px;
-        font-size:12px;
-        text-transform:uppercase;
-        letter-spacing:0.3px;
+        content:none !important;
+        display:none !important;
     }
 
     .contract-col-actions{
-        display:flex !important;
-        flex-wrap:wrap;
-        gap:6px;
-        align-items:center;
+        display:table-cell !important;
     }
 
     .contract-col-actions::before{
-        flex:0 0 100%;
-        width:100%;
+        content:none !important;
+        display:none !important;
     }
 
     .contract-action-btn{
-        flex:1 1 auto;
-        min-width:44px;
-        max-width:64px;
-        margin:0;
+        min-width:34px;
+        max-width:34px;
+        margin:2px;
     }
 
     .contract-task-item{
@@ -1050,6 +1227,67 @@ body{
     #contractsTable_wrapper .pagination{
         justify-content:center;
     }
+
+    .status-filter-menu{
+        max-width:calc(100vw - 24px);
+    }
+
+    #contractModal .modal-dialog,
+    #taskDocumentModal .modal-dialog{
+        width:calc(100% - 20px);
+        max-width:calc(100% - 20px);
+        margin:10px auto;
+    }
+
+    #contractModal .modal-content,
+    #taskDocumentModal .modal-content{
+        max-height:calc(100dvh - 20px);
+        overflow:hidden;
+    }
+
+    #contractModal .modal-header,
+    #taskDocumentModal .modal-header{
+        position:sticky;
+        top:0;
+        z-index:3;
+    }
+
+    #contractModal .modal-body,
+    #taskDocumentModal .modal-body{
+        overflow-x:hidden !important;
+        overflow-y:auto;
+        -webkit-overflow-scrolling:touch;
+        padding:16px !important;
+    }
+
+    #filesContainer,
+    #taskDocumentContainer{
+        max-width:100%;
+        overflow-x:auto;
+        -webkit-overflow-scrolling:touch;
+    }
+
+    #uploadSection .input-group,
+    .task-document-upload-box .input-group{
+        flex-direction:column;
+        gap:8px;
+    }
+
+    #uploadSection .input-group .form-control,
+    #uploadSection .input-group .btn,
+    .task-document-upload-box .input-group .form-control,
+    .task-document-upload-box .input-group .btn{
+        width:100%;
+        border-radius:8px !important;
+    }
+
+    .contract-mobile-modal-footer{
+        display:flex;
+        position:sticky;
+        bottom:0;
+        z-index:3;
+        background:#fff;
+    }
 }
 
 @media(max-width: 430px){
@@ -1059,6 +1297,10 @@ body{
 
     .contract-filter-hint{
         font-size:12px;
+    }
+
+    .contract-search-form .form-control{
+        font-size:13px;
     }
 
     #contractsTable td{
@@ -1083,7 +1325,7 @@ body{
 
 <h2 class="mb-3">Contracts</h2>
 
-<form method="GET" class="mb-0" onsubmit="return false;">
+<form method="GET" class="contract-search-form mb-0" onsubmit="return false;">
     <div class="input-group">
         <input
             type="text"
@@ -1193,7 +1435,17 @@ body{
 <div class="col-md-6"><b>Start</b><div id="m_start"></div></div>
 <div class="col-md-6"><b>End</b><div id="m_end"></div></div>
 <div class="col-md-6"><b>Status</b><div id="m_status"></div></div>
-<div class="col-md-6"><b>Amount</b><div id="m_amount"></div></div>
+<div class="col-md-6">
+    <b>Amount</b>
+    <div id="m_amount"></div>
+    <?php if($canViewClaim): ?>
+    <div id="m_claimSummary" class="mt-2 small d-none">
+        <div>Claim Amount: <span id="m_claimAmount" class="fw-bold text-warning"></span></div>
+        <div>Amount: <span id="m_originalAmount" class="fw-bold text-danger"></span></div>
+        <div>Leftover: <span id="m_leftoverAmount" class="fw-bold text-success"></span></div>
+    </div>
+    <?php endif; ?>
+</div>
 <div class="col-md-6"><b>Created By</b><div id="m_createdby"></div></div>
 
 </div>
@@ -1222,6 +1474,11 @@ body{
     </div>
 </div>
 
+</div>
+<div class="modal-footer contract-mobile-modal-footer">
+    <button type="button" class="btn btn-secondary w-100" data-bs-dismiss="modal">
+        Close
+    </button>
 </div>
 </div>
 </div>
@@ -1255,6 +1512,10 @@ body{
             <input type="date" id="editTaskEndDate" class="form-control">
         </div>
     </div>
+    <?php if($canViewClaim): ?>
+        <label class="form-label mt-3">Claim Amount</label>
+        <input type="number" id="editTaskClaimAmount" class="form-control" min="0" step="0.01" placeholder="0.00">
+    <?php endif; ?>
     <small class="text-muted d-block mt-2">
         Dated unfinished tasks appear in the Preventive Management dashboard bulletin until they are completed.
     </small>
@@ -1292,6 +1553,11 @@ body{
     </div>
 </div>
 
+<div class="modal-footer contract-mobile-modal-footer">
+    <button type="button" class="btn btn-secondary w-100" data-bs-dismiss="modal">
+        Close
+    </button>
+</div>
 </div>
 </div>
 </div>
@@ -1308,6 +1574,7 @@ let contractsTable;
 const contractCsrfToken = <?= json_encode($csrfToken) ?>;
 const focusContractId = <?= json_encode($focusContractId) ?>;
 const focusTaskId = <?= json_encode($focusTaskId) ?>;
+const canViewClaim = <?= json_encode($canViewClaim) ?>;
 const contractTaskDocumentMaxBytes = 100 * 1024 * 1024;
 
 function withContractCsrf(data){
@@ -1370,6 +1637,7 @@ function loadContractTasks(taskToFocus){
         contract_id: contractId
     }, function(data){
         $("#tasksContainer").html(data);
+        syncNewTaskEntryFields();
         focusContractTask(taskToFocus);
     }).fail(function(){
         $("#tasksContainer").html("<div class='alert alert-danger mb-0'>Failed to load checklist.</div>");
@@ -1378,15 +1646,193 @@ function loadContractTasks(taskToFocus){
 
 function reloadContractTableProgress(){
     if(typeof contractsTable !== "undefined" && contractsTable){
-        contractsTable.ajax.reload(null, false);
+        contractsTable.ajax.reload(function(){
+            refreshOpenContractFinancials();
+        }, false);
     }
+}
+
+function formatContractMoney(value){
+    value = parseFloat(value);
+
+    if(isNaN(value)){
+        value = 0;
+    }
+
+    return "RM " + value.toLocaleString('en-MY', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
+}
+
+function applyContractFinancialSummary(meta){
+    meta = meta || {};
+
+    let amount = parseFloat(meta.amount);
+
+    if(isNaN(amount)){
+        amount = 0;
+    }
+
+    if(!canViewClaim){
+        $('#m_amount').removeClass("d-none").text(formatContractMoney(amount));
+        return;
+    }
+
+    let claimAmount = parseFloat(meta.claimamount || 0);
+    let leftoverAmount = parseFloat(meta.leftoveramount || 0);
+
+    if(isNaN(claimAmount)){
+        claimAmount = 0;
+    }
+
+    if(isNaN(leftoverAmount)){
+        leftoverAmount = Math.max(0, amount - claimAmount);
+    }
+
+    if(claimAmount > 0){
+        $('#m_amount').addClass("d-none").text("");
+        $('#m_claimAmount').text(formatContractMoney(claimAmount));
+        $('#m_originalAmount').text(formatContractMoney(amount));
+        $('#m_leftoverAmount').text(formatContractMoney(leftoverAmount));
+        $('#m_claimSummary').removeClass("d-none");
+    } else {
+        $('#m_amount').removeClass("d-none").text(formatContractMoney(amount));
+        $('#m_claimSummary').addClass("d-none");
+        $('#m_claimAmount').text("");
+        $('#m_originalAmount').text("");
+        $('#m_leftoverAmount').text("");
+    }
+}
+
+function refreshOpenContractFinancials(){
+    if(typeof contractsTable === "undefined" || !contractsTable){
+        return;
+    }
+
+    let currentContractId = $("#m_id").val();
+
+    if(!currentContractId){
+        return;
+    }
+
+    contractsTable.rows().every(function(){
+        let rowData = this.data();
+
+        if(rowData && rowData.meta && String(rowData.meta.id) === String(currentContractId)){
+            applyContractFinancialSummary(rowData.meta);
+            return false;
+        }
+
+        return true;
+    });
+}
+
+function syncNewTaskEntryFields(){
+    let type = $("#newTaskType").val() || "";
+
+    $(".task-entry-field").addClass("d-none");
+
+    if(type === ""){
+        return;
+    }
+
+    $(".task-common-field").removeClass("d-none");
+
+    if(type === "preventive"){
+        $(".task-maintenance-field").removeClass("d-none");
+        $("#newTaskMaintenanceLabel").text("Preventive Maintenance Number");
+        return;
+    }
+
+    if(type === "corrective"){
+        $(".task-other-field").removeClass("d-none");
+        return;
+    }
+
+    if(type === "claim"){
+        $(".task-claim-field").removeClass("d-none");
+        return;
+    }
+
+    if(type === "other"){
+        $(".task-other-field").removeClass("d-none");
+    }
+}
+
+function resetNewTaskEntryDetails(){
+    $("#newTaskMaintenanceNumber").val("");
+    $("#newTaskClaimRemark").val("");
+    $("#newContractTaskText").val("");
+    $("#newTaskStartDate").val("");
+    $("#newTaskEndDate").val("");
+    $("#newTaskClaimAmount").val("");
+
+    let taskDocumentInput = document.getElementById("newTaskDocument");
+
+    if(taskDocumentInput){
+        taskDocumentInput.value = "";
+    }
+}
+
+function buildNewContractTaskText(){
+    let type = $("#newTaskType").val() || "";
+
+    if(type === ""){
+        alert("Please choose a checklist type.");
+        return "";
+    }
+
+    if(type === "preventive"){
+        let number = $("#newTaskMaintenanceNumber").val();
+
+        if(number === ""){
+            alert("Please choose the preventive maintenance number.");
+            return "";
+        }
+
+        return "Preventive Maintenance " + number;
+    }
+
+    if(type === "corrective"){
+        let remark = $("#newContractTaskText").val().trim();
+
+        if(remark === ""){
+            alert("Please enter the corrective maintenance remark.");
+            return "";
+        }
+
+        return "Corrective Maintenance - " + remark;
+    }
+
+    if(type === "claim"){
+        let remark = $("#newTaskClaimRemark").val().trim();
+
+        if(remark === ""){
+            alert("Please enter the claim remark.");
+            return "";
+        }
+
+        return "Claim - " + remark;
+    }
+
+    let taskText = $("#newContractTaskText").val().trim();
+
+    if(taskText === ""){
+        alert("Please enter the checklist item.");
+        return "";
+    }
+
+    return taskText;
 }
 
 function addContractTask(){
     let contractId = $("#m_id").val();
-    let taskText = $("#newContractTaskText").val().trim();
+    let taskType = $("#newTaskType").val() || "";
+    let taskText = buildNewContractTaskText();
     let taskStartDate = $("#newTaskStartDate").val();
     let taskEndDate = $("#newTaskEndDate").val();
+    let claimAmount = taskType === "claim" && canViewClaim ? (($("#newTaskClaimAmount").val() || "").trim()) : "";
     let taskDocumentInput = document.getElementById("newTaskDocument");
 
     if(!contractId){
@@ -1395,7 +1841,6 @@ function addContractTask(){
     }
 
     if(taskText === ""){
-        alert("Please enter a task.");
         return;
     }
 
@@ -1406,6 +1851,21 @@ function addContractTask(){
 
     if(taskStartDate !== "" && taskEndDate !== "" && taskEndDate < taskStartDate){
         alert("Task end date cannot be before the start date.");
+        return;
+    }
+
+    if(taskType === "claim" && canViewClaim && claimAmount === ""){
+        alert("Please enter the claim amount.");
+        return;
+    }
+
+    if(taskType === "claim" && canViewClaim && (isNaN(parseFloat(claimAmount)) || parseFloat(claimAmount) <= 0)){
+        alert("Claim amount must be more than zero.");
+        return;
+    }
+
+    if(claimAmount !== "" && (isNaN(parseFloat(claimAmount)) || parseFloat(claimAmount) < 0)){
+        alert("Claim amount must be a positive number.");
         return;
     }
 
@@ -1421,6 +1881,7 @@ function addContractTask(){
     formData.append("task_text", taskText);
     formData.append("task_start_date", taskStartDate);
     formData.append("task_end_date", taskEndDate);
+    formData.append("claim_amount", claimAmount);
 
     if(taskDocumentInput && taskDocumentInput.files.length > 0){
         formData.append("task_document", taskDocumentInput.files[0]);
@@ -1434,13 +1895,9 @@ function addContractTask(){
         contentType: false
     }).done(function(data){
         if(data.trim() === "success"){
-            $("#newContractTaskText").val("");
-            $("#newTaskStartDate").val("");
-            $("#newTaskEndDate").val("");
-
-            if(taskDocumentInput){
-                taskDocumentInput.value = "";
-            }
+            $("#newTaskType").val("");
+            resetNewTaskEntryDetails();
+            syncNewTaskEntryFields();
 
             loadContractTasks();
             reloadContractTableProgress();
@@ -1482,11 +1939,12 @@ function toggleContractTask(id, isCompleted, checkboxEl){
     });
 }
 
-function openEditTaskModal(id, taskText, taskStartDate, taskEndDate){
+function openEditTaskModal(id, taskText, taskStartDate, taskEndDate, claimAmount){
     $("#editTaskId").val(id);
     $("#editTaskText").val(taskText);
     $("#editTaskStartDate").val(taskStartDate || "");
     $("#editTaskEndDate").val(taskEndDate || "");
+    $("#editTaskClaimAmount").val(claimAmount || "");
 
     new bootstrap.Modal(document.getElementById("editTaskModal")).show();
 }
@@ -1496,6 +1954,7 @@ function updateContractTask(){
     let taskText = $("#editTaskText").val().trim();
     let taskStartDate = $("#editTaskStartDate").val();
     let taskEndDate = $("#editTaskEndDate").val();
+    let claimAmount = canViewClaim ? (($("#editTaskClaimAmount").val() || "").trim()) : "";
 
     if(taskText === ""){
         alert("Task cannot be empty.");
@@ -1512,12 +1971,23 @@ function updateContractTask(){
         return;
     }
 
-    $.post("../backend/update_contract_task.php", withContractCsrf({
+    if(claimAmount !== "" && (isNaN(parseFloat(claimAmount)) || parseFloat(claimAmount) < 0)){
+        alert("Claim amount must be a positive number.");
+        return;
+    }
+
+    let postData = {
         id: id,
         task_text: taskText,
         task_start_date: taskStartDate,
         task_end_date: taskEndDate
-    }), function(data){
+    };
+
+    if(canViewClaim){
+        postData.claim_amount = claimAmount;
+    }
+
+    $.post("../backend/update_contract_task.php", withContractCsrf(postData), function(data){
         if(data.trim() === "success"){
             bootstrap.Modal.getInstance(document.getElementById("editTaskModal")).hide();
             loadContractTasks();
@@ -1678,13 +2148,14 @@ $(document).ready(function(){
         serverSide: true,
         pageLength: 10,
         autoWidth: false,
+        scrollX: false,
         searching: true,
         search: {
             search: initialSearch
         },
         order: [[0, "asc"]],
         dom:
-            "t" +
+            "<'contract-table-scroll't>" +
             "<'contract-dt-footer d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3'ip>",
         language: {
             processing: "<span class='processing-text'><i class='fa fa-spinner fa-spin'></i> Loading contracts...</span>"
@@ -1841,12 +2312,30 @@ $(document).ready(function(){
         e.stopPropagation();
 
         let menu = $("#statusFilterMenu");
-        let offset = $(this).offset();
+        let isSmallScreen = window.matchMedia && window.matchMedia("(max-width: 768px)").matches;
 
-        menu.css({
-            top: offset.top + $(this).outerHeight() + 6,
-            left: offset.left
-        }).toggle();
+        if(isSmallScreen){
+            let rect = this.getBoundingClientRect();
+            let menuWidth = menu.outerWidth() || 180;
+            let left = Math.min(
+                Math.max(12, rect.left),
+                Math.max(12, window.innerWidth - menuWidth - 12)
+            );
+
+            menu.css({
+                position: "fixed",
+                top: rect.bottom + 6,
+                left: left
+            }).toggle();
+        } else {
+            let offset = $(this).offset();
+
+            menu.css({
+                position: "absolute",
+                top: offset.top + $(this).outerHeight() + 6,
+                left: offset.left
+            }).toggle();
+        }
     });
 
     $("#statusFilterMenu button").on("click", function(e){
@@ -1864,7 +2353,12 @@ $(document).ready(function(){
         $("#statusFilterMenu").hide();
     });
 
-    $(document).on("keypress", "#newContractTaskText", function(e){
+    $(document).on("change", "#newTaskType", function(){
+        resetNewTaskEntryDetails();
+        syncNewTaskEntryFields();
+    });
+
+    $(document).on("keypress", "#newContractTaskText, #newTaskClaimRemark", function(e){
         if(e.which === 13){
             e.preventDefault();
             addContractTask();
@@ -1912,18 +2406,7 @@ $(document).ready(function(){
             $('#m_status').html('<span class="badge bg-success">Active</span>');
         }
 
-        let amount = parseFloat(meta.amount);
-
-        if(!isNaN(amount)){
-            $('#m_amount').text(
-                "RM " + amount.toLocaleString('en-MY', {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2
-                })
-            );
-        } else {
-            $('#m_amount').text("RM 0.00");
-        }
+        applyContractFinancialSummary(meta);
 
         let canUploadThisContract = meta.canupload == 1;
         $('#uploadSection').toggle(canUploadThisContract);

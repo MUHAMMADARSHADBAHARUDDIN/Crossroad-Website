@@ -316,7 +316,7 @@ function contractReportStatusCase(){
     ";
 }
 
-function contractReportFetchContracts($mysqli, $reportType, $periodStart, $periodEnd, $projectId){
+function contractReportFetchContracts($mysqli, $reportType, $periodStart, $periodEnd, $projectId, $projectFilterType = "", $projectFilterValue = ""){
     $hasProjectManager = contractReportColumnExists($mysqli, "project_inventory", "project_manager");
     $hasAccountManager = contractReportColumnExists($mysqli, "project_inventory", "account_manager");
 
@@ -340,13 +340,30 @@ function contractReportFetchContracts($mysqli, $reportType, $periodStart, $perio
     }
 
     if($reportType === "project"){
-        if($projectId <= 0){
-            die("Please choose a project.");
-        }
+        $projectFilterType = $projectFilterType === "owner" ? "owner" : "project_code";
+        $projectFilterValue = trim((string)$projectFilterValue);
 
-        $whereParts[] = "pi.no = ?";
-        $types .= "i";
-        $params[] = $projectId;
+        if($projectFilterValue !== ""){
+            if($projectFilterType === "owner"){
+                $whereParts[] = "LOWER(TRIM(pi.project_owner)) = LOWER(TRIM(?))";
+                $types .= "s";
+                $params[] = $projectFilterValue;
+            } elseif(contractProjectCodeIsPlaceholder($projectFilterValue)){
+                $whereParts[] = "(pi.project_code IS NULL OR TRIM(pi.project_code) = '' OR pi.project_code REGEXP '^PRO/[[:space:]]*/0+$')";
+            } else {
+                $whereParts[] = "LOWER(TRIM(pi.project_code)) = LOWER(TRIM(?))";
+                $types .= "s";
+                $params[] = $projectFilterValue;
+            }
+        } else {
+            if($projectId <= 0){
+                die("Please choose a project code or owner.");
+            }
+
+            $whereParts[] = "pi.no = ?";
+            $types .= "i";
+            $params[] = $projectId;
+        }
     }
 
     $whereSql = "WHERE " . implode(" AND ", $whereParts);
@@ -775,6 +792,20 @@ function contractReportRenderPmTable($pdf, $rows){
 }
 
 $projectId = isset($_GET["project_id"]) ? (int)$_GET["project_id"] : 0;
+$projectFilterType = strtolower(trim((string)($_GET["project_filter_type"] ?? "")));
+$projectFilterType = $projectFilterType === "owner" ? "owner" : "project_code";
+$projectFilterValue = trim((string)($_GET["project_filter_value"] ?? ""));
+
+if($projectFilterValue === "" && isset($_GET["project_code"])){
+    $projectFilterType = "project_code";
+    $projectFilterValue = trim((string)$_GET["project_code"]);
+}
+
+if($projectFilterValue === "" && isset($_GET["owner"])){
+    $projectFilterType = "owner";
+    $projectFilterValue = trim((string)$_GET["owner"]);
+}
+
 $reportPeriod = contractReportResolvePeriod($mysqli);
 $periodStart = $reportPeriod["start"];
 $periodEnd = $reportPeriod["end"];
@@ -800,11 +831,18 @@ if($reportType === "pm"){
         $reportType === "custom_range" ? "all" : $reportType,
         $periodStart,
         $periodEnd,
-        $projectId
+        $projectId,
+        $projectFilterType,
+        $projectFilterValue
     );
 
-    if($reportType === "project" && !empty($contractRows)){
-        $reportName = "Project Contract Report - " . contractReportValue($contractRows[0]["project_name"] ?? "");
+    if($reportType === "project"){
+        if($projectFilterValue !== ""){
+            $reportName = ($projectFilterType === "owner" ? "Owner Contract Report - " : "Project Code Contract Report - ")
+                . contractReportValue($projectFilterValue);
+        } elseif(!empty($contractRows)){
+            $reportName = "Project Contract Report - " . contractReportValue($contractRows[0]["project_name"] ?? "");
+        }
     }
 }
 

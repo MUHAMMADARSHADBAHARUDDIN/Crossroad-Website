@@ -56,6 +56,7 @@ function allowedPermissionsList()
         "contracts_delete",
         "contracts_upload",
         "contracts_download",
+        "contracts_claim_view",
         "contracts_personal",
 
         /* Task permissions */
