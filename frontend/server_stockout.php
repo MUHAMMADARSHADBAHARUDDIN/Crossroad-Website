@@ -3,6 +3,7 @@ session_start();
 require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
 require_once "../includes/search_helper.php";
+require_once "../includes/inventory_report_schema.php";
 
 if(!isset($_SESSION['username'])){
     exit("No session");
@@ -11,6 +12,8 @@ if(!isset($_SESSION['username'])){
 if(!hasPermission($mysqli, "inventory_view")){
     die("Access denied");
 }
+
+ensureInventoryReportSchema($mysqli);
 
 function serverStockoutEscape($value){
     return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
@@ -356,7 +359,7 @@ html, body{ overflow-x:hidden !important; }
                    id="liveServerStockOutSearch"
                    name="search"
                    class="form-control"
-                   placeholder="Search by Server Name / Serial / Remark / Additional Information..."
+                   placeholder="Search by Server Name / Serial / Ticket / Remark / Additional Information..."
                    value="<?= serverStockoutEscape($search) ?>"
                    autocomplete="off">
             <button type="button" class="btn btn-warning">
@@ -373,7 +376,7 @@ html, body{ overflow-x:hidden !important; }
                 <tr>
                     <th>Server Name</th>
                     <th>Serial Number</th>
-                    <th>Original Remark</th>
+                    <th>Ticket</th>
                     <th>Action</th>
                 </tr>
             </thead>
@@ -388,20 +391,33 @@ html, body{ overflow-x:hidden !important; }
                 $statusText = trim((string)($row['status'] ?? ''));
                 $statusIndicatorClass = (strcasecmp($statusText, 'Okay') === 0) ? 'okay' : 'faulty';
                 $statusDisplayText = $statusText !== '' ? $statusText : '-';
+                $ticketNumber = trim((string)($row['ticket_number'] ?? ''));
                 $notesSearch = "";
 
                 foreach($notes as $note){
-                    $notesSearch .= " " . ($note['additional_information'] ?? '') . " " . ($note['added_by'] ?? '');
+                    $noteDate = !empty($note['added_at']) && strtotime($note['added_at'])
+                        ? date("d/m/y H:i", strtotime($note['added_at']))
+                        : "";
+
+                    $notesSearch .= " "
+                        . ($note['id'] ?? '') . " "
+                        . ($note['additional_information'] ?? '') . " "
+                        . ($note['added_by'] ?? '') . " "
+                        . ($note['added_at'] ?? '') . " "
+                        . $noteDate;
                 }
 
                 $searchText = strtolower(
+                    $id . ' ' .
                     ($row['server_name'] ?? '') . ' ' .
                     ($row['machine_type'] ?? '') . ' ' .
                     ($row['serial_number'] ?? '') . ' ' .
+                    $ticketNumber . ' ' .
                     ($row['location'] ?? '') . ' ' .
                     ($row['status'] ?? '') . ' ' .
                     ($row['remark'] ?? '') . ' ' .
                     ($row['tester'] ?? '') . ' ' .
+                    ($row['quantity'] ?? '') . ' ' .
                     ($row['stock_out_by'] ?? '') . ' ' .
                     ($row['stock_out_date'] ?? '') . ' ' .
                     $date . ' ' .
@@ -443,6 +459,11 @@ html, body{ overflow-x:hidden !important; }
                     <div class="stockout-detail-box">
                         <span>Date</span>
                         <strong><?= serverStockoutEscape(trim($date . ' ' . $time)) ?></strong>
+                    </div>
+
+                    <div class="stockout-detail-box">
+                        <span>Original Remark</span>
+                        <strong><?= nl2br(serverStockoutEscape(($row['remark'] ?? '') !== '' ? $row['remark'] : '-')) ?></strong>
                     </div>
                 </div>
 
@@ -497,7 +518,7 @@ html, body{ overflow-x:hidden !important; }
                     data-detail-id="server-stockout-detail-<?= $id ?>">
                     <td><?= serverStockoutEscape($row['server_name'] ?? '') ?></td>
                     <td><?= serverStockoutEscape($row['serial_number'] ?? '') ?></td>
-                    <td><?= serverStockoutEscape(($row['remark'] ?? '') !== '' ? $row['remark'] : '-') ?></td>
+                    <td><?= serverStockoutEscape($ticketNumber !== '' ? $ticketNumber : '-') ?></td>
 
                     <td>
                         <div class="action-buttons">

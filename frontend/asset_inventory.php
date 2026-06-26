@@ -10,10 +10,13 @@ if(!isset($_SESSION['username'])){
 require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
 require_once "../includes/search_helper.php";
+require_once "../includes/inventory_report_schema.php";
 
 if(!hasPermission($mysqli, "inventory_view")){
     die("Access denied");
 }
+
+ensureInventoryReportSchema($mysqli);
 
 $faviconVersion = file_exists("../image/logo.png") ? filemtime("../image/logo.png") : time();
 
@@ -61,7 +64,11 @@ SELECT
     MAX(date_received) AS date_received,
     COUNT(*) AS total_qty,
     MIN(created_by) AS created_by,
-    GROUP_CONCAT(serial_number SEPARATOR ' ') AS serial_numbers
+    GROUP_CONCAT(no SEPARATOR ' ') AS record_ids,
+    GROUP_CONCAT(serial_number SEPARATOR ' ') AS serial_numbers,
+    GROUP_CONCAT(location SEPARATOR ' ') AS locations,
+    GROUP_CONCAT(remark SEPARATOR ' ') AS remarks,
+    GROUP_CONCAT(received_by SEPARATOR ' ') AS received_by_values
 FROM asset_inventory
 GROUP BY part_number, brand, description
 ORDER BY part_number ASC
@@ -274,8 +281,12 @@ $searchText = strtolower(
     ($row['part_number'] ?? '') . ' ' .
     ($row['brand'] ?? '') . ' ' .
     ($row['description'] ?? '') . ' ' .
+    ($row['record_ids'] ?? '') . ' ' .
     ($row['serial_numbers'] ?? '') . ' ' .
+    ($row['locations'] ?? '') . ' ' .
+    ($row['remarks'] ?? '') . ' ' .
     ($row['created_by'] ?? '') . ' ' .
+    ($row['received_by_values'] ?? '') . ' ' .
     ($row['date_received'] ?? '') . ' ' .
     $formattedDateReceived . ' ' .
     ($row['total_qty'] ?? '')
@@ -344,13 +355,19 @@ onclick="viewSerial(<?= htmlspecialchars(json_encode($row['part_number'] ?? ''),
     <div class="modal-content">
 
       <div class="modal-header bg-primary text-white">
-        <h5 class="modal-title">Stock Out Remark</h5>
+        <h5 class="modal-title">Stock Out</h5>
         <button class="btn-close" data-bs-dismiss="modal"></button>
       </div>
 
       <div class="modal-body">
         <p id="selectedSerial"></p>
 
+        <div class="form-floating mb-3">
+          <input type="text" id="ticketNumberInput" class="form-control" placeholder="Ticket Number">
+          <label>Ticket Number</label>
+        </div>
+
+        <label for="remarkInput" class="form-label">Remark</label>
         <textarea id="remarkInput" class="form-control"
             placeholder="Enter remark..."></textarea>
       </div>
@@ -401,6 +418,7 @@ function openRemarkModal(id, serial){
     document.getElementById("selectedSerial").innerHTML =
         "Serial: <b>" + serial + "</b>";
 
+    document.getElementById("ticketNumberInput").value = "";
     document.getElementById("remarkInput").value = "";
 
     var modal = new bootstrap.Modal(document.getElementById('remarkModal'));
@@ -408,11 +426,13 @@ function openRemarkModal(id, serial){
 }
 
 function submitStockOut(){
+    let ticketNumber = document.getElementById("ticketNumberInput").value;
     let remark = document.getElementById("remarkInput").value;
 
     $.post("../backend/stock_out.php",
     {
         id: selectedId,
+        ticket_number: ticketNumber,
         remark: remark
     }, function(data){
         if(data.trim() === "success"){

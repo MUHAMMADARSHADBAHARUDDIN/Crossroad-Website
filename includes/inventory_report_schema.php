@@ -39,7 +39,9 @@ if(!function_exists('ensureInventoryReportSchema')){
 
         inventoryReportEnsureColumn($mysqli, "asset_inventory", "received_by", "varchar(100) DEFAULT NULL AFTER `created_by`");
         inventoryReportEnsureColumn($mysqli, "server_inventory", "received_by", "varchar(100) DEFAULT NULL AFTER `created_by`");
+        inventoryReportEnsureColumn($mysqli, "stock_out_history", "ticket_number", "varchar(100) DEFAULT NULL AFTER `serial_number`");
         inventoryReportEnsureColumn($mysqli, "stock_out_history", "quantity", "int(11) DEFAULT 1 AFTER `remark`");
+        inventoryReportEnsureColumn($mysqli, "server_stockout_history", "ticket_number", "varchar(100) DEFAULT NULL AFTER `serial_number`");
         inventoryReportEnsureColumn($mysqli, "server_stockout_history", "quantity", "int(11) DEFAULT 1 AFTER `tester`");
 
         if(!inventoryReportTableExists($mysqli, "asset_stockin_history")){

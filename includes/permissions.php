@@ -357,6 +357,19 @@ if(!function_exists('hasContractClaimViewAccess')){
 }
 
 /* =========================================================
+   CONTRACT MASTER BUDGET ACCESS
+========================================================= */
+if(!function_exists('hasContractMasterBudgetAccess')){
+    function hasContractMasterBudgetAccess($mysqli){
+
+        return (
+            hasPermission($mysqli, "contracts_full") ||
+            hasPermission($mysqli, "contracts_master_budget")
+        );
+    }
+}
+
+/* =========================================================
    CONTRACT TASK ADD ACCESS
    ✅ contracts_task is kept for existing function compatibility
    ✅ contracts_task_add also supported if you use it later

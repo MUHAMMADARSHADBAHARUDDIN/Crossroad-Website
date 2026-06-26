@@ -103,32 +103,6 @@ function contractAddFetchDistinctValues($mysqli, $columnName){
     return $values;
 }
 
-function contractAddFetchProjectCodeMiddles($mysqli){
-    $values = [];
-    $result = $mysqli->query("
-        SELECT DISTINCT project_code
-        FROM project_inventory
-        WHERE project_code IS NOT NULL
-          AND TRIM(project_code) <> ''
-        ORDER BY project_code ASC
-        LIMIT 500
-    ");
-
-    if($result){
-        while($row = $result->fetch_assoc()){
-            $middle = contractProjectCodeMiddleFromCode($row['project_code'] ?? "");
-
-            if($middle !== "" && !in_array($middle, $values, true)){
-                $values[] = $middle;
-            }
-        }
-    }
-
-    sort($values, SORT_NATURAL | SORT_FLAG_CASE);
-
-    return $values;
-}
-
 function contractAddDropdownValue($fieldName){
     $selected = trim((string)($_POST[$fieldName . '_select'] ?? ""));
 
@@ -139,10 +113,81 @@ function contractAddDropdownValue($fieldName){
     return trim((string)$selected);
 }
 
+function contractAddTitleCase($value){
+    $value = trim(preg_replace('/\s+/', ' ', (string)($value ?? "")));
+
+    if($value === ""){
+        return "";
+    }
+
+    return preg_replace_callback('/[A-Za-z][A-Za-z0-9]*/', function($matches){
+        return ucfirst(strtolower($matches[0]));
+    }, $value);
+}
+
+function contractAddNormalizeOptionKey($value){
+    $value = strtoupper((string)($value ?? ""));
+    $value = preg_replace('/[^A-Z0-9]+/', ' ', $value);
+    return trim(preg_replace('/\s+/', ' ', $value));
+}
+
+function contractAddFetchEndUserOptions($mysqli){
+    $options = contractProjectCodeCanonicalEndUsers();
+    $extraOptions = [];
+    $seen = [];
+
+    foreach($options as $prefix => $label){
+        $seen["PREFIX:" . $prefix] = true;
+    }
+
+    $result = $mysqli->query("
+        SELECT DISTINCT end_user AS value
+        FROM project_inventory
+        WHERE end_user IS NOT NULL
+          AND TRIM(end_user) <> ''
+        ORDER BY end_user ASC
+        LIMIT 500
+    ");
+
+    if($result){
+        while($row = $result->fetch_assoc()){
+            $value = trim((string)($row['value'] ?? ""));
+
+            if($value === ""){
+                continue;
+            }
+
+            $prefix = contractProjectCodeFindKnownPrefix($value);
+
+            if($prefix !== ""){
+                if(!isset($seen["PREFIX:" . $prefix])){
+                    $options[$prefix] = contractProjectCodeCanonicalEndUser($value);
+                    $seen["PREFIX:" . $prefix] = true;
+                }
+
+                continue;
+            }
+
+            $key = contractAddNormalizeOptionKey($value);
+
+            if($key === "" || isset($seen["RAW:" . $key])){
+                continue;
+            }
+
+            $seen["RAW:" . $key] = true;
+            $extraOptions[] = contractAddTitleCase($value);
+        }
+    }
+
+    natcasesort($extraOptions);
+
+    return array_merge(array_values($options), array_values($extraOptions));
+}
+
 $nextContractNo = getNextContractNo($mysqli);
-$projectCodeMiddleOptions = contractAddFetchProjectCodeMiddles($mysqli);
 $projectNameOptions = contractAddFetchDistinctValues($mysqli, "project_name");
 $projectOwnerOptions = contractAddFetchDistinctValues($mysqli, "project_owner");
+$endUserOptions = contractAddFetchEndUserOptions($mysqli);
 
 if(isset($_POST['submit'])){
 
@@ -153,27 +198,51 @@ if(isset($_POST['submit'])){
     */
     $no = getNextContractNo($mysqli);
 
-    $year_awarded = intval($_POST['year_awarded']);
-    $project_name = contractAddDropdownValue("project_name");
-    $project_owner = contractAddDropdownValue("project_owner");
-    $project_manager = trim($_POST['project_manager']);
-    $account_manager = trim($_POST['account_manager']);
-    $end_user = trim($_POST['end_user']);
+    $project_name = contractAddTitleCase(contractAddDropdownValue("project_name"));
+    $project_owner = contractAddTitleCase(contractAddDropdownValue("project_owner"));
+    $project_manager = contractAddTitleCase($_POST['project_manager'] ?? "");
+    $account_manager = contractAddTitleCase($_POST['account_manager'] ?? "");
+    $end_user = contractAddDropdownValue("end_user");
+    $endUserIsOther = ($_POST['end_user_select'] ?? "") === "__other__";
+
+    if($endUserIsOther){
+        $end_user = contractAddTitleCase($end_user);
+        $end_user = contractProjectCodeCanonicalEndUser($end_user);
+    } else {
+        $end_user = contractProjectCodeCanonicalEndUser($end_user);
+    }
     $contract_no = trim($_POST['contract_no']);
-    $project_code_middle = contractProjectCodeMiddleNormalize(contractAddDropdownValue("project_code_middle"));
-    $service = trim($_POST['service']);
+    $service = contractAddTitleCase($_POST['service'] ?? "");
     $po_date = appNormalizeDateInput($_POST['po_date'] ?? "");
     $contract_start = appNormalizeDateInput($_POST['contract_start'] ?? "");
     $contract_end = appNormalizeDateInput($_POST['contract_end'] ?? "");
     $amount = floatval($_POST['amount']);
+    $year_awarded = $contract_start !== null ? (int)date("Y", strtotime($contract_start)) : null;
 
-    if($project_code_middle === ""){
-        echo "<script>alert('Please enter the project code middle part, for example IWK or PERKESO.'); window.history.back();</script>";
+    if($endUserIsOther){
+        $project_code_middle = $_POST['project_code_middle'] ?? "";
+    } else {
+        $project_code_middle = contractProjectCodePrefix("", $end_user, "", "");
+    }
+
+    $project_code_middle = contractProjectCodeMiddleNormalize($project_code_middle);
+
+    if($end_user === ""){
+        echo "<script>alert('Please select an end user or choose Others to enter a new one.'); window.history.back();</script>";
         exit();
     }
 
     if($project_name === ""){
         echo "<script>alert('Please select a project name or choose Others to enter a new one.'); window.history.back();</script>";
+        exit();
+    }
+
+    if($project_code_middle === ""){
+        $projectCodeMessage = $endUserIsOther
+            ? "Please enter the Project Code Middle for the new end user."
+            : "Unable to generate Project Code Middle from the selected end user.";
+
+        echo "<script>alert('" . $projectCodeMessage . "'); window.history.back();</script>";
         exit();
     }
 
@@ -265,7 +334,6 @@ Contract No: $no
 Project Code Middle: $project_code_middle
 Generated Project Code: $project_code
 Project Name: $project_name
-Year Awarded: $year_awarded
 Project Owner: $project_owner
 Project Manager: $project_manager
 Account Manager: $account_manager
@@ -361,69 +429,8 @@ Time: $time";
 
 <form method="POST" class="form-card">
 
-<!-- FIRST ROW: PROJECT CODE + YEAR AWARDED -->
+<!-- FIRST ROW: DATES -->
 <div class="form-section-title">Contract Basic Information</div>
-
-<div class="row g-3 mb-3">
-
-<div class="col-md-6">
-    <div class="form-floating">
-        <select
-            name="project_code_middle_select"
-            id="projectCodeMiddleSelect"
-            class="form-select contract-other-select"
-            data-other-target="projectCodeMiddleOtherWrap"
-            data-other-required="1"
-            required
-        >
-            <option value="">Select Project Code Middle</option>
-            <?php foreach($projectCodeMiddleOptions as $middle): ?>
-                <option value="<?= contractAddEscape($middle) ?>"><?= contractAddEscape($middle) ?></option>
-            <?php endforeach; ?>
-            <option value="__other__">Others</option>
-        </select>
-        <label>Project Code Middle</label>
-    </div>
-    <div id="projectCodeMiddleOtherWrap" class="form-floating contract-other-field mt-2">
-        <input
-            type="text"
-            name="project_code_middle_other"
-            id="projectCodeMiddleOther"
-            class="form-control"
-            placeholder="IWK"
-        >
-        <label>New Project Code Middle</label>
-    </div>
-    <div class="auto-no-note">
-        Choose an existing middle part or select Others to add a new one. The system will save it as PRO/IWK/001, PRO/IWK/002, and so on.
-    </div>
-</div>
-
-<div class="col-md-6">
-    <div class="form-floating">
-        <select name="year_awarded" class="form-control" required>
-            <option value="">Select Year Awarded</option>
-
-            <?php
-            $currentYear = (int)date("Y");
-            $startYear = $currentYear + 5;
-            $endYear = 1990;
-
-            for($year = $startYear; $year >= $endYear; $year--):
-            ?>
-                <option value="<?= $year ?>" <?= $year === $currentYear ? 'selected' : '' ?>>
-                    <?= $year ?>
-                </option>
-            <?php endfor; ?>
-        </select>
-        <label>Year Awarded</label>
-    </div>
-</div>
-
-</div>
-
-<!-- SECOND ROW: PO DATE + START DATE + END DATE -->
-<div class="form-section-title">Important Dates</div>
 
 <div class="row g-3 mb-3">
 
@@ -477,10 +484,61 @@ Time: $time";
         <textarea
             name="project_name_other"
             id="projectNameOther"
-            class="form-control project-name-box"
+            class="form-control project-name-box contract-title-case"
             placeholder="Project Name"
         ></textarea>
         <label>New Project Name</label>
+    </div>
+</div>
+
+</div>
+
+<div class="row g-3 mb-3">
+
+<div class="col-md-6">
+    <div class="form-floating">
+        <select
+            name="end_user_select"
+            id="endUserSelect"
+            class="form-select contract-other-select"
+            data-other-target="endUserOtherWrap"
+            data-other-required="1"
+            required
+        >
+            <option value="">Select End User</option>
+            <?php foreach($endUserOptions as $endUserOption): ?>
+                <option value="<?= contractAddEscape($endUserOption) ?>"><?= contractAddEscape($endUserOption) ?></option>
+            <?php endforeach; ?>
+            <option value="__other__">Others</option>
+        </select>
+        <label>End User</label>
+    </div>
+    <div id="endUserOtherWrap" class="form-floating contract-other-field mt-2">
+        <input
+            type="text"
+            name="end_user_other"
+            id="endUserOther"
+            class="form-control contract-title-case"
+            placeholder="End User"
+        >
+        <label>New End User</label>
+    </div>
+</div>
+
+<div class="col-md-6">
+    <div class="form-floating">
+        <input
+            type="text"
+            name="project_code_middle"
+            id="projectCodeMiddlePreview"
+            class="form-control"
+            placeholder="Project Code Middle"
+            readonly
+        >
+        <label>Project Code Middle</label>
+    </div>
+    <div class="auto-no-note">
+        This is generated for listed End Users. Choose Others to type a custom middle, for example CSSB.
     </div>
 </div>
 
@@ -508,23 +566,18 @@ Time: $time";
 <label>Project Owner</label>
 </div>
 <div id="projectOwnerOtherWrap" class="form-floating contract-other-field mt-2">
-<input type="text" name="project_owner_other" id="projectOwnerOther" class="form-control" placeholder="Project Owner">
+<input type="text" name="project_owner_other" id="projectOwnerOther" class="form-control contract-title-case" placeholder="Project Owner">
 <label>New Project Owner</label>
 </div>
 
 <div class="form-floating mt-3">
-<input type="text" name="project_manager" class="form-control">
+<input type="text" name="project_manager" class="form-control contract-title-case">
 <label>Project Manager</label>
 </div>
 
 <div class="form-floating mt-3">
-<input type="text" name="account_manager" class="form-control">
+<input type="text" name="account_manager" class="form-control contract-title-case">
 <label>Account Manager</label>
-</div>
-
-<div class="form-floating mt-3">
-<input type="text" name="end_user" class="form-control">
-<label>End User</label>
 </div>
 
 </div>
@@ -537,7 +590,7 @@ Time: $time";
 </div>
 
 <div class="form-floating mt-3">
-<input type="text" name="service" class="form-control">
+<input type="text" name="service" class="form-control contract-title-case">
 <label>Service</label>
 </div>
 
@@ -564,6 +617,203 @@ Time: $time";
 <?php include "layout/footer.php"; ?>
 
 <script>
+const projectCodeKnownPatterns = <?= json_encode(contractProjectCodeKnownPatterns()) ?>;
+const projectCodeCanonicalEndUsers = <?= json_encode(contractProjectCodeCanonicalEndUsers()) ?>;
+const projectCodeSkipTokens = [
+    "AND", "THE", "FOR", "SDN", "BHD", "PT", "IT", "ICT", "ITD",
+    "NAS", "SAN", "DR", "DC", "DATA", "CENTER", "CENTRE",
+    "SUPPLY", "DELIVERY", "INSTALL", "TEST", "COMMISSION",
+    "SERVICE", "SERVICES", "MAINTENANCE", "SUPPORT", "LICENSE",
+    "RENEWAL", "PEMBAHARUAN", "PERKHIDMATAN", "PENYENGGARAAN",
+    "SISTEM", "PROJEK", "PROJECT", "CONTRACT"
+];
+
+function normalizeProjectCodeText(value){
+    return String(value || "")
+        .toUpperCase()
+        .replace(/[^A-Z0-9]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function findKnownProjectCodePrefix(value){
+    var normalized = normalizeProjectCodeText(value);
+
+    if(normalized === ""){
+        return "";
+    }
+
+    for(var prefix in projectCodeKnownPatterns){
+        if(!Object.prototype.hasOwnProperty.call(projectCodeKnownPatterns, prefix)){
+            continue;
+        }
+
+        var aliases = projectCodeKnownPatterns[prefix] || [];
+
+        for(var i = 0; i < aliases.length; i++){
+            var alias = normalizeProjectCodeText(aliases[i]);
+
+            if(alias !== "" && (" " + normalized + " ").indexOf(" " + alias + " ") !== -1){
+                return prefix;
+            }
+        }
+    }
+
+    return "";
+}
+
+function buildProjectCodeMiddle(value){
+    var knownPrefix = findKnownProjectCodePrefix(value);
+
+    if(knownPrefix !== ""){
+        return knownPrefix;
+    }
+
+    var normalized = normalizeProjectCodeText(value);
+
+    if(normalized === ""){
+        return "";
+    }
+
+    var tokens = normalized.split(" ");
+
+    for(var i = 0; i < tokens.length; i++){
+        var token = tokens[i];
+
+        if(token.length >= 3 && token.length <= 12 && !projectCodeSkipTokens.includes(token) && !/^\d+$/.test(token)){
+            return token.slice(0, 12);
+        }
+    }
+
+    var initials = "";
+
+    for(var j = 0; j < tokens.length; j++){
+        var word = tokens[j];
+
+        if(word === "" || projectCodeSkipTokens.includes(word) || /^\d+$/.test(word)){
+            continue;
+        }
+
+        initials += word.charAt(0);
+
+        if(initials.length >= 5){
+            break;
+        }
+    }
+
+    if(initials.length >= 2){
+        return initials.slice(0, 12);
+    }
+
+    for(var k = 0; k < tokens.length; k++){
+        var fallback = tokens[k];
+
+        if(fallback !== "" && !projectCodeSkipTokens.includes(fallback) && !/^\d+$/.test(fallback)){
+            return fallback.slice(0, 12);
+        }
+    }
+
+    return "";
+}
+
+function normalizeProjectCodeMiddleValue(value){
+    value = String(value || "")
+        .toUpperCase()
+        .replace(/\\/g, "/")
+        .trim();
+
+    var fullCodeMatch = value.match(/^PRO\/([^\/]*)\/\d+$/);
+
+    if(fullCodeMatch){
+        value = fullCodeMatch[1];
+    }
+
+    return value
+        .replace(/\s+/g, "")
+        .replace(/[^A-Z0-9_-]+/g, "-")
+        .replace(/^[-_]+|[-_]+$/g, "")
+        .slice(0, 36);
+}
+
+function canonicalEndUserValue(value){
+    var prefix = findKnownProjectCodePrefix(value);
+
+    if(prefix !== "" && projectCodeCanonicalEndUsers[prefix]){
+        return projectCodeCanonicalEndUsers[prefix];
+    }
+
+    return value;
+}
+
+function selectedEndUserValue(){
+    var select = document.getElementById("endUserSelect");
+    var other = document.getElementById("endUserOther");
+
+    if(!select){
+        return "";
+    }
+
+    if(select.value === "__other__"){
+        return other ? other.value : "";
+    }
+
+    return select.value;
+}
+
+function syncProjectCodeMiddlePreview(){
+    var preview = document.getElementById("projectCodeMiddlePreview");
+    var select = document.getElementById("endUserSelect");
+
+    if(!preview){
+        return;
+    }
+
+    var allowManual = select && select.value === "__other__";
+    preview.readOnly = !allowManual;
+    preview.required = !!allowManual;
+
+    if(!allowManual){
+        projectCodeMiddleEdited = false;
+        preview.value = buildProjectCodeMiddle(selectedEndUserValue());
+        return;
+    }
+
+    if(!projectCodeMiddleEdited){
+        preview.value = buildProjectCodeMiddle(selectedEndUserValue());
+    }
+}
+
+function titleCaseContractText(value){
+    return String(value || "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .replace(/[A-Za-z][A-Za-z0-9]*/g, function(word){
+            return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+        });
+}
+
+function normalizeContractTitleCaseField(field){
+    var normalized = titleCaseContractText(field.value);
+
+    if(field.id === "endUserOther"){
+        normalized = canonicalEndUserValue(normalized);
+    }
+
+    if(field.value !== normalized){
+        field.value = normalized;
+    }
+
+    if(field.id === "endUserOther"){
+        syncProjectCodeMiddlePreview();
+    }
+}
+
+document.querySelectorAll(".contract-title-case").forEach(function(field){
+    field.addEventListener("blur", function(){
+        normalizeContractTitleCaseField(field);
+    });
+});
+
 document.querySelectorAll(".contract-other-select").forEach(function(select){
     function syncOtherField(){
         var target = document.getElementById(select.dataset.otherTarget || "");
@@ -590,6 +840,56 @@ document.querySelectorAll(".contract-other-select").forEach(function(select){
     select.addEventListener("change", syncOtherField);
     syncOtherField();
 });
+
+var endUserSelect = document.getElementById("endUserSelect");
+var endUserOther = document.getElementById("endUserOther");
+var projectCodeMiddlePreview = document.getElementById("projectCodeMiddlePreview");
+var projectCodeMiddleEdited = false;
+
+if(endUserSelect){
+    endUserSelect.addEventListener("change", function(){
+        projectCodeMiddleEdited = false;
+        syncProjectCodeMiddlePreview();
+    });
+}
+
+if(endUserOther){
+    endUserOther.addEventListener("input", syncProjectCodeMiddlePreview);
+}
+
+if(projectCodeMiddlePreview){
+    projectCodeMiddlePreview.addEventListener("input", function(){
+        if(!projectCodeMiddlePreview.readOnly){
+            projectCodeMiddleEdited = true;
+        }
+    });
+
+    projectCodeMiddlePreview.addEventListener("blur", function(){
+        if(!projectCodeMiddlePreview.readOnly){
+            projectCodeMiddlePreview.value = normalizeProjectCodeMiddleValue(projectCodeMiddlePreview.value);
+        }
+    });
+}
+
+var contractAddForm = document.querySelector("form.form-card");
+
+if(contractAddForm){
+    contractAddForm.addEventListener("submit", function(){
+        document.querySelectorAll(".contract-title-case").forEach(function(field){
+            normalizeContractTitleCaseField(field);
+        });
+
+        if(projectCodeMiddlePreview){
+            if(projectCodeMiddlePreview.readOnly){
+                syncProjectCodeMiddlePreview();
+            } else {
+                projectCodeMiddlePreview.value = normalizeProjectCodeMiddleValue(projectCodeMiddlePreview.value);
+            }
+        }
+    });
+}
+
+syncProjectCodeMiddlePreview();
 </script>
 
 </body>

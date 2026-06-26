@@ -23,6 +23,7 @@ $isRealAdmin = ($role === "Administrator");
 */
 $canViewUsers = hasPermission($mysqli, "users_view");
 $canViewContracts = hasPermission($mysqli, "contracts_view");
+$canViewMasterBudget = hasContractMasterBudgetAccess($mysqli);
 $canViewInventory = hasPermission($mysqli, "inventory_view");
 
 $menu = [
@@ -53,7 +54,7 @@ $menu = [
             "name" => "Master Budget",
             "icon" => "fa-wallet",
             "link" => "master_budget.php",
-            "show" => $canViewContracts
+            "show" => $canViewMasterBudget
         ],
     ],
 

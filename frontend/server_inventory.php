@@ -3,6 +3,7 @@ session_start();
 require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
 require_once "../includes/search_helper.php";
+require_once "../includes/inventory_report_schema.php";
 
 if(!isset($_SESSION['username'])){
     header("Location: index.html");
@@ -12,6 +13,8 @@ if(!isset($_SESSION['username'])){
 if(!hasPermission($mysqli, "inventory_view")){
     die("Access denied");
 }
+
+ensureInventoryReportSchema($mysqli);
 
 $faviconVersion = file_exists("../image/logo.png") ? filemtime("../image/logo.png") : time();
 
@@ -42,10 +45,14 @@ SELECT
     COUNT(*) AS total_qty,
     SUM(CASE WHEN status = 'Okay' THEN 1 ELSE 0 END) AS ok_qty,
     SUM(CASE WHEN status = 'Faulty' THEN 1 ELSE 0 END) AS faulty_qty,
+    GROUP_CONCAT(no SEPARATOR ' ') AS record_ids,
     GROUP_CONCAT(serial_number SEPARATOR ' ') AS serial_numbers,
     GROUP_CONCAT(location SEPARATOR ' ') AS locations,
     GROUP_CONCAT(status SEPARATOR ' ') AS statuses,
+    GROUP_CONCAT(remark SEPARATOR ' ') AS remarks,
     GROUP_CONCAT(tester SEPARATOR ' ') AS testers,
+    GROUP_CONCAT(received_by SEPARATOR ' ') AS received_by_values,
+    GROUP_CONCAT(created_by SEPARATOR ' ') AS created_by_values,
     GROUP_CONCAT(date_testing SEPARATOR ' ') AS testing_dates
 FROM server_inventory
 GROUP BY server_name, machine_type, brand
@@ -281,10 +288,14 @@ $searchText = strtolower(
     ($row['server_name'] ?? '') . ' ' .
     ($row['machine_type'] ?? '') . ' ' .
     ($row['brand'] ?? '') . ' ' .
+    ($row['record_ids'] ?? '') . ' ' .
     ($row['serial_numbers'] ?? '') . ' ' .
     ($row['locations'] ?? '') . ' ' .
     ($row['statuses'] ?? '') . ' ' .
+    ($row['remarks'] ?? '') . ' ' .
     ($row['testers'] ?? '') . ' ' .
+    ($row['received_by_values'] ?? '') . ' ' .
+    ($row['created_by_values'] ?? '') . ' ' .
     ($row['testing_dates'] ?? '') . ' ' .
     $statusSearchText . ' ' .
     ($row['total_qty'] ?? '')
@@ -350,6 +361,12 @@ onclick="viewServer(<?= htmlspecialchars(json_encode($row['server_name'] ?? ''),
       <div class="modal-body">
         <p id="serverSelectedSerial"></p>
 
+        <div class="form-floating mb-3">
+          <input type="text" id="serverTicketNumberInput" class="form-control" placeholder="Ticket Number">
+          <label>Ticket Number</label>
+        </div>
+
+        <label for="serverRemarkInput" class="form-label">Remark</label>
         <textarea id="serverRemarkInput" class="form-control"
             placeholder="Enter stock out reason..."></textarea>
       </div>
@@ -401,6 +418,7 @@ function openServerRemarkModal(id, serial){
     document.getElementById("serverSelectedSerial").innerHTML =
         "Serial: <b>" + serial + "</b>";
 
+    document.getElementById("serverTicketNumberInput").value = "";
     document.getElementById("serverRemarkInput").value = "";
 
     var modal = new bootstrap.Modal(document.getElementById('serverRemarkModal'));
@@ -408,11 +426,13 @@ function openServerRemarkModal(id, serial){
 }
 
 function submitServerStockOut(){
+    let ticketNumber = document.getElementById("serverTicketNumberInput").value;
     let remark = document.getElementById("serverRemarkInput").value;
 
     $.post("../backend/server_stock_out.php",
     {
         id: serverSelectedId,
+        ticket_number: ticketNumber,
         remark: remark
     }, function(data){
         if(data.trim() == "success"){

@@ -11,7 +11,7 @@ require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
 require_once "../includes/project_dashboard_data.php";
 
-if(!hasPermission($mysqli, "contracts_view")){
+if(!hasContractMasterBudgetAccess($mysqli)){
     die("Access denied");
 }
 

@@ -3,6 +3,7 @@ session_start();
 require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
 require_once "../includes/search_helper.php";
+require_once "../includes/inventory_report_schema.php";
 
 if(!isset($_SESSION['username'])){
     exit("No session");
@@ -11,6 +12,8 @@ if(!isset($_SESSION['username'])){
 if(!hasPermission($mysqli, "inventory_view")){
     die("Access denied");
 }
+
+ensureInventoryReportSchema($mysqli);
 
 function stockoutEscape($value){
     return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
@@ -327,7 +330,7 @@ html, body{ overflow-x:hidden !important; }
                    id="liveStockOutSearch"
                    name="search"
                    class="form-control"
-                   placeholder="Search by Part Number / Serial / Remark / Additional Information..."
+                   placeholder="Search by Part Number / Serial / Ticket / Remark / Additional Information..."
                    value="<?= stockoutEscape($search) ?>"
                    autocomplete="off">
             <button type="button" class="btn btn-warning">
@@ -344,7 +347,7 @@ html, body{ overflow-x:hidden !important; }
                 <tr>
                     <th>Part Number</th>
                     <th>Serial Number</th>
-                    <th>Original Remark</th>
+                    <th>Ticket</th>
                     <th>Action</th>
                 </tr>
             </thead>
@@ -358,17 +361,30 @@ html, body{ overflow-x:hidden !important; }
                     $rawDate = $row['stock_out_date'] ?? '';
                     $date = (!empty($rawDate) && strtotime($rawDate)) ? date("d/m/y", strtotime($rawDate)) : "-";
                     $time = (!empty($rawDate) && strtotime($rawDate)) ? date("H:i:s", strtotime($rawDate)) : "";
+                    $ticketNumber = trim((string)($row['ticket_number'] ?? ''));
                     $notesSearch = "";
 
                     foreach($notes as $note){
-                        $notesSearch .= " " . ($note['additional_information'] ?? '') . " " . ($note['added_by'] ?? '');
+                        $noteDate = !empty($note['added_at']) && strtotime($note['added_at'])
+                            ? date("d/m/y H:i", strtotime($note['added_at']))
+                            : "";
+
+                        $notesSearch .= " "
+                            . ($note['id'] ?? '') . " "
+                            . ($note['additional_information'] ?? '') . " "
+                            . ($note['added_by'] ?? '') . " "
+                            . ($note['added_at'] ?? '') . " "
+                            . $noteDate;
                     }
 
                     $searchText = strtolower(
+                        $id . ' ' .
                         ($row['part_number'] ?? '') . ' ' .
                         ($row['serial_number'] ?? '') . ' ' .
+                        $ticketNumber . ' ' .
                         ($row['location'] ?? '') . ' ' .
                         ($row['remark'] ?? '') . ' ' .
+                        ($row['quantity'] ?? '') . ' ' .
                         ($row['stock_out_by'] ?? '') . ' ' .
                         ($row['stock_out_date'] ?? '') . ' ' .
                         $date . ' ' .
@@ -390,6 +406,11 @@ html, body{ overflow-x:hidden !important; }
                         <div class="stockout-detail-box">
                             <span>Date</span>
                             <strong><?= stockoutEscape(trim($date . ' ' . $time)) ?></strong>
+                        </div>
+
+                        <div class="stockout-detail-box">
+                            <span>Original Remark</span>
+                            <strong><?= nl2br(stockoutEscape(($row['remark'] ?? '') !== '' ? $row['remark'] : '-')) ?></strong>
                         </div>
                     </div>
 
@@ -444,7 +465,7 @@ html, body{ overflow-x:hidden !important; }
                         data-detail-id="stockout-detail-<?= $id ?>">
                         <td><?= stockoutEscape($row['part_number'] ?? '') ?></td>
                         <td><?= stockoutEscape($row['serial_number'] ?? '') ?></td>
-                        <td><?= stockoutEscape(($row['remark'] ?? '') !== '' ? $row['remark'] : '-') ?></td>
+                        <td><?= stockoutEscape($ticketNumber !== '' ? $ticketNumber : '-') ?></td>
 
                         <td>
                             <div class="action-buttons">

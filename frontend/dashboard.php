@@ -1015,7 +1015,7 @@ $pmTaskCount = count($pmTasks);
             <div class="col-lg-3 col-md-6 col-12 mb-3">
                 <div class="stat-card <?= $isInventoryOutputAllowed ? 'clickable' : 'disabled-card' ?>"
                     <?php if($isInventoryOutputAllowed): ?>onclick="openExportModal('asset')"<?php endif; ?>>
-                    <h6>Totol Parts</h6>
+                    <h6>Total Parts</h6>
                     <h2><?= $totalDevices ?></h2>
                 </div>
             </div>

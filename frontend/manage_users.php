@@ -48,6 +48,7 @@ $permissionGroups = [
             "contracts_upload" => "Upload",
             "contracts_download" => "Download",
             "contracts_claim_view" => "View Claim",
+            "contracts_master_budget" => "Master Budget",
             "contracts_task" => "Task Add",
             "contracts_task_edit" => "Task Edit",
             "contracts_task_delete" => "Task Delete",
@@ -575,6 +576,10 @@ if(in_array("contracts_full", $permissions, true)){
 
     if(in_array("contracts_claim_view", $permissions, true)){
         $contractLabels[] = "View Claim";
+    }
+
+    if(in_array("contracts_master_budget", $permissions, true)){
+        $contractLabels[] = "Master Budget";
     }
 
     if(in_array("contracts_task", $permissions, true)){
@@ -1217,20 +1222,24 @@ function sortUserTable(columnIndex, activeHeader){
 }
 
 function filterUserTable(){
-    const keyword = liveUserSearch.value.toLowerCase().trim();
+    const keyword = liveUserSearch ? liveUserSearch.value.toLowerCase().trim() : "";
     const rows = document.querySelectorAll(".user-table tbody tr[data-username]");
 
     rows.forEach(row => {
         const username = (row.dataset.username || "").toLowerCase();
         const email = (row.dataset.email || "").toLowerCase();
         const role = (row.dataset.role || "").toLowerCase();
+        const accountType = (row.dataset.accountType || "").toLowerCase();
+        const permissions = ((row.dataset.permissionDetail || "") + " " + (row.innerText || "")).toLowerCase();
 
-        const match =
+        const globalMatch = keyword === "" ||
             username.includes(keyword) ||
             email.includes(keyword) ||
-            role.includes(keyword);
+            role.includes(keyword) ||
+            accountType.includes(keyword) ||
+            permissions.includes(keyword);
 
-        row.style.display = match ? "" : "none";
+        row.style.display = globalMatch ? "" : "none";
     });
 }
 

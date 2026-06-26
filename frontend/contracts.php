@@ -119,6 +119,7 @@ $taskTotalSelect = "0 AS task_total";
 $taskDoneSelect = "0 AS task_done";
 $taskClaimSelect = "0 AS claim_total";
 $progressSelect = "NULL AS progress_percent";
+$progressSearchSql = "''";
 
 if($canUseContractTasks){
 
@@ -162,6 +163,14 @@ if($canUseContractTasks){
             ELSE NULL
         END AS progress_percent
     ";
+
+    $progressSearchSql = "
+        CASE
+            WHEN COALESCE(task_summary.task_total, 0) > 0
+            THEN CAST(ROUND((COALESCE(task_summary.task_done, 0) / task_summary.task_total) * 100) AS CHAR)
+            ELSE ''
+        END
+    ";
 }
 
 /* =========================================================
@@ -196,17 +205,16 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
 
     $orderColumnMap = [
         0 => "pi.project_code",
-        1 => "pi.year_awarded",
-        2 => "pi.contract_no",
-        3 => "pi.project_name",
-        4 => "pi.project_owner",
-        5 => $projectManagerOrder,
-        6 => $accountManagerOrder,
-        7 => "pi.contract_start",
-        8 => "pi.contract_end",
-        9 => "auto_status",
-        10 => "progress_percent",
-        11 => "pi.amount"
+        1 => "pi.contract_no",
+        2 => "pi.project_name",
+        3 => "pi.project_owner",
+        4 => $projectManagerOrder,
+        5 => $accountManagerOrder,
+        6 => "pi.contract_start",
+        7 => "pi.contract_end",
+        8 => "auto_status",
+        9 => "progress_percent",
+        10 => "pi.amount"
     ];
 
     $orderBy = "pi.no DESC";
@@ -255,7 +263,6 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
         $conditionParts = [
             "pi.project_code LIKE ?",
             "CAST(pi.no AS CHAR) LIKE ?",
-            "CAST(pi.year_awarded AS CHAR) LIKE ?",
             "pi.project_name LIKE ?",
             "pi.project_owner LIKE ?"
         ];
@@ -275,7 +282,10 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
         $conditionParts[] = "CAST(pi.contract_start AS CHAR) LIKE ?";
         $conditionParts[] = "CAST(pi.contract_end AS CHAR) LIKE ?";
         $conditionParts[] = "CAST(pi.amount AS CHAR) LIKE ?";
+        $conditionParts[] = "COALESCE(pi.created_by, '') LIKE ?";
+        $conditionParts[] = "COALESCE(pi.status, '') LIKE ?";
         $conditionParts[] = "$statusCase LIKE ?";
+        $conditionParts[] = "$progressSearchSql LIKE ?";
 
         $whereParts[] = "(" . implode(" OR ", $conditionParts) . ")";
 
@@ -301,6 +311,7 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
         $countStmt = $mysqli->prepare("
             SELECT COUNT(*) AS total
             FROM project_inventory pi
+            $taskJoinSql
             $whereSql
         ");
 
@@ -328,7 +339,6 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
         SELECT
             pi.no,
             pi.project_code,
-            pi.year_awarded,
             pi.project_name,
             pi.project_owner,
             $projectManagerSelect,
@@ -469,7 +479,6 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
         $meta = [
             "id" => $row['no'],
             "projectcode" => $displayProjectCode,
-            "year" => $row['year_awarded'],
             "project" => $row['project_name'],
             "owner" => $row['project_owner'],
             "projectmanager" => $row['project_manager'] ?? '',
@@ -498,7 +507,6 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
             "no" => contractEscape($row['no']),
             "project_code" => contractEscape($displayProjectCode),
             "contract_no" => contractEscape($row['contract_no']),
-            "year" => contractEscape($row['year_awarded']),
             "project_name" => contractEscape($row['project_name']),
             "owner" => contractEscape($row['project_owner']),
             "project_manager" => contractEscape($row['project_manager'] ?? ''),
@@ -622,10 +630,9 @@ body{
     padding:8px 6px;
 }
 
-/* ✅ SMALLER NO + YEAR, BIGGER PROJECT NAME */
+/* ✅ SMALLER CODE + CONTRACT NO, BIGGER PROJECT NAME */
 #contractsTable .contract-col-project-code,
-#contractsTable .contract-col-contract-no,
-#contractsTable .contract-col-year{
+#contractsTable .contract-col-contract-no{
     text-align:center;
 }
 
@@ -637,18 +644,12 @@ body{
 
 #contractsTable th:nth-child(2),
 #contractsTable td:nth-child(2){
-    width:5% !important;
-    max-width:60px !important;
-}
-
-#contractsTable th:nth-child(3),
-#contractsTable td:nth-child(3){
     width:9% !important;
     max-width:110px !important;
 }
 
-#contractsTable th:nth-child(4),
-#contractsTable td:nth-child(4){
+#contractsTable th:nth-child(3),
+#contractsTable td:nth-child(3){
     width:20% !important;
 }
 
@@ -1170,7 +1171,6 @@ body{
         min-width:150px;
     }
 
-    #contractsTable .contract-col-year,
     #contractsTable .contract-col-start,
     #contractsTable .contract-col-end,
     #contractsTable .contract-col-status,
@@ -1344,7 +1344,7 @@ body{
 </form>
 
 <div class="contract-filter-hint mt-2 mb-2">
-    Search supports Project Code, Contract No, Project Name, year, owner, and status. Use comma for multiple terms, example: <b>PRO/IWK/001, active</b>.
+    Search supports Project Code, Contract No, Project Name, owner, dates, end user, and status. Use comma for multiple terms, example: <b>PRO/IWK/001, active</b>.
     Click the yellow Status header to filter status.
 </div>
 
@@ -1364,7 +1364,6 @@ body{
 <thead>
 <tr>
     <th>Project Code</th>
-    <th>Year</th>
     <th>Contract No</th>
     <th>Project Name</th>
     <th>Owner</th>
@@ -1425,7 +1424,6 @@ body{
 <div class="row g-3">
 
 <div class="col-md-6"><b>Project Code</b><div id="m_projectcode"></div></div>
-<div class="col-md-6"><b>Year</b><div id="m_year"></div></div>
 <div class="col-md-6"><b>End User</b><div id="m_enduser"></div></div>
 <div class="col-md-6"><b>Contract No</b><div id="m_contractno"></div></div>
 <div class="col-md-6"><b>Service</b><div id="m_service"></div></div>
@@ -2170,13 +2168,11 @@ $(document).ready(function(){
         },
         columnDefs: [
             { targets: 0, width: "8%" },
-            { targets: 1, width: "5%" },
-            { targets: 2, width: "9%" },
-            { targets: 3, width: "20%" }
+            { targets: 1, width: "9%" },
+            { targets: 2, width: "20%" }
         ],
         columns: [
             { data: "project_code", className: "contract-col-project-code" },
-            { data: "year", className: "contract-col-year" },
             { data: "contract_no", className: "contract-col-contract-no" },
             { data: "project_name", className: "contract-col-project" },
             { data: "owner", className: "contract-col-owner" },
@@ -2197,7 +2193,6 @@ $(document).ready(function(){
         createdRow: function(row, data){
             $(row).attr("data-id", data.meta.id);
             $(row).attr("data-projectcode", data.meta.projectcode);
-            $(row).attr("data-year", data.meta.year);
             $(row).attr("data-project", data.meta.project);
             $(row).attr("data-owner", data.meta.owner);
             $(row).attr("data-projectmanager", data.meta.projectmanager);
@@ -2214,18 +2209,17 @@ $(document).ready(function(){
             $(row).attr("data-amount", data.meta.amount);
 
             $("td:eq(0)", row).attr("data-label", "Project Code");
-            $("td:eq(1)", row).attr("data-label", "Year");
-            $("td:eq(2)", row).attr("data-label", "Contract No");
-            $("td:eq(3)", row).attr("data-label", "Project Name");
-            $("td:eq(4)", row).attr("data-label", "Owner");
-            $("td:eq(5)", row).attr("data-label", "Project Manager");
-            $("td:eq(6)", row).attr("data-label", "Account Manager");
-            $("td:eq(7)", row).attr("data-label", "Start");
-            $("td:eq(8)", row).attr("data-label", "End");
-            $("td:eq(9)", row).attr("data-label", "Status");
-            $("td:eq(10)", row).attr("data-label", "Progress");
-            $("td:eq(11)", row).attr("data-label", "Amount");
-            $("td:eq(12)", row).attr("data-label", "Actions");
+            $("td:eq(1)", row).attr("data-label", "Contract No");
+            $("td:eq(2)", row).attr("data-label", "Project Name");
+            $("td:eq(3)", row).attr("data-label", "Owner");
+            $("td:eq(4)", row).attr("data-label", "Project Manager");
+            $("td:eq(5)", row).attr("data-label", "Account Manager");
+            $("td:eq(6)", row).attr("data-label", "Start");
+            $("td:eq(7)", row).attr("data-label", "End");
+            $("td:eq(8)", row).attr("data-label", "Status");
+            $("td:eq(9)", row).attr("data-label", "Progress");
+            $("td:eq(10)", row).attr("data-label", "Amount");
+            $("td:eq(11)", row).attr("data-label", "Actions");
         }
     });
 
@@ -2237,17 +2231,26 @@ $(document).ready(function(){
 
     $(window).on("resize", adjustContractTable);
 
+    function escapeHtml(value){
+        return String(value ?? "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
     function updateActiveFilterBox(){
         let filters = [];
 
         if(statusFilter !== ""){
-            filters.push("Status: " + statusFilter);
+            filters.push("Status: " + escapeHtml(statusFilter));
         }
 
         let searchText = $("#liveContractSearch").val().trim();
 
         if(searchText !== ""){
-            filters.push("Search: " + searchText);
+            filters.push("Search: " + escapeHtml(searchText));
         }
 
         if(filters.length > 0){
@@ -2386,7 +2389,6 @@ $(document).ready(function(){
         $('#m_projectmanager').text(meta.projectmanager || '-');
         $('#m_accountmanager').text(meta.accountmanager || '-');
         $('#m_createdby').text(meta.createdby || '-');
-        $('#m_year').text(meta.year || '');
         $('#m_enduser').text(meta.enduser || '');
         $('#m_contractno').text(meta.contractno || '');
         $('#m_service').text(meta.service || '');
