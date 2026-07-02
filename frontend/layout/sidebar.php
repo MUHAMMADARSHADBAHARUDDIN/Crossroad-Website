@@ -25,6 +25,7 @@ $canViewUsers = hasPermission($mysqli, "users_view");
 $canViewContracts = hasPermission($mysqli, "contracts_view");
 $canViewMasterBudget = hasContractMasterBudgetAccess($mysqli);
 $canViewInventory = hasPermission($mysqli, "inventory_view");
+$canViewOfficeInventory = hasPermission($mysqli, "office_inventory_view");
 
 $menu = [
 
@@ -87,6 +88,21 @@ $menu = [
             "link" => "server_stockout.php",
             "submenu" => true,
             "show" => $canViewInventory
+        ],
+
+        [
+            "name" => "Office Inventory",
+            "icon" => "fa-laptop",
+            "link" => "office_inventory.php",
+            "show" => $canViewOfficeInventory
+        ],
+
+        [
+            "name" => "License",
+            "icon" => "fa-angle-right",
+            "link" => "office_license.php",
+            "submenu" => true,
+            "show" => $canViewOfficeInventory
         ],
     ],
 

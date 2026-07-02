@@ -33,7 +33,8 @@ function isFullAdministratorAccess($permissions)
     return (
         in_array("users_full", $permissions, true) &&
         in_array("contracts_full", $permissions, true) &&
-        in_array("inventory_full", $permissions, true)
+        in_array("inventory_full", $permissions, true) &&
+        in_array("office_inventory_full", $permissions, true)
     );
 }
 
@@ -81,7 +82,13 @@ function allowedPermissionsList()
         "inventory_stockout_delete_info",
         "inventory_delete",
         "inventory_export",
-        "inventory_report"
+        "inventory_report",
+
+        "office_inventory_full",
+        "office_inventory_view",
+        "office_inventory_add",
+        "office_inventory_edit",
+        "office_inventory_delete"
     ];
 }
 

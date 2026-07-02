@@ -92,9 +92,19 @@ echo "
 <div>".htmlspecialchars($row['received_by'] ?? '')."</div>
 </div>
 
+<div class='col-md-6'>
+<label class='fw-bold'>Created By</label>
+<div>".htmlspecialchars($row['created_by'] ?? '')."</div>
+</div>
+
 <div class='col-12'>
 <label class='fw-bold'>Description</label>
 <div>".nl2br(htmlspecialchars($row['description'] ?? ''))."</div>
+</div>
+
+<div class='col-12'>
+<label class='fw-bold'>Remark</label>
+<div>".nl2br(htmlspecialchars($row['remark'] ?? ''))."</div>
 </div>
 
 </div>

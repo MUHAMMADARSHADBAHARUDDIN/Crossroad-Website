@@ -40,6 +40,25 @@ if(!$row){
     exit("Server not found");
 }
 
+$mysqli->begin_transaction();
+
+$deleteComponentStmt = $mysqli->prepare("
+DELETE FROM server_components
+WHERE server_inventory_id = ?
+");
+
+if(!$deleteComponentStmt){
+    $mysqli->rollback();
+    exit("SQL Error: " . $mysqli->error);
+}
+
+$deleteComponentStmt->bind_param("i", $id);
+
+if(!$deleteComponentStmt->execute()){
+    $mysqli->rollback();
+    exit("Component cleanup failed: " . $deleteComponentStmt->error);
+}
+
 $deleteStmt = $mysqli->prepare("
 DELETE FROM server_inventory
 WHERE no = ?
@@ -47,6 +66,7 @@ WHERE no = ?
 $deleteStmt->bind_param("i", $id);
 
 if($deleteStmt->execute()){
+    $mysqli->commit();
 
     $ip = $_SERVER['REMOTE_ADDR'];
     $time = date("Y-m-d H:i:s");
@@ -73,5 +93,6 @@ Time: $time";
     exit();
 }
 
+$mysqli->rollback();
 echo "Delete failed: " . $mysqli->error;
 ?>

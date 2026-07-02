@@ -29,6 +29,21 @@ if(!function_exists('inventoryReportEnsureColumn')){
     }
 }
 
+if(!function_exists('inventoryReportColumnType')){
+    function inventoryReportColumnType($mysqli, $tableName, $columnName){
+        $tableName = str_replace("`", "", $tableName);
+        $columnName = $mysqli->real_escape_string($columnName);
+        $result = $mysqli->query("SHOW COLUMNS FROM `$tableName` LIKE '$columnName'");
+
+        if(!$result || $result->num_rows === 0){
+            return "";
+        }
+
+        $row = $result->fetch_assoc();
+        return strtolower((string)($row['Type'] ?? ""));
+    }
+}
+
 if(!function_exists('ensureInventoryReportSchema')){
     function ensureInventoryReportSchema($mysqli){
         static $done = false;
@@ -42,7 +57,93 @@ if(!function_exists('ensureInventoryReportSchema')){
         inventoryReportEnsureColumn($mysqli, "stock_out_history", "ticket_number", "varchar(100) DEFAULT NULL AFTER `serial_number`");
         inventoryReportEnsureColumn($mysqli, "stock_out_history", "quantity", "int(11) DEFAULT 1 AFTER `remark`");
         inventoryReportEnsureColumn($mysqli, "server_stockout_history", "ticket_number", "varchar(100) DEFAULT NULL AFTER `serial_number`");
+        inventoryReportEnsureColumn($mysqli, "server_stockout_history", "stockout_components", "longtext DEFAULT NULL AFTER `remark`");
         inventoryReportEnsureColumn($mysqli, "server_stockout_history", "quantity", "int(11) DEFAULT 1 AFTER `tester`");
+
+        if(!inventoryReportTableExists($mysqli, "server_components")){
+            $mysqli->query("
+                CREATE TABLE `server_components` (
+                    `id` int(11) NOT NULL AUTO_INCREMENT,
+                    `server_inventory_id` int(11) NOT NULL,
+                    `component_type` varchar(100) NOT NULL,
+                    `part_number` varchar(100) NOT NULL,
+                    `serial_number` varchar(150) NOT NULL,
+                    `created_by` varchar(100) DEFAULT NULL,
+                    `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+                    PRIMARY KEY (`id`),
+                    UNIQUE KEY `uniq_server_component_serial` (`serial_number`),
+                    KEY `idx_server_component_server` (`server_inventory_id`),
+                    KEY `idx_server_component_type` (`component_type`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+            ");
+        }
+
+        if(!inventoryReportTableExists($mysqli, "laptop_inventory")){
+            $mysqli->query("
+                CREATE TABLE `laptop_inventory` (
+                    `id` int(11) NOT NULL AUTO_INCREMENT,
+                    `delivery_date` date DEFAULT NULL,
+                    `owner` varchar(150) NOT NULL,
+                    `serial_number` varchar(150) NOT NULL,
+                    `brand` varchar(100) DEFAULT NULL,
+                    `model` varchar(150) DEFAULT NULL,
+                    `office365_license` varchar(100) DEFAULT NULL,
+                    `antivirus_license` varchar(100) DEFAULT NULL,
+                    `license_type` varchar(255) DEFAULT NULL,
+                    `license_ownership` varchar(150) DEFAULT NULL,
+                    `license_family` text NULL,
+                    `license_family_details` longtext DEFAULT NULL,
+                    `license_expired_date` date DEFAULT NULL,
+                    `created_by` varchar(100) DEFAULT NULL,
+                    `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+                    `updated_at` datetime DEFAULT NULL,
+                    PRIMARY KEY (`id`),
+                    UNIQUE KEY `uniq_laptop_serial_number` (`serial_number`),
+                    KEY `idx_laptop_owner` (`owner`),
+                    KEY `idx_laptop_license_ownership` (`license_ownership`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+            ");
+        }
+
+        if(inventoryReportTableExists($mysqli, "laptop_inventory")){
+            inventoryReportEnsureColumn($mysqli, "laptop_inventory", "license_family", "text NULL AFTER `license_ownership`");
+            inventoryReportEnsureColumn($mysqli, "laptop_inventory", "license_family_details", "longtext DEFAULT NULL AFTER `license_family`");
+
+            $licenseFamilyType = inventoryReportColumnType($mysqli, "laptop_inventory", "license_family");
+
+            if($licenseFamilyType !== "" && strpos($licenseFamilyType, "text") === false){
+                $mysqli->query("ALTER TABLE `laptop_inventory` MODIFY `license_family` text NULL");
+            }
+        }
+
+        if(!inventoryReportTableExists($mysqli, "office_licenses")){
+            $mysqli->query("
+                CREATE TABLE `office_licenses` (
+                    `id` int(11) NOT NULL AUTO_INCREMENT,
+                    `owner` varchar(150) NOT NULL,
+                    `family` varchar(150) DEFAULT NULL,
+                    `license_name` varchar(150) NOT NULL,
+                    `expired_date` date DEFAULT NULL,
+                    `created_by` varchar(100) DEFAULT NULL,
+                    `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+                    `updated_at` datetime DEFAULT NULL,
+                    PRIMARY KEY (`id`),
+                    KEY `idx_office_license_owner` (`owner`),
+                    KEY `idx_office_license_family` (`family`),
+                    KEY `idx_office_license_expired` (`expired_date`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+            ");
+        }
+
+        if(inventoryReportTableExists($mysqli, "office_licenses")){
+            inventoryReportEnsureColumn($mysqli, "office_licenses", "owner", "varchar(150) DEFAULT NULL AFTER `id`");
+            inventoryReportEnsureColumn($mysqli, "office_licenses", "family", "varchar(150) DEFAULT NULL AFTER `owner`");
+            inventoryReportEnsureColumn($mysqli, "office_licenses", "license_name", "varchar(150) DEFAULT NULL AFTER `family`");
+            inventoryReportEnsureColumn($mysqli, "office_licenses", "expired_date", "date DEFAULT NULL AFTER `license_name`");
+            inventoryReportEnsureColumn($mysqli, "office_licenses", "created_by", "varchar(100) DEFAULT NULL AFTER `expired_date`");
+            inventoryReportEnsureColumn($mysqli, "office_licenses", "created_at", "datetime NOT NULL DEFAULT current_timestamp() AFTER `created_by`");
+            inventoryReportEnsureColumn($mysqli, "office_licenses", "updated_at", "datetime DEFAULT NULL AFTER `created_at`");
+        }
 
         if(!inventoryReportTableExists($mysqli, "asset_stockin_history")){
             $mysqli->query("

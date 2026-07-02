@@ -61,6 +61,7 @@ SELECT
     part_number,
     brand,
     description,
+    MAX(no) AS latest_no,
     MAX(date_received) AS date_received,
     COUNT(*) AS total_qty,
     MIN(created_by) AS created_by,
@@ -71,7 +72,7 @@ SELECT
     GROUP_CONCAT(received_by SEPARATOR ' ') AS received_by_values
 FROM asset_inventory
 GROUP BY part_number, brand, description
-ORDER BY part_number ASC
+ORDER BY latest_no DESC
 ");
 
 if(!$stmt){
@@ -402,11 +403,100 @@ onclick="viewSerial(<?= htmlspecialchars(json_encode($row['part_number'] ?? ''),
 <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
 
 <script>
+const assetModalFlow = {
+    detailReturnsToSerial: false,
+    remarkReturnsToSerial: false,
+    confirmReturnsToSerial: false,
+    pendingShowDetail: false,
+    pendingShowRemark: false,
+    pendingShowConfirm: false
+};
+
+function getAssetModal(id){
+    return bootstrap.Modal.getOrCreateInstance(document.getElementById(id));
+}
+
+function isAssetModalShown(id){
+    const element = document.getElementById(id);
+    return element && element.classList.contains("show");
+}
+
+function resetAssetModalFlow(){
+    assetModalFlow.detailReturnsToSerial = false;
+    assetModalFlow.remarkReturnsToSerial = false;
+    assetModalFlow.confirmReturnsToSerial = false;
+    assetModalFlow.pendingShowDetail = false;
+    assetModalFlow.pendingShowRemark = false;
+    assetModalFlow.pendingShowConfirm = false;
+}
+
+function showAssetSerialModal(){
+    getAssetModal("serialModal").show();
+}
+
+function showAssetDetailModal(){
+    getAssetModal("detailModal").show();
+}
+
+function showAssetRemarkModal(){
+    getAssetModal("remarkModal").show();
+}
+
+function showAssetConfirmModal(){
+    getAssetModal("confirmModal").show();
+}
+
+document.getElementById("serialModal").addEventListener("hidden.bs.modal", function(){
+    if(assetModalFlow.pendingShowDetail){
+        assetModalFlow.pendingShowDetail = false;
+        showAssetDetailModal();
+        return;
+    }
+
+    if(assetModalFlow.pendingShowRemark){
+        assetModalFlow.pendingShowRemark = false;
+        showAssetRemarkModal();
+        return;
+    }
+
+    if(assetModalFlow.pendingShowConfirm){
+        assetModalFlow.pendingShowConfirm = false;
+        showAssetConfirmModal();
+    }
+});
+
+document.getElementById("detailModal").addEventListener("hidden.bs.modal", function(){
+    if(!assetModalFlow.detailReturnsToSerial){
+        return;
+    }
+
+    assetModalFlow.detailReturnsToSerial = false;
+    showAssetSerialModal();
+});
+
+document.getElementById("remarkModal").addEventListener("hidden.bs.modal", function(){
+    if(!assetModalFlow.remarkReturnsToSerial){
+        return;
+    }
+
+    assetModalFlow.remarkReturnsToSerial = false;
+    showAssetSerialModal();
+});
+
+document.getElementById("confirmModal").addEventListener("hidden.bs.modal", function(){
+    if(!assetModalFlow.confirmReturnsToSerial){
+        return;
+    }
+
+    assetModalFlow.confirmReturnsToSerial = false;
+    showAssetSerialModal();
+});
+
 function viewSerial(part){
     $.post("../backend/get_serials.php",{part:part},function(data){
         $("#serialContent").html(data);
-        var modal = new bootstrap.Modal(document.getElementById('serialModal'));
-        modal.show();
+        resetAssetModalFlow();
+        showAssetSerialModal();
     });
 }
 
@@ -421,8 +511,15 @@ function openRemarkModal(id, serial){
     document.getElementById("ticketNumberInput").value = "";
     document.getElementById("remarkInput").value = "";
 
-    var modal = new bootstrap.Modal(document.getElementById('remarkModal'));
-    modal.show();
+    assetModalFlow.remarkReturnsToSerial = isAssetModalShown("serialModal");
+
+    if(assetModalFlow.remarkReturnsToSerial){
+        assetModalFlow.pendingShowRemark = true;
+        getAssetModal("serialModal").hide();
+        return;
+    }
+
+    showAssetRemarkModal();
 }
 
 function submitStockOut(){
@@ -467,8 +564,15 @@ function confirmDelete(id, serial){
     document.getElementById("confirmText").innerHTML =
         "Stock out serial: <b>" + serial + "</b>?";
 
-    var modal = new bootstrap.Modal(document.getElementById('confirmModal'));
-    modal.show();
+    assetModalFlow.confirmReturnsToSerial = isAssetModalShown("serialModal");
+
+    if(assetModalFlow.confirmReturnsToSerial){
+        assetModalFlow.pendingShowConfirm = true;
+        getAssetModal("serialModal").hide();
+        return;
+    }
+
+    showAssetConfirmModal();
 }
 
 function deleteSerial(){
@@ -485,8 +589,15 @@ function viewDetail(id){
     $.post("../backend/get_asset_detail.php",{id:id},function(data){
         $("#detailContent").html(data);
 
-        var modal = new bootstrap.Modal(document.getElementById('detailModal'));
-        modal.show();
+        assetModalFlow.detailReturnsToSerial = isAssetModalShown("serialModal");
+
+        if(assetModalFlow.detailReturnsToSerial){
+            assetModalFlow.pendingShowDetail = true;
+            getAssetModal("serialModal").hide();
+            return;
+        }
+
+        showAssetDetailModal();
     });
 }
 </script>
@@ -539,6 +650,7 @@ $(document).ready(function(){
         searching: true,
         autoWidth: false,
         scrollX: false,
+        order: [],
         dom:
             "<'row mb-2 align-items-center'<'col-md-6'l>>" +
             "rt" +

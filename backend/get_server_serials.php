@@ -47,6 +47,31 @@ ORDER BY date_testing DESC
 $stmt->bind_param("ss", $name, $type);
 $stmt->execute();
 $result = $stmt->get_result();
+$serverRows = [];
+$serverIds = [];
+
+while($row = $result->fetch_assoc()){
+    $serverRows[] = $row;
+    $serverIds[] = (int)$row['no'];
+}
+
+$componentMap = [];
+
+if(!empty($serverIds)){
+    $idList = implode(",", array_map("intval", $serverIds));
+    $componentResult = $mysqli->query("
+        SELECT id, server_inventory_id, component_type, part_number, serial_number
+        FROM server_components
+        WHERE server_inventory_id IN ($idList)
+        ORDER BY component_type ASC, part_number ASC, serial_number ASC
+    ");
+
+    if($componentResult){
+        while($component = $componentResult->fetch_assoc()){
+            $componentMap[(int)$component['server_inventory_id']][] = $component;
+        }
+    }
+}
 
 echo "
 <table class='table table-sm table-hover align-middle'>
@@ -57,6 +82,7 @@ echo "
     <th>Status</th>
     <th>Date Tested</th>
     <th>Tester</th>
+    <th>Component</th>
     <th>Received By</th>
     <th style='width:220px;'>Action</th>
 </tr>
@@ -64,10 +90,13 @@ echo "
 <tbody>
 ";
 
-while($row = $result->fetch_assoc()){
+foreach($serverRows as $row){
 
     $id = (int)$row['no'];
     $serialJs = htmlspecialchars(json_encode($row['serial_number'] ?? ''), ENT_QUOTES, 'UTF-8');
+    $components = $componentMap[$id] ?? [];
+    $componentsJs = htmlspecialchars(json_encode($components), ENT_QUOTES, 'UTF-8');
+    $componentCount = count($components);
 
     $statusColor = ($row['status'] == 'Okay') ? 'success' : 'danger';
     $dateTesting = getServerSerialFormatDate($row['date_testing'] ?? '');
@@ -79,6 +108,9 @@ while($row = $result->fetch_assoc()){
     echo "<td><span class='badge bg-$statusColor'>" . htmlspecialchars($row['status'] ?? '') . "</span></td>";
     echo "<td>" . htmlspecialchars($dateTesting) . "</td>";
     echo "<td>" . htmlspecialchars($row['tester'] ?? '') . "</td>";
+
+    echo "<td>" . ($componentCount > 0 ? htmlspecialchars((string)$componentCount) : "-") . "</td>";
+
     echo "<td>" . htmlspecialchars($row['received_by'] ?? '') . "</td>";
 
     echo "<td>";
@@ -97,7 +129,7 @@ while($row = $result->fetch_assoc()){
     if($canStockOut){
         echo "
         <button class='btn btn-sm btn-warning ms-1'
-           onclick='event.stopPropagation(); openServerRemarkModal($id, $serialJs)'
+           onclick='event.stopPropagation(); openServerRemarkModal($id, $serialJs, $componentsJs)'
            title='Stock Out'>
             <i class='fa fa-arrow-up'></i>
         </button>

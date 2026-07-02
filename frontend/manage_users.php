@@ -75,6 +75,16 @@ $permissionGroups = [
             "inventory_export" => "Export",
             "inventory_report" => "Report"
         ]
+    ],
+    "office_inventory" => [
+        "title" => "Office Inventory",
+        "full" => "office_inventory_full",
+        "items" => [
+            "office_inventory_view" => "View",
+            "office_inventory_add" => "Add",
+            "office_inventory_edit" => "Edit",
+            "office_inventory_delete" => "Delete"
+        ]
     ]
 ];
 
@@ -673,6 +683,32 @@ if(in_array("inventory_full", $permissions, true)){
     }
 }
 
+if(in_array("office_inventory_full", $permissions, true)){
+    $permissionText[] = "Office Inventory: Full";
+} else {
+    $officeInventoryLabels = [];
+
+    if(in_array("office_inventory_view", $permissions, true)){
+        $officeInventoryLabels[] = "View";
+    }
+
+    if(in_array("office_inventory_add", $permissions, true)){
+        $officeInventoryLabels[] = "Add";
+    }
+
+    if(in_array("office_inventory_edit", $permissions, true)){
+        $officeInventoryLabels[] = "Edit";
+    }
+
+    if(in_array("office_inventory_delete", $permissions, true)){
+        $officeInventoryLabels[] = "Delete";
+    }
+
+    if(!empty($officeInventoryLabels)){
+        $permissionText[] = "Office Inventory: " . implode(", ", $officeInventoryLabels);
+    }
+}
+
 $permissionDetailJson = htmlspecialchars(json_encode($permissionText), ENT_QUOTES, 'UTF-8');
 ?>
 
@@ -1090,7 +1126,7 @@ document.querySelectorAll(".editUserBtn").forEach(button => {
             checkbox.checked = permissions.includes(checkbox.value);
         });
 
-        ["users", "contracts", "inventory"].forEach(module => {
+        ["users", "contracts", "inventory", "office_inventory"].forEach(module => {
             syncFullCheckbox(form, module);
         });
     });

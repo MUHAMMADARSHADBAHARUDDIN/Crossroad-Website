@@ -643,6 +643,18 @@ function findKnownProjectCodePrefix(value){
         return "";
     }
 
+    for(var canonicalPrefix in projectCodeCanonicalEndUsers){
+        if(!Object.prototype.hasOwnProperty.call(projectCodeCanonicalEndUsers, canonicalPrefix)){
+            continue;
+        }
+
+        var canonicalEndUser = normalizeProjectCodeText(projectCodeCanonicalEndUsers[canonicalPrefix]);
+
+        if(canonicalEndUser !== "" && normalized === canonicalEndUser){
+            return canonicalPrefix;
+        }
+    }
+
     for(var prefix in projectCodeKnownPatterns){
         if(!Object.prototype.hasOwnProperty.call(projectCodeKnownPatterns, prefix)){
             continue;

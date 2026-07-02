@@ -76,6 +76,55 @@ function contractColumnExists($mysqli, $tableName, $columnName){
     return ($result && $result->num_rows > 0);
 }
 
+function contractSearchValuesForTerm($term){
+    $term = trim((string)($term ?? ""));
+
+    if($term === ""){
+        return [];
+    }
+
+    $values = [$term];
+    $prefix = contractProjectCodeFindKnownPrefix($term);
+
+    if($prefix !== ""){
+        $values[] = $prefix;
+
+        $canonicalEndUsers = contractProjectCodeCanonicalEndUsers();
+
+        if(isset($canonicalEndUsers[$prefix])){
+            $values[] = $canonicalEndUsers[$prefix];
+        }
+
+        $knownPatterns = contractProjectCodeKnownPatterns();
+
+        foreach(($knownPatterns[$prefix] ?? []) as $alias){
+            $values[] = $alias;
+        }
+    }
+
+    $uniqueValues = [];
+    $seen = [];
+
+    foreach($values as $value){
+        $value = trim((string)$value);
+
+        if($value === ""){
+            continue;
+        }
+
+        $key = strtoupper(preg_replace('/\s+/', ' ', $value));
+
+        if(isset($seen[$key])){
+            continue;
+        }
+
+        $seen[$key] = true;
+        $uniqueValues[] = $value;
+    }
+
+    return $uniqueValues;
+}
+
 /* =========================================================
    SAFE COLUMN / TABLE CHECK
 ========================================================= */
@@ -195,7 +244,7 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
 
     $statusFilter = trim($_GET['status_filter'] ?? "");
 
-    $orderColumnIndex = isset($_GET['order'][0]['column']) ? (int)$_GET['order'][0]['column'] : 0;
+    $orderColumnIndex = isset($_GET['order'][0]['column']) ? (int)$_GET['order'][0]['column'] : null;
     $orderDirection = isset($_GET['order'][0]['dir']) && strtolower($_GET['order'][0]['dir']) === "asc"
         ? "ASC"
         : "DESC";
@@ -219,7 +268,7 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
 
     $orderBy = "pi.no DESC";
 
-    if(isset($orderColumnMap[$orderColumnIndex])){
+    if($orderColumnIndex !== null && isset($orderColumnMap[$orderColumnIndex])){
         $selectedOrderColumn = $orderColumnMap[$orderColumnIndex];
 
         if($selectedOrderColumn === "auto_status"){
@@ -258,40 +307,49 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
     }
 
     foreach($searchTerms as $term){
-        $searchLike = "%" . $term . "%";
+        $termConditionParts = [];
+        $searchValues = contractSearchValuesForTerm($term);
 
-        $conditionParts = [
-            "pi.project_code LIKE ?",
-            "CAST(pi.no AS CHAR) LIKE ?",
-            "pi.project_name LIKE ?",
-            "pi.project_owner LIKE ?"
-        ];
+        foreach($searchValues as $searchValue){
+            $searchLike = "%" . $searchValue . "%";
 
-        if($hasProjectManager){
-            $conditionParts[] = "pi.project_manager LIKE ?";
+            $conditionParts = [
+                "pi.project_code LIKE ?",
+                "CAST(pi.no AS CHAR) LIKE ?",
+                "pi.project_name LIKE ?",
+                "pi.project_owner LIKE ?"
+            ];
+
+            if($hasProjectManager){
+                $conditionParts[] = "pi.project_manager LIKE ?";
+            }
+
+            if($hasAccountManager){
+                $conditionParts[] = "pi.account_manager LIKE ?";
+            }
+
+            $conditionParts[] = "pi.end_user LIKE ?";
+            $conditionParts[] = "pi.contract_no LIKE ?";
+            $conditionParts[] = "pi.service LIKE ?";
+            $conditionParts[] = "CAST(pi.po_date AS CHAR) LIKE ?";
+            $conditionParts[] = "CAST(pi.contract_start AS CHAR) LIKE ?";
+            $conditionParts[] = "CAST(pi.contract_end AS CHAR) LIKE ?";
+            $conditionParts[] = "CAST(pi.amount AS CHAR) LIKE ?";
+            $conditionParts[] = "COALESCE(pi.created_by, '') LIKE ?";
+            $conditionParts[] = "COALESCE(pi.status, '') LIKE ?";
+            $conditionParts[] = "$statusCase LIKE ?";
+            $conditionParts[] = "$progressSearchSql LIKE ?";
+
+            $termConditionParts[] = "(" . implode(" OR ", $conditionParts) . ")";
+
+            foreach($conditionParts as $unused){
+                $params[] = $searchLike;
+                $types .= "s";
+            }
         }
 
-        if($hasAccountManager){
-            $conditionParts[] = "pi.account_manager LIKE ?";
-        }
-
-        $conditionParts[] = "pi.end_user LIKE ?";
-        $conditionParts[] = "pi.contract_no LIKE ?";
-        $conditionParts[] = "pi.service LIKE ?";
-        $conditionParts[] = "CAST(pi.po_date AS CHAR) LIKE ?";
-        $conditionParts[] = "CAST(pi.contract_start AS CHAR) LIKE ?";
-        $conditionParts[] = "CAST(pi.contract_end AS CHAR) LIKE ?";
-        $conditionParts[] = "CAST(pi.amount AS CHAR) LIKE ?";
-        $conditionParts[] = "COALESCE(pi.created_by, '') LIKE ?";
-        $conditionParts[] = "COALESCE(pi.status, '') LIKE ?";
-        $conditionParts[] = "$statusCase LIKE ?";
-        $conditionParts[] = "$progressSearchSql LIKE ?";
-
-        $whereParts[] = "(" . implode(" OR ", $conditionParts) . ")";
-
-        foreach($conditionParts as $unused){
-            $params[] = $searchLike;
-            $types .= "s";
+        if(!empty($termConditionParts)){
+            $whereParts[] = "(" . implode(" OR ", $termConditionParts) . ")";
         }
     }
 
@@ -2151,7 +2209,7 @@ $(document).ready(function(){
         search: {
             search: initialSearch
         },
-        order: [[0, "asc"]],
+        order: [],
         dom:
             "<'contract-table-scroll't>" +
             "<'contract-dt-footer d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3'ip>",
@@ -2161,6 +2219,7 @@ $(document).ready(function(){
         ajax: {
             url: "contracts.php",
             type: "GET",
+            cache: false,
             data: function(d){
                 d.ajax = 1;
                 d.status_filter = statusFilter;

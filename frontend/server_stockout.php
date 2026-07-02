@@ -32,6 +32,49 @@ function serverStockoutDateTimeLocal($value){
     return date("Y-m-d\TH:i", strtotime($value));
 }
 
+function serverStockoutComponents($value){
+    $value = trim((string)($value ?? ""));
+
+    if($value === ""){
+        return [];
+    }
+
+    $decoded = json_decode($value, true);
+
+    if(!is_array($decoded)){
+        return [];
+    }
+
+    $components = [];
+
+    foreach($decoded as $component){
+        if(!is_array($component)){
+            continue;
+        }
+
+        $components[] = [
+            "component_type" => trim((string)($component['component_type'] ?? "")),
+            "part_number" => trim((string)($component['part_number'] ?? "")),
+            "serial_number" => trim((string)($component['serial_number'] ?? ""))
+        ];
+    }
+
+    return $components;
+}
+
+function serverStockoutComponentsSearchText($components){
+    $searchText = "";
+
+    foreach($components as $component){
+        $searchText .= " "
+            . ($component['component_type'] ?? "") . " "
+            . ($component['part_number'] ?? "") . " "
+            . ($component['serial_number'] ?? "");
+    }
+
+    return $searchText;
+}
+
 $faviconVersion = file_exists("../image/logo.png") ? filemtime("../image/logo.png") : time();
 $canDelete = hasPermission($mysqli, "inventory_delete");
 $canAddInformation = hasStockOutAdditionalInfoAccess($mysqli);
@@ -42,7 +85,7 @@ $search = trim($_GET['search'] ?? "");
 $stmt = $mysqli->prepare("
     SELECT *
     FROM server_stockout_history
-    ORDER BY stock_out_date DESC
+    ORDER BY id DESC
 ");
 
 if(!$stmt){
@@ -392,6 +435,8 @@ html, body{ overflow-x:hidden !important; }
                 $statusIndicatorClass = (strcasecmp($statusText, 'Okay') === 0) ? 'okay' : 'faulty';
                 $statusDisplayText = $statusText !== '' ? $statusText : '-';
                 $ticketNumber = trim((string)($row['ticket_number'] ?? ''));
+                $stockoutComponents = serverStockoutComponents($row['stockout_components'] ?? '');
+                $componentSearch = serverStockoutComponentsSearchText($stockoutComponents);
                 $notesSearch = "";
 
                 foreach($notes as $note){
@@ -422,6 +467,7 @@ html, body{ overflow-x:hidden !important; }
                     ($row['stock_out_date'] ?? '') . ' ' .
                     $date . ' ' .
                     $time . ' ' .
+                    $componentSearch . ' ' .
                     $notesSearch
                 );
 
@@ -466,6 +512,35 @@ html, body{ overflow-x:hidden !important; }
                         <strong><?= nl2br(serverStockoutEscape(($row['remark'] ?? '') !== '' ? $row['remark'] : '-')) ?></strong>
                     </div>
                 </div>
+
+                <h6 class="mb-2">Components With Server Stock Out</h6>
+
+                <?php if(empty($stockoutComponents)): ?>
+                    <div class="alert alert-light border mb-3 text-muted">
+                        No components left with this stock out.
+                    </div>
+                <?php else: ?>
+                    <div class="table-responsive mb-3">
+                        <table class="table table-sm table-bordered align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Component</th>
+                                    <th>Part Number</th>
+                                    <th>Serial Number</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach($stockoutComponents as $component): ?>
+                                    <tr>
+                                        <td><?= serverStockoutEscape(($component['component_type'] ?? '') !== '' ? $component['component_type'] : '-') ?></td>
+                                        <td><?= serverStockoutEscape(($component['part_number'] ?? '') !== '' ? $component['part_number'] : '-') ?></td>
+                                        <td><?= serverStockoutEscape(($component['serial_number'] ?? '') !== '' ? $component['serial_number'] : '-') ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endif; ?>
 
                 <h6 class="mb-2">Additional Information</h6>
 

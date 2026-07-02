@@ -42,7 +42,7 @@ $search = trim($_GET['search'] ?? "");
 $stmt = $mysqli->prepare("
     SELECT *
     FROM stock_out_history
-    ORDER BY stock_out_date DESC
+    ORDER BY id DESC
 ");
 
 if(!$stmt){

@@ -65,7 +65,23 @@ if(!function_exists('contractProjectCodeIsPlaceholder')){
     function contractProjectCodeIsPlaceholder($value){
         $rawValue = trim((string)($value ?? ""));
 
-        return $rawValue === "" || preg_match('/^PRO\/\s*\/0+$/i', $rawValue);
+        return (
+            $rawValue === "" ||
+            preg_match('/^PRO\/\s*\/0+$/i', $rawValue) ||
+            preg_match('/^PRO\/0+$/i', $rawValue)
+        );
+    }
+}
+
+if(!function_exists('contractProjectCodeHasExpectedFormat')){
+    function contractProjectCodeHasExpectedFormat($value){
+        if(contractProjectCodeIsPlaceholder($value)){
+            return false;
+        }
+
+        $projectCode = contractProjectCodeNormalize($value);
+
+        return preg_match('/^PRO\/[A-Z0-9_-]+\/\d+$/', $projectCode) === 1;
     }
 }
 
@@ -142,100 +158,490 @@ if(!function_exists('contractProjectCodeGenerateFromMiddle')){
 if(!function_exists('contractProjectCodeKnownPatterns')){
     function contractProjectCodeKnownPatterns(){
         return [
-            "SUKN9" => ["SUK NEGERI SEMBILAN"],
-            "AGMSN" => ["AG-MESINIAGA", "AG MESINIAGA"],
-            "MEDSEL" => ["MEDIA SELANGOR"],
-            "MEDPRI" => ["MEDIA PRIMA"],
-            "GSPAPER" => ["GS PAPERBOARD"],
-            "POCDATA" => ["POCKET DATA"],
-            "PACOIL" => ["PACIFIC OILS"],
-            "COOPB" => ["CO-OPBANK PERTAMA", "CO OPBANK PERTAMA"],
-            "BMMB" => ["BANK MUAMALAT"],
-            "BKRM" => ["BANK RAKYAT"],
-            "PPKB" => ["PERBADANAN PEMBANGUNAN KAMPONG BAHARU"],
-            "AHZAKI" => ["AHMAD ZAKI SDN BHD", "AHMAD ZAKI"],
-            "NIPPON" => ["NIPPON PAINT MALAYSIA SDN BHD", "NIPPON PAINT", "NIPPON"],
-            "HERNAL" => ["HERITAGE INTERNATIONAL"],
-            "FIRSOL" => ["FIRST SOLUTION", "FIRST SOLUTIONS"],
-            "FORSOL" => ["FOTIA SOLUTIONS"],
-            "RFMS" => ["RAFULIN FMS"],
-            "PRODUA" => ["PERODUA"],
-            "020PLA" => ["O2O PLANTATION", "020 PLANTATION"],
-            "KPDK" => ["KEMENTERIAN PERLADANGAN DAN KOMODITI"],
-            "JASWKL" => ["JAS WP KL"],
-            "JPSM" => ["JABATAN PERHUTANAN"],
-            "JDN" => ["JABATAN DIGITAL NEGARA"],
-            "MAHB" => ["MALAYSIA AIRPORT", "MALAYSIA AIRPORTS"],
-            "MSB" => ["MESINIAGA"],
-            "EXAMMED" => ["EXAMEDIA"],
-            "SUK" => ["SUK", "SETIAUSAHA KERAJAAN"],
-            "UTM" => ["UTM", "UNIVERSITI TEKNOLOGI MALAYSIA"],
-            "IWK" => ["IWK", "INDAH WATER", "INDAH WATER KONSORTIUM", "INDAH WATER KONSORTIUM SDN BHD"],
-            "PERKESO" => ["PERKESO", "PERTUBUHAN KESELAMATAN SOSIAL", "SOCSO"],
-            "INTAN" => ["INTAN", "INSTITUT TADBIRAN AWAM NEGARA"],
-            "KUSKOP" => ["KUSKOP", "KEMENTERIAN PEMBANGUNAN USAHAWAN DAN KOPERASI"],
-            "KTMB" => ["KTMB", "KERETAPI TANAH MELAYU"],
-            "SPR" => ["SPR", "SURUHANJAYA PILIHAN RAYA"],
-            "UMT" => ["UMT", "UNIVERSITI MALAYSIA TERENGGANU"],
-            "UPNM" => ["UPNM", "UNIVERSITI PERTAHANAN NASIONAL MALAYSIA"],
-            "LHDN" => ["LHDN", "LEMBAGA HASIL DALAM NEGERI"],
-            "KWSP" => ["KWSP", "KUMPULAN WANG SIMPANAN PEKERJA", "EPF"],
-            "MCMC" => ["MCMC", "MALAYSIAN COMMUNICATIONS AND MULTIMEDIA COMMISSION", "SKMM"],
-            "DOSM" => ["DOSM"],
-            "STATS" => ["JABATAN PERANGKAAN"],
-            "UPSI" => ["UPSI", "UNIVERSITI PENDIDIKAN SULTAN IDRIS"],
-            "UNIMAP" => ["UNIMAP", "UNIVERSITI MALAYSIA PERLIS"],
-            "UM" => ["UM", "UNIVERSITI MALAYA"],
-            "UKM" => ["UKM", "UNIVERSITI KEBANGSAAN MALAYSIA"],
-            "USM" => ["USM", "UNIVERSITI SAINS MALAYSIA"],
-            "UITM" => ["UITM", "UNIVERSITI TEKNOLOGI MARA"],
-            "UTHM" => ["UTHM", "UNIVERSITI TUN HUSSEIN ONN MALAYSIA"],
-            "UPM" => ["UPM", "UNIVERSITI PUTRA MALAYSIA"],
-            "TNB" => ["TNB", "TENAGA NASIONAL", "TENAGA NASIONAL BERHAD", "TENAGA NATIONAL BERHAD"],
-            "TM" => ["TM", "TELEKOM MALAYSIA"],
-            "JPM" => ["JPM", "JABATAN PERDANA MENTERI"],
-            "MEDAC" => ["MEDAC"],
-            "SPT" => ["SPT"],
-            "MPKJ" => ["MPKJ", "MAJLIS PERBANDARAN KAJANG"],
-            "SSM" => ["SSM"],
-            "JPWPKL" => ["JPWPKL"],
-            "DIGI" => ["DIGI"],
-            "MERC" => ["MERCEDES-BENZ", "MERCEDES"],
-            "SME" => ["SME"],
-            "KKM" => ["KKM", "KEMENTERIAN KESIHATAN MALAYSIA"],
-            "KARS" => ["KARS"],
-            "JKR" => ["JKR"],
-            "JKM" => ["JKM"],
-            "HIGHP" => ["HIGHPOINT"],
-            "MOSTI" => ["MOSTI"],
-            "HTAR" => ["HTAR"],
-            "UGC" => ["UNIGREEN"],
-            "PNB" => ["PNB"],
-            "AMKOR" => ["AMKOR"],
-            "KGIS" => ["KGIS"],
-            "JPN" => ["JPN"],
-            "NAHRIM" => ["NAHRIM"],
-            "ASTRO" => ["ASTRO"],
-            "MAMPU" => ["MAMPU"],
-            "JPA" => ["JPA"],
-            "SPA" => ["SPA"],
-            "KDN" => ["KDN"],
-            "MELL" => ["MILLENIUM", "MILLENNIUM"],
-            "PDRM" => ["PDRM"],
-            "MKN" => ["MKN"],
-            "MASJID" => ["MASJID"],
-            "RENTO" => ["RENTOKIL"],
-            "TRAITX" => ["TRAITX"],
-            "LPPKN" => ["LPPKN"],
-            "MOE" => ["MINISTRY OF EDUCATION", "KEMENTERIAN PENDIDIKAN MALAYSIA"],
-            "AGD" => ["AGD"],
-            "PRGSV" => ["PROGRESSIVE"],
-            "PROTON" => ["PROTON"],
-            "SIPMA" => ["SIPMA"],
-            "SSUK" => ["SELANGOR SUK"],
-            "VINX" => ["VINX"],
-            "TW" => ["TRADEWINDS", "TRADE WINDS"],
-            "ILKBS" => ["ILKBS"]
+            "SUKN9" => [
+                "SUK NEGERI SEMBILAN",
+                "SETIAUSAHA KERAJAAN NEGERI SEMBILAN",
+                "PEJABAT SETIAUSAHA KERAJAAN NEGERI SEMBILAN"
+            ],
+            "AGMSN" => [
+                "AG-MESINIAGA",
+                "AG MESINIAGA",
+                "AG-MESINIAGA SDN BHD",
+                "AG MESINIAGA SDN BHD"
+            ],
+            "MEDSEL" => [
+                "MEDIA SELANGOR",
+                "MEDIA SELANGOR SDN BHD"
+            ],
+            "MEDPRI" => [
+                "MEDIA PRIMA",
+                "MEDIA PRIMA BERHAD"
+            ],
+            "GSPAPER" => [
+                "GS PAPERBOARD",
+                "GS PAPERBOARD & PACKAGING",
+                "GS PAPERBOARD AND PACKAGING",
+                "GS PAPERBOARD & PACKAGING SDN BHD",
+                "GS PAPERBOARD AND PACKAGING SDN BHD"
+            ],
+            "POCDATA" => [
+                "POCKET DATA",
+                "POCKET DATA M SDN BHD",
+                "POCKET DATA (M) SDN BHD"
+            ],
+            "PACOIL" => [
+                "PACIFIC OILS",
+                "PACIFIC OILS & FATS",
+                "PACIFIC OILS AND FATS",
+                "PACIFIC OILS & FATS INDUSTRIES",
+                "PACIFIC OILS AND FATS INDUSTRIES",
+                "PACIFIC OILS & FATS INDUSTRIES SDN BHD",
+                "PACIFIC OILS AND FATS INDUSTRIES SDN BHD"
+            ],
+            "COOPB" => [
+                "CO-OPBANK PERTAMA",
+                "CO OPBANK PERTAMA",
+                "CO-OPBANK PERTAMA MALAYSIA",
+                "CO OPBANK PERTAMA MALAYSIA",
+                "KOPERASI CO-OPBANK PERTAMA MALAYSIA BERHAD"
+            ],
+            "BMMB" => [
+                "BANK MUAMALAT",
+                "BANK MUAMALAT MALAYSIA",
+                "BANK MUAMALAT MALAYSIA BERHAD"
+            ],
+            "BKRM" => [
+                "BANK RAKYAT",
+                "BANK KERJASAMA RAKYAT",
+                "BANK KERJASAMA RAKYAT MALAYSIA",
+                "BANK KERJASAMA RAKYAT MALAYSIA BERHAD"
+            ],
+            "PPKB" => [
+                "PERBADANAN PEMBANGUNAN KAMPONG BAHARU",
+                "PERBADANAN PEMBANGUNAN KAMPONG BHARU"
+            ],
+            "AHZAKI" => [
+                "AHMAD ZAKI SDN BHD",
+                "AHMAD ZAKI",
+                "AHMAD ZAKI RESOURCES",
+                "AHMAD ZAKI RESOURCES BERHAD"
+            ],
+            "NIPPON" => [
+                "NIPPON PAINT MALAYSIA SDN BHD",
+                "NIPPON PAINT M SDN BHD",
+                "NIPPON PAINT (M) SDN BHD",
+                "NIPPON PAINT",
+                "NIPPON"
+            ],
+            "HERNAL" => [
+                "HERITAGE INTERNATIONAL",
+                "HERITAGE INTERNATIONAL SDN BHD"
+            ],
+            "FIRSOL" => [
+                "FIRST SOLUTION",
+                "FIRST SOLUTIONS",
+                "FIRST SOLUTION SDN BHD",
+                "FIRST SOLUTIONS SDN BHD"
+            ],
+            "FORSOL" => [
+                "FOTIA SOLUTIONS",
+                "FOTIA SOLUTIONS SDN BHD"
+            ],
+            "RFMS" => [
+                "RAFULIN FMS",
+                "RAFULIN FMS SDN BHD"
+            ],
+            "PRODUA" => [
+                "PERODUA",
+                "PERUSAHAAN OTOMOBIL KEDUA",
+                "PERUSAHAAN OTOMOBIL KEDUA SDN BHD"
+            ],
+            "020PLA" => [
+                "O2O PLANTATION",
+                "020 PLANTATION",
+                "O2O PLANTATION SDN BHD"
+            ],
+            "KPDK" => [
+                "KEMENTERIAN PERLADANGAN DAN KOMODITI",
+                "MINISTRY OF PLANTATION AND COMMODITIES"
+            ],
+            "JASWKL" => [
+                "JAS WP KL",
+                "JABATAN ALAM SEKITAR WILAYAH PERSEKUTUAN KUALA LUMPUR"
+            ],
+            "JPSM" => [
+                "JABATAN PERHUTANAN",
+                "JABATAN PERHUTANAN SEMENANJUNG MALAYSIA"
+            ],
+            "JDN" => [
+                "JABATAN DIGITAL NEGARA"
+            ],
+            "MAHB" => [
+                "MALAYSIA AIRPORT",
+                "MALAYSIA AIRPORTS",
+                "MALAYSIA AIRPORTS HOLDINGS",
+                "MALAYSIA AIRPORTS HOLDINGS BERHAD"
+            ],
+            "MSB" => [
+                "MESINIAGA",
+                "MESINIAGA BERHAD"
+            ],
+            "EXAMMED" => [
+                "EXAMEDIA",
+                "EXAMEDIA SOLUTIONS",
+                "EXAMEDIA SOLUTIONS SDN BHD"
+            ],
+            "SUK" => [
+                "SUK",
+                "SETIAUSAHA KERAJAAN",
+                "PEJABAT SETIAUSAHA KERAJAAN NEGERI"
+            ],
+            "UTM" => [
+                "UTM",
+                "UNIVERSITI TEKNOLOGI MALAYSIA"
+            ],
+            "IWK" => [
+                "IWK",
+                "INDAH WATER",
+                "INDAH WATER KONSORTIUM",
+                "INDAH WATER KONSORTIUM SDN BHD"
+            ],
+            "PERKESO" => [
+                "PERKESO",
+                "PERTUBUHAN KESELAMATAN SOSIAL",
+                "SOCSO",
+                "SOCIAL SECURITY ORGANISATION"
+            ],
+            "INTAN" => [
+                "INTAN",
+                "INSTITUT TADBIRAN AWAM NEGARA",
+                "NATIONAL INSTITUTE OF PUBLIC ADMINISTRATION"
+            ],
+            "KUSKOP" => [
+                "KUSKOP",
+                "KEMENTERIAN PEMBANGUNAN USAHAWAN DAN KOPERASI",
+                "MINISTRY OF ENTREPRENEUR AND COOPERATIVES DEVELOPMENT"
+            ],
+            "KTMB" => [
+                "KTMB",
+                "KERETAPI TANAH MELAYU",
+                "KERETAPI TANAH MELAYU BERHAD"
+            ],
+            "SPR" => [
+                "SPR",
+                "SURUHANJAYA PILIHAN RAYA",
+                "SURUHANJAYA PILIHAN RAYA MALAYSIA",
+                "ELECTION COMMISSION OF MALAYSIA"
+            ],
+            "UMT" => [
+                "UMT",
+                "UNIVERSITI MALAYSIA TERENGGANU"
+            ],
+            "UPNM" => [
+                "UPNM",
+                "UNIVERSITI PERTAHANAN NASIONAL MALAYSIA",
+                "NATIONAL DEFENCE UNIVERSITY OF MALAYSIA"
+            ],
+            "LHDN" => [
+                "LHDN",
+                "LEMBAGA HASIL DALAM NEGERI",
+                "LEMBAGA HASIL DALAM NEGERI MALAYSIA",
+                "INLAND REVENUE BOARD OF MALAYSIA"
+            ],
+            "KWSP" => [
+                "KWSP",
+                "KUMPULAN WANG SIMPANAN PEKERJA",
+                "EPF",
+                "EMPLOYEES PROVIDENT FUND"
+            ],
+            "MCMC" => [
+                "MCMC",
+                "MALAYSIAN COMMUNICATIONS AND MULTIMEDIA COMMISSION",
+                "SKMM",
+                "SURUHANJAYA KOMUNIKASI DAN MULTIMEDIA MALAYSIA"
+            ],
+            "DOSM" => [
+                "DOSM",
+                "DEPARTMENT OF STATISTICS MALAYSIA",
+                "JABATAN PERANGKAAN MALAYSIA"
+            ],
+            "STATS" => [
+                "JABATAN PERANGKAAN",
+                "JABATAN PERANGKAAN MALAYSIA",
+                "DEPARTMENT OF STATISTICS MALAYSIA"
+            ],
+            "UPSI" => [
+                "UPSI",
+                "UNIVERSITI PENDIDIKAN SULTAN IDRIS"
+            ],
+            "UNIMAP" => [
+                "UNIMAP",
+                "UNIVERSITI MALAYSIA PERLIS"
+            ],
+            "UM" => [
+                "UM",
+                "UNIVERSITI MALAYA"
+            ],
+            "UKM" => [
+                "UKM",
+                "UNIVERSITI KEBANGSAAN MALAYSIA"
+            ],
+            "USM" => [
+                "USM",
+                "UNIVERSITI SAINS MALAYSIA"
+            ],
+            "UITM" => [
+                "UITM",
+                "UNIVERSITI TEKNOLOGI MARA"
+            ],
+            "UTHM" => [
+                "UTHM",
+                "UNIVERSITI TUN HUSSEIN ONN MALAYSIA"
+            ],
+            "UPM" => [
+                "UPM",
+                "UNIVERSITI PUTRA MALAYSIA"
+            ],
+            "TNB" => [
+                "TNB",
+                "TENAGA NASIONAL",
+                "TENAGA NASIONAL BERHAD",
+                "TENAGA NATIONAL BERHAD"
+            ],
+            "TM" => [
+                "TM",
+                "TELEKOM MALAYSIA",
+                "TELEKOM MALAYSIA BERHAD"
+            ],
+            "JPM" => [
+                "JPM",
+                "JABATAN PERDANA MENTERI",
+                "PRIME MINISTER'S DEPARTMENT"
+            ],
+            "MEDAC" => [
+                "MEDAC",
+                "MINISTRY OF ENTREPRENEUR DEVELOPMENT AND COOPERATIVES",
+                "KEMENTERIAN PEMBANGUNAN USAHAWAN DAN KOPERASI"
+            ],
+            "SPT" => [
+                "SPT",
+                "SPT SERVICES",
+                "SPT SERVICES SDN BHD"
+            ],
+            "MPKJ" => [
+                "MPKJ",
+                "MAJLIS PERBANDARAN KAJANG"
+            ],
+            "SSM" => [
+                "SSM",
+                "SURUHANJAYA SYARIKAT MALAYSIA",
+                "COMPANIES COMMISSION OF MALAYSIA"
+            ],
+            "JPWPKL" => [
+                "JPWPKL",
+                "JABATAN PENDIDIKAN WILAYAH PERSEKUTUAN KUALA LUMPUR"
+            ],
+            "DIGI" => [
+                "DIGI",
+                "DIGI TELECOMMUNICATIONS",
+                "DIGI TELECOMMUNICATIONS SDN BHD",
+                "CELCOMDIGI",
+                "CELCOMDIGI BERHAD"
+            ],
+            "MERC" => [
+                "MERCEDES-BENZ",
+                "MERCEDES",
+                "MERCEDES-BENZ MALAYSIA",
+                "MERCEDES-BENZ MALAYSIA SDN BHD"
+            ],
+            "SME" => [
+                "SME",
+                "SME CORP",
+                "SME CORPORATION MALAYSIA",
+                "SME CORPORATION MALAYSIA BERHAD"
+            ],
+            "KKM" => [
+                "KKM",
+                "KEMENTERIAN KESIHATAN MALAYSIA",
+                "MINISTRY OF HEALTH MALAYSIA"
+            ],
+            "KARS" => [
+                "KARS",
+                "KARS TECHNOLOGIES",
+                "KARS TECHNOLOGIES SDN BHD"
+            ],
+            "JKR" => [
+                "JKR",
+                "JABATAN KERJA RAYA",
+                "JABATAN KERJA RAYA MALAYSIA",
+                "PUBLIC WORKS DEPARTMENT MALAYSIA"
+            ],
+            "JKM" => [
+                "JKM",
+                "JABATAN KEBAJIKAN MASYARAKAT",
+                "DEPARTMENT OF SOCIAL WELFARE MALAYSIA"
+            ],
+            "HIGHP" => [
+                "HIGHPOINT",
+                "HIGHPOINT SERVICE NETWORK",
+                "HIGHPOINT SERVICE NETWORK SDN BHD"
+            ],
+            "MOSTI" => [
+                "MOSTI",
+                "KEMENTERIAN SAINS TEKNOLOGI DAN INOVASI",
+                "KEMENTERIAN SAINS, TEKNOLOGI DAN INOVASI",
+                "MINISTRY OF SCIENCE TECHNOLOGY AND INNOVATION",
+                "MINISTRY OF SCIENCE, TECHNOLOGY AND INNOVATION"
+            ],
+            "HTAR" => [
+                "HTAR",
+                "HOSPITAL TENGKU AMPUAN RAHIMAH"
+            ],
+            "UGC" => [
+                "UNIGREEN",
+                "UNIGREEN CHEMICALS",
+                "UNIGREEN CHEMICALS SDN BHD"
+            ],
+            "PNB" => [
+                "PNB",
+                "PERMODALAN NASIONAL",
+                "PERMODALAN NASIONAL BERHAD"
+            ],
+            "AMKOR" => [
+                "AMKOR",
+                "AMKOR TECHNOLOGY",
+                "AMKOR TECHNOLOGY MALAYSIA",
+                "AMKOR TECHNOLOGY MALAYSIA SDN BHD"
+            ],
+            "KGIS" => [
+                "KGIS",
+                "KG INVICTA SERVICES"
+            ],
+            "JPN" => [
+                "JPN",
+                "JABATAN PENDAFTARAN NEGARA",
+                "JABATAN PENDAFTARAN NEGARA MALAYSIA",
+                "NATIONAL REGISTRATION DEPARTMENT"
+            ],
+            "NAHRIM" => [
+                "NAHRIM",
+                "INSTITUT PENYELIDIKAN AIR KEBANGSAAN MALAYSIA",
+                "NATIONAL WATER RESEARCH INSTITUTE OF MALAYSIA"
+            ],
+            "ASTRO" => [
+                "ASTRO",
+                "ASTRO MALAYSIA",
+                "ASTRO MALAYSIA HOLDINGS",
+                "ASTRO MALAYSIA HOLDINGS BERHAD"
+            ],
+            "MAMPU" => [
+                "MAMPU",
+                "MALAYSIAN ADMINISTRATIVE MODERNISATION AND MANAGEMENT PLANNING UNIT",
+                "UNIT PEMODENAN TADBIRAN DAN PERANCANGAN PENGURUSAN MALAYSIA"
+            ],
+            "JPA" => [
+                "JPA",
+                "JABATAN PERKHIDMATAN AWAM",
+                "JABATAN PERKHIDMATAN AWAM MALAYSIA",
+                "PUBLIC SERVICE DEPARTMENT MALAYSIA"
+            ],
+            "SPA" => [
+                "SPA",
+                "SURUHANJAYA PERKHIDMATAN AWAM",
+                "SURUHANJAYA PERKHIDMATAN AWAM MALAYSIA",
+                "PUBLIC SERVICES COMMISSION OF MALAYSIA"
+            ],
+            "KDN" => [
+                "KDN",
+                "KEMENTERIAN DALAM NEGERI",
+                "MINISTRY OF HOME AFFAIRS"
+            ],
+            "MELL" => [
+                "MILLENIUM",
+                "MILLENNIUM",
+                "MILLENNIUM TECHNOLOGY",
+                "MILLENNIUM TECHNOLOGY SERVICES"
+            ],
+            "PDRM" => [
+                "PDRM",
+                "POLIS DIRAJA MALAYSIA",
+                "ROYAL MALAYSIA POLICE"
+            ],
+            "MKN" => [
+                "MKN",
+                "MAJLIS KESELAMATAN NEGARA",
+                "NATIONAL SECURITY COUNCIL"
+            ],
+            "MASJID" => [
+                "MASJID"
+            ],
+            "RENTO" => [
+                "RENTOKIL",
+                "RENTOKIL INITIAL",
+                "RENTOKIL INITIAL MALAYSIA",
+                "RENTOKIL INITIAL M SDN BHD",
+                "RENTOKIL INITIAL (M) SDN BHD"
+            ],
+            "TRAITX" => [
+                "TRAITX",
+                "TRAITX SOLUTIONS",
+                "TRAITX SOLUTIONS SDN BHD"
+            ],
+            "LPPKN" => [
+                "LPPKN",
+                "LEMBAGA PENDUDUK DAN PEMBANGUNAN KELUARGA NEGARA",
+                "NATIONAL POPULATION AND FAMILY DEVELOPMENT BOARD"
+            ],
+            "MOE" => [
+                "MOE",
+                "MINISTRY OF EDUCATION",
+                "MINISTRY OF EDUCATION MALAYSIA",
+                "KEMENTERIAN PENDIDIKAN MALAYSIA"
+            ],
+            "AGD" => [
+                "AGD",
+                "ACCOUNTANT GENERAL'S DEPARTMENT",
+                "ACCOUNTANT GENERAL'S DEPARTMENT OF MALAYSIA",
+                "JABATAN AKAUNTAN NEGARA",
+                "JABATAN AKAUNTAN NEGARA MALAYSIA"
+            ],
+            "PRGSV" => [
+                "PROGRESSIVE",
+                "PROGRESSIVE IMPACT",
+                "PROGRESSIVE IMPACT CORPORATION",
+                "PROGRESSIVE IMPACT CORPORATION BERHAD"
+            ],
+            "PROTON" => [
+                "PROTON",
+                "PROTON HOLDINGS",
+                "PROTON HOLDINGS BERHAD",
+                "PERUSAHAAN OTOMOBIL NASIONAL"
+            ],
+            "SIPMA" => [
+                "SIPMA",
+                "SUKAN INSTITUSI PENDIDIKAN MALAYSIA"
+            ],
+            "SSUK" => [
+                "SELANGOR SUK",
+                "SUK SELANGOR",
+                "SETIAUSAHA KERAJAAN NEGERI SELANGOR",
+                "PEJABAT SETIAUSAHA KERAJAAN NEGERI SELANGOR"
+            ],
+            "VINX" => [
+                "VINX",
+                "VINX MALAYSIA",
+                "VINX MALAYSIA SDN BHD"
+            ],
+            "TW" => [
+                "TRADEWINDS",
+                "TRADE WINDS",
+                "TRADEWINDS PLANTATION",
+                "TRADEWINDS PLANTATION BERHAD"
+            ],
+            "ILKBS" => [
+                "ILKBS",
+                "INSTITUSI LATIHAN KEMAHIRAN BELIA DAN SUKAN"
+            ]
         ];
     }
 }
@@ -243,92 +649,100 @@ if(!function_exists('contractProjectCodeKnownPatterns')){
 if(!function_exists('contractProjectCodeCanonicalEndUsers')){
     function contractProjectCodeCanonicalEndUsers(){
         return [
-            "UMT" => "Universiti Malaysia Terengganu",
-            "TNB" => "Tenaga Nasional Berhad",
-            "KTMB" => "Keretapi Tanah Melayu Berhad",
-            "IWK" => "Indah Water Konsortium",
-            "UM" => "Universiti Malaya",
-            "NIPPON" => "Nippon Paint Malaysia Sdn Bhd",
-            "JPM" => "Jabatan Perdana Menteri",
+            "SUKN9" => "Pejabat Setiausaha Kerajaan Negeri Sembilan",
+            "AGMSN" => "AG-Mesiniaga Sdn Bhd",
+            "MEDSEL" => "Media Selangor Sdn Bhd",
+            "MEDPRI" => "Media Prima Berhad",
+            "GSPAPER" => "GS Paperboard & Packaging Sdn Bhd",
+            "POCDATA" => "Pocket Data (M) Sdn Bhd",
+            "PACOIL" => "Pacific Oils & Fats Industries Sdn Bhd",
+            "COOPB" => "Koperasi Co-opbank Pertama Malaysia Berhad",
+            "BMMB" => "Bank Muamalat Malaysia Berhad",
+            "BKRM" => "Bank Kerjasama Rakyat Malaysia Berhad",
+            "PPKB" => "Perbadanan Pembangunan Kampong Bharu",
             "AHZAKI" => "Ahmad Zaki Sdn Bhd",
-            "MEDAC" => "MEDAC",
-            "UPSI" => "UPSI",
-            "UNIMAP" => "UniMAP",
-            "JASWKL" => "JAS WP KL",
-            "SPT" => "SPT",
-            "MPKJ" => "MPKJ",
-            "SSM" => "SSM",
-            "JPWPKL" => "JPWPKL",
-            "SPR" => "SPR",
-            "UTHM" => "UTHM",
-            "DIGI" => "Digi",
-            "MERC" => "Mercedes-Benz",
-            "SME" => "SME",
-            "UPM" => "UPM",
-            "KKM" => "Kementerian Kesihatan Malaysia",
-            "KARS" => "KARS",
-            "STATS" => "Jabatan Perangkaan",
-            "JKR" => "JKR",
-            "JKM" => "JKM",
-            "HIGHP" => "Highpoint",
-            "MOSTI" => "MOSTI",
-            "BKRM" => "Bank Rakyat",
-            "HTAR" => "HTAR",
-            "UGC" => "Unigreen",
-            "TM" => "Telekom Malaysia",
-            "PNB" => "PNB",
-            "AMKOR" => "Amkor",
-            "BMMB" => "Bank Muamalat",
-            "SUKN9" => "SUK Negeri Sembilan",
-            "PACOIL" => "Pacific Oils",
-            "KGIS" => "KGIS",
-            "JPN" => "JPN",
-            "NAHRIM" => "NAHRIM",
-            "POCDATA" => "Pocket Data",
-            "ASTRO" => "ASTRO",
-            "MAMPU" => "MAMPU",
-            "UPNM" => "UPNM",
-            "KUSKOP" => "KUSKOP",
-            "JPA" => "JPA",
-            "MAHB" => "Malaysia Airport",
-            "MEDPRI" => "Media Prima",
-            "JPSM" => "Jabatan Perhutanan",
-            "SPA" => "SPA",
-            "KDN" => "KDN",
-            "GSPAPER" => "GS Paperboard",
-            "MELL" => "Millenium",
-            "PDRM" => "PDRM",
-            "MKN" => "MKN",
-            "MASJID" => "Masjid",
-            "RENTO" => "Rentokil",
-            "TRAITX" => "Traitx",
-            "MEDSEL" => "Media Selangor",
-            "LPPKN" => "LPPKN",
-            "MOE" => "Ministry of Education",
-            "AGD" => "AGD",
-            "PPKB" => "Perbadanan Pembangunan Kampong Baharu",
-            "PRGSV" => "Progressive",
-            "PROTON" => "PROTON",
-            "MSB" => "Mesiniaga",
-            "EXAMMED" => "EXAMEDIA",
-            "SIPMA" => "SIPMA",
-            "HERNAL" => "Heritage International",
-            "RFMS" => "RAFULIN FMS",
-            "SSUK" => "Selangor SUK",
-            "FORSOL" => "Fotia Solutions",
-            "PRODUA" => "PERODUA",
-            "VINX" => "VINX",
-            "TW" => "TradeWinds",
-            "FIRSOL" => "First Solution",
-            "ILKBS" => "ILKBS",
-            "020PLA" => "O2O Plantation",
-            "COOPB" => "CO-OPBANK PERTAMA",
-            "AGMSN" => "AG-MESINIAGA",
-            "UTM" => "Universiti Teknologi Malaysia",
-            "INTAN" => "Institut Tadbiran Awam Negara (INTAN)",
-            "LHDN" => "Lembaga Hasil Dalam Negeri",
+            "NIPPON" => "Nippon Paint (M) Sdn Bhd",
+            "HERNAL" => "Heritage International Sdn Bhd",
+            "FIRSOL" => "First Solution Sdn Bhd",
+            "FORSOL" => "Fotia Solutions Sdn Bhd",
+            "RFMS" => "Rafulin FMS Sdn Bhd",
+            "PRODUA" => "Perusahaan Otomobil Kedua Sdn Bhd",
+            "020PLA" => "O2O Plantation Sdn Bhd",
+            "KPDK" => "Kementerian Perladangan dan Komoditi",
+            "JASWKL" => "Jabatan Alam Sekitar Wilayah Persekutuan Kuala Lumpur",
+            "JPSM" => "Jabatan Perhutanan Semenanjung Malaysia",
             "JDN" => "Jabatan Digital Negara",
-            "KPDK" => "Kementerian Perladangan Dan Komoditi"
+            "MAHB" => "Malaysia Airports Holdings Berhad",
+            "MSB" => "Mesiniaga Berhad",
+            "EXAMMED" => "Examedia Solutions Sdn Bhd",
+            "SUK" => "Pejabat Setiausaha Kerajaan Negeri",
+            "UTM" => "Universiti Teknologi Malaysia",
+            "IWK" => "Indah Water Konsortium Sdn Bhd",
+            "PERKESO" => "Pertubuhan Keselamatan Sosial",
+            "INTAN" => "Institut Tadbiran Awam Negara",
+            "KUSKOP" => "Kementerian Pembangunan Usahawan dan Koperasi",
+            "KTMB" => "Keretapi Tanah Melayu Berhad",
+            "SPR" => "Suruhanjaya Pilihan Raya Malaysia",
+            "UMT" => "Universiti Malaysia Terengganu",
+            "UPNM" => "Universiti Pertahanan Nasional Malaysia",
+            "LHDN" => "Lembaga Hasil Dalam Negeri Malaysia",
+            "KWSP" => "Kumpulan Wang Simpanan Pekerja",
+            "MCMC" => "Malaysian Communications and Multimedia Commission",
+            "DOSM" => "Department of Statistics Malaysia",
+            "STATS" => "Jabatan Perangkaan Malaysia",
+            "UPSI" => "Universiti Pendidikan Sultan Idris",
+            "UNIMAP" => "Universiti Malaysia Perlis",
+            "UM" => "Universiti Malaya",
+            "UKM" => "Universiti Kebangsaan Malaysia",
+            "USM" => "Universiti Sains Malaysia",
+            "UITM" => "Universiti Teknologi MARA",
+            "UTHM" => "Universiti Tun Hussein Onn Malaysia",
+            "UPM" => "Universiti Putra Malaysia",
+            "TNB" => "Tenaga Nasional Berhad",
+            "TM" => "Telekom Malaysia Berhad",
+            "JPM" => "Jabatan Perdana Menteri",
+            "MEDAC" => "Ministry of Entrepreneur Development and Cooperatives",
+            "SPT" => "SPT Services Sdn Bhd",
+            "MPKJ" => "Majlis Perbandaran Kajang",
+            "SSM" => "Suruhanjaya Syarikat Malaysia",
+            "JPWPKL" => "Jabatan Pendidikan Wilayah Persekutuan Kuala Lumpur",
+            "DIGI" => "Digi Telecommunications Sdn Bhd",
+            "MERC" => "Mercedes-Benz Malaysia Sdn Bhd",
+            "SME" => "SME Corporation Malaysia",
+            "KKM" => "Kementerian Kesihatan Malaysia",
+            "KARS" => "KARS Technologies Sdn Bhd",
+            "JKR" => "Jabatan Kerja Raya Malaysia",
+            "JKM" => "Jabatan Kebajikan Masyarakat",
+            "HIGHP" => "Highpoint Service Network Sdn Bhd",
+            "MOSTI" => "Kementerian Sains, Teknologi dan Inovasi",
+            "HTAR" => "Hospital Tengku Ampuan Rahimah",
+            "UGC" => "Unigreen Chemicals Sdn Bhd",
+            "PNB" => "Permodalan Nasional Berhad",
+            "AMKOR" => "Amkor Technology Malaysia Sdn Bhd",
+            "KGIS" => "KG Invicta Services",
+            "JPN" => "Jabatan Pendaftaran Negara Malaysia",
+            "NAHRIM" => "Institut Penyelidikan Air Kebangsaan Malaysia",
+            "ASTRO" => "Astro Malaysia Holdings Berhad",
+            "MAMPU" => "Malaysian Administrative Modernisation and Management Planning Unit",
+            "JPA" => "Jabatan Perkhidmatan Awam Malaysia",
+            "SPA" => "Suruhanjaya Perkhidmatan Awam Malaysia",
+            "KDN" => "Kementerian Dalam Negeri",
+            "MELL" => "Millennium Technology Services",
+            "PDRM" => "Polis Diraja Malaysia",
+            "MKN" => "Majlis Keselamatan Negara",
+            "MASJID" => "Masjid",
+            "RENTO" => "Rentokil Initial (M) Sdn Bhd",
+            "TRAITX" => "TraitX Solutions Sdn Bhd",
+            "LPPKN" => "Lembaga Penduduk dan Pembangunan Keluarga Negara",
+            "MOE" => "Ministry of Education Malaysia",
+            "AGD" => "Accountant General's Department of Malaysia",
+            "PRGSV" => "Progressive Impact Corporation Berhad",
+            "PROTON" => "Proton Holdings Berhad",
+            "SIPMA" => "Sukan Institusi Pendidikan Malaysia",
+            "SSUK" => "Pejabat Setiausaha Kerajaan Negeri Selangor",
+            "VINX" => "VINX Malaysia Sdn Bhd",
+            "TW" => "Tradewinds Plantation Berhad",
+            "ILKBS" => "Institusi Latihan Kemahiran Belia dan Sukan"
         ];
     }
 }
@@ -354,6 +768,16 @@ if(!function_exists('contractProjectCodeFindKnownPrefix')){
 
         if($text === ""){
             return "";
+        }
+
+        foreach(contractProjectCodeCanonicalEndUsers() as $prefix => $canonicalEndUser){
+            $canonicalEndUser = strtoupper((string)$canonicalEndUser);
+            $canonicalEndUser = preg_replace('/[^A-Z0-9]+/', ' ', $canonicalEndUser);
+            $canonicalEndUser = trim(preg_replace('/\s+/', ' ', $canonicalEndUser));
+
+            if($canonicalEndUser !== "" && $text === $canonicalEndUser){
+                return $prefix;
+            }
         }
 
         foreach(contractProjectCodeKnownPatterns() as $prefix => $aliases){
@@ -505,9 +929,50 @@ if(!function_exists('contractSchemaBackfillProjectCodes')){
 
         while($row = $result->fetch_assoc()){
             $no = (int)($row['no'] ?? 0);
-            $currentCode = contractProjectCodeNormalize($row['project_code'] ?? "");
+            $rawProjectCode = $row['project_code'] ?? "";
+            $currentCode = contractProjectCodeNormalize($rawProjectCode);
+            $hasValidCurrentCode = (
+                $currentCode !== "" &&
+                contractProjectCodeHasExpectedFormat($rawProjectCode) &&
+                !contractProjectCodeExists($mysqli, $currentCode, $no)
+            );
 
-            if($currentCode === "" || contractProjectCodeExists($mysqli, $currentCode, $no)){
+            if(!$hasValidCurrentCode){
+                $hasAvailableSource = false;
+
+                foreach(["project_name", "end_user", "project_owner", "contract_no"] as $sourceColumn){
+                    if(trim((string)($row[$sourceColumn] ?? "")) !== ""){
+                        $hasAvailableSource = true;
+                        break;
+                    }
+                }
+
+                if(!$hasAvailableSource){
+                    $stmt = $mysqli->prepare("
+                        UPDATE project_inventory
+                        SET project_code = NULL
+                        WHERE no = ?
+                          AND project_code IS NOT NULL
+                    ");
+
+                    if($stmt){
+                        $stmt->bind_param("i", $no);
+                        $stmt->execute();
+                    }
+
+                    continue;
+                }
+
+                $generatedMiddle = contractProjectCodePrefix(
+                    $row['project_name'] ?? "",
+                    $row['end_user'] ?? "",
+                    $row['project_owner'] ?? "",
+                    $row['contract_no'] ?? ""
+                );
+                $currentCode = contractProjectCodeGenerateFromMiddle($mysqli, $generatedMiddle, $no);
+            }
+
+            if($currentCode === ""){
                 $stmt = $mysqli->prepare("
                     UPDATE project_inventory
                     SET project_code = NULL

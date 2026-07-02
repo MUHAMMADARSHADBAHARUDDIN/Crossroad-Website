@@ -174,6 +174,9 @@ if(!function_exists('hasPermission')){
         elseif(strpos($permissionName, "inventory_") === 0){
             $module = "inventory_full";
         }
+        elseif(strpos($permissionName, "office_inventory_") === 0){
+            $module = "office_inventory_full";
+        }
 
         if($module !== ""){
             $stmt = $mysqli->prepare("
