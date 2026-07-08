@@ -41,10 +41,12 @@ $taskText = trim($_POST['task_text'] ?? "");
 $taskStartDate = trim($_POST['task_start_date'] ?? "");
 $taskEndDate = trim($_POST['task_end_date'] ?? "");
 $claimAmountRaw = trim((string)($_POST['claim_amount'] ?? ""));
+$invoice = trim((string)($_POST['invoice'] ?? ""));
 $claimAmount = null;
 
 if($id <= 0){ exit("Invalid task."); }
 if($taskText === ""){ exit("Task cannot be empty."); }
+if(stripos($taskText, "Claim -") === 0 && $invoice === ""){ exit("Please enter the invoice."); }
 if($claimAmountRaw !== ""){
     $claimAmountRaw = str_replace([",", " "], "", $claimAmountRaw);
 
@@ -79,11 +81,13 @@ if(updateTaskColumnExists($mysqli, "contract_tasks", "task_text")){
 $hasTaskDates = updateTaskColumnExists($mysqli, "contract_tasks", "task_start_date")
     && updateTaskColumnExists($mysqli, "contract_tasks", "task_end_date");
 $hasClaimAmount = updateTaskColumnExists($mysqli, "contract_tasks", "claim_amount");
+$hasInvoice = updateTaskColumnExists($mysqli, "contract_tasks", "invoice");
 $dateSelect = $hasTaskDates ? ", task_start_date, task_end_date" : "";
 $claimSelect = $hasClaimAmount ? ", claim_amount" : "";
+$invoiceSelect = $hasInvoice ? ", invoice" : ", NULL AS invoice";
 
 $taskStmt = $mysqli->prepare("
-    SELECT contract_id, `$textColumn` AS old_task_text $dateSelect $claimSelect
+    SELECT contract_id, `$textColumn` AS old_task_text $dateSelect $claimSelect $invoiceSelect
     FROM contract_tasks
     WHERE `$idColumn` = ?
     LIMIT 1
@@ -137,6 +141,14 @@ if($hasClaimAmount && $canViewClaim){
     exit("claim_amount column not found.");
 }
 
+if($hasInvoice){
+    $setParts[] = "invoice = ?";
+    $types .= "s";
+    $params[] = $invoice !== "" ? $invoice : null;
+} elseif($invoice !== ""){
+    exit("invoice column not found.");
+}
+
 $types .= "i";
 $params[] = $id;
 
@@ -168,6 +180,8 @@ $oldDateText = $oldStart === "" ? "Not Assigned" : ($oldStart === $oldEnd ? $old
 $newDateText = $taskStartDate === "" ? "Not Assigned" : ($taskStartDate === $taskEndDate ? $taskStartDate : "$taskStartDate to $taskEndDate");
 $oldClaimText = "Unchanged";
 $newClaimText = "Unchanged";
+$oldInvoiceText = isset($task['invoice']) && trim((string)$task['invoice']) !== "" ? $task['invoice'] : "Not Assigned";
+$newInvoiceText = $invoice === "" ? "Not Assigned" : $invoice;
 
 if($canViewClaim){
     $oldClaimText = isset($task['claim_amount']) && $task['claim_amount'] !== null && $task['claim_amount'] !== ""
@@ -181,8 +195,8 @@ $description = "User [$username] edited a contract task.\n"
     . "Contract No: " . ($contract['contract_no'] ?? "") . "\n"
     . "Project Name: " . ($contract['project_name'] ?? "") . "\n"
     . "Task ID: $id\n\n"
-    . "OLD DATA:\n- Task: " . ($task['old_task_text'] ?? "") . "\n- Task Date: $oldDateText\n- Claim Amount: $oldClaimText\n\n"
-    . "NEW DATA:\n- Task: $taskText\n- Task Date: $newDateText\n- Claim Amount: $newClaimText\n\n"
+    . "OLD DATA:\n- Task: " . ($task['old_task_text'] ?? "") . "\n- Task Date: $oldDateText\n- Claim Amount: $oldClaimText\n- Invoice: $oldInvoiceText\n\n"
+    . "NEW DATA:\n- Task: $taskText\n- Task Date: $newDateText\n- Claim Amount: $newClaimText\n- Invoice: $newInvoiceText\n\n"
     . "IP Address: $ip\nTime: $time";
 
 logActivity($mysqli, $username, $role, "EDIT CONTRACT TASK", $description);

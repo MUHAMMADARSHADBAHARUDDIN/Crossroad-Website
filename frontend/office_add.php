@@ -5,6 +5,7 @@ require_once "../includes/activity_log.php";
 require_once "../includes/permissions.php";
 require_once "../includes/inventory_report_schema.php";
 require_once "../includes/office_family_helper.php";
+require_once "../includes/office_inventory_documents.php";
 require_once "../includes/date_helpers.php";
 
 if(!isset($_SESSION['username'])){
@@ -67,11 +68,24 @@ if(isset($_POST['add'])){
     $licenseFamily = "";
     $licenseFamilyDetails = null;
     $licenseExpiredDate = null;
+    $documentFileName = null;
+    $documentOriginalName = null;
+    $documentUploadedBy = null;
+    $documentUploadedAt = null;
+    $hasDocumentUpload = isset($_FILES['office_document']) && (int)($_FILES['office_document']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
 
-    if($owner === "" || $serialNumber === ""){
+    if($hasDocumentUpload){
+        $uploadError = officeInventoryDocumentValidateUpload($_FILES['office_document']);
+
+        if($uploadError !== ""){
+            $error = $uploadError;
+        }
+    }
+
+    if($error === "" && ($owner === "" || $serialNumber === "")){
         $error = "Owner and Serial Number are required.";
     }
-    else{
+    elseif($error === ""){
         $checkStmt = $mysqli->prepare("
             SELECT id
             FROM laptop_inventory
@@ -90,55 +104,81 @@ if(isset($_POST['add'])){
             $error = "Serial Number already exists.";
         }
         else{
+            $uploadedPath = "";
+
             $stmt = $mysqli->prepare("
                 INSERT INTO laptop_inventory
-                (delivery_date, owner, serial_number, brand, model, office365_license, antivirus_license, license_type, license_ownership, license_family, license_family_details, license_expired_date, created_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (delivery_date, owner, serial_number, brand, model, office365_license, antivirus_license, license_type, license_ownership, license_family, license_family_details, license_expired_date, document_file_name, document_original_name, document_uploaded_by, document_uploaded_at, created_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
 
             if(!$stmt){
                 die("SQL Error: " . $mysqli->error);
             }
 
-            $stmt->bind_param(
-                "sssssssssssss",
-                $deliveryDate,
-                $owner,
-                $serialNumber,
-                $brand,
-                $model,
-                $office365License,
-                $antivirusLicense,
-                $licenseType,
-                $licenseOwnership,
-                $licenseFamily,
-                $licenseFamilyDetails,
-                $licenseExpiredDate,
-                $username
-            );
+            if($hasDocumentUpload){
+                $documentOriginalName = basename((string)($_FILES['office_document']['name'] ?? ""));
+                $documentFileName = officeInventoryDocumentStoredFileName($documentOriginalName);
+                $documentUploadedBy = $username;
+                $documentUploadedAt = date("Y-m-d H:i:s");
+                $uploadDir = officeInventoryDocumentEnsureUploadDir();
+                $uploadedPath = $uploadDir . "/" . $documentFileName;
 
-            if($stmt->execute()){
-                $ip = $_SERVER['REMOTE_ADDR'] ?? "Unknown";
-                $time = date("Y-m-d H:i:s");
+                if(!move_uploaded_file($_FILES['office_document']['tmp_name'], $uploadedPath)){
+                    $error = "Failed to move uploaded document.";
+                }
+            }
 
-                $description = "User [$username] added office inventory.
+            if($error === ""){
+                $stmt->bind_param(
+                    "sssssssssssssssss",
+                    $deliveryDate,
+                    $owner,
+                    $serialNumber,
+                    $brand,
+                    $model,
+                    $office365License,
+                    $antivirusLicense,
+                    $licenseType,
+                    $licenseOwnership,
+                    $licenseFamily,
+                    $licenseFamilyDetails,
+                    $licenseExpiredDate,
+                    $documentFileName,
+                    $documentOriginalName,
+                    $documentUploadedBy,
+                    $documentUploadedAt,
+                    $username
+                );
+
+                if($stmt->execute()){
+                    $ip = $_SERVER['REMOTE_ADDR'] ?? "Unknown";
+                    $time = date("Y-m-d H:i:s");
+
+                    $description = "User [$username] added office inventory.
 Owner: $owner
 Serial Number: $serialNumber
 Brand: $brand
 Model: $model
 Office License For Owner: $office365License
 Antivirus For Owner: $antivirusLicense
+Document: " . ($documentOriginalName ?? "-") . "
 Delivery Date: $deliveryDate
 IP Address: $ip
 Time: $time";
 
-                logActivity($mysqli, $username, $role, "ADD OFFICE INVENTORY", $description);
+                    logActivity($mysqli, $username, $role, "ADD OFFICE INVENTORY", $description);
 
-                header("Location: office_inventory.php");
-                exit();
+                    header("Location: office_inventory.php");
+                    exit();
+                }
+
+                $error = "Insert failed: " . $stmt->error;
             }
 
-            $error = "Insert failed: " . $stmt->error;
+            if($uploadedPath !== "" && is_file($uploadedPath)){
+                unlink($uploadedPath);
+            }
         }
     }
 }
@@ -169,7 +209,8 @@ Time: $time";
 <div class="alert alert-danger"><?= officeAddEscape($error) ?></div>
 <?php endif; ?>
 
-<form method="POST">
+<form method="POST" enctype="multipart/form-data">
+<input type="hidden" name="MAX_FILE_SIZE" value="<?= officeInventoryDocumentMaxUploadBytes() ?>">
 <div class="row">
 
 <div class="col-md-6 mb-3">
@@ -226,6 +267,17 @@ Time: $time";
             </option>
         <?php endforeach; ?>
     </select>
+</div>
+
+<div class="col-12 mb-3">
+    <label>Document</label>
+    <input
+        type="file"
+        name="office_document"
+        class="form-control"
+        accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png,.zip"
+    >
+    <div class="form-text">Maximum <?= officeAddEscape(officeInventoryDocumentMaxUploadLabel()) ?>. ZIP files are allowed.</div>
 </div>
 
 </div>

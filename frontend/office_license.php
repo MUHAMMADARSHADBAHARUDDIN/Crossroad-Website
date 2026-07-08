@@ -26,6 +26,12 @@ $canEdit = hasPermission($mysqli, "office_inventory_edit");
 $canDelete = hasPermission($mysqli, "office_inventory_delete");
 $search = trim($_GET['search'] ?? "");
 $error = "";
+$requestedLicensePageType = $officeLicensePageType ?? ($_POST['license_page_type'] ?? ($_GET['type'] ?? "office365"));
+$officeLicensePageType = $requestedLicensePageType === "antivirus" ? "antivirus" : "office365";
+$officeLicensePageUrl = $officeLicensePageType === "antivirus" ? "office_license_antivirus.php" : "office_license.php";
+$officeLicensePageTitle = $officeLicensePageType === "antivirus" ? "License Antivirus" : "License Office 365";
+$officeLicenseLicenseLabel = $officeLicensePageType === "antivirus" ? "Antivirus" : "Office 365";
+$officeLicenseExpiredLabel = $officeLicensePageType === "antivirus" ? "Antivirus Expired" : "Office 365 Expired";
 $peopleOptions = officeInventoryFetchFamilyOptions($mysqli);
 
 function officeLicenseEscape($value){
@@ -60,7 +66,7 @@ function officeLicenseArrayValue($value){
     return [$value];
 }
 
-function officeLicensePostedFamilyRows($post){
+function officeLicensePostedFamilyRows($post, $licensePageType = "office365"){
     $families = officeLicenseArrayValue($post['license_family'] ?? []);
     $officeLicenses = officeLicenseArrayValue($post['family_office365_license'] ?? []);
     $officeExpiredDates = officeLicenseArrayValue($post['family_office365_expired_date'] ?? []);
@@ -79,12 +85,26 @@ function officeLicensePostedFamilyRows($post){
     $rows = [];
 
     for($index = 0; $index < $count; $index++){
+        $officeLicense = trim((string)($officeLicenses[$index] ?? ""));
+        $officeExpiredDate = appNormalizeDateInput($officeExpiredDates[$index] ?? "");
+        $antivirusLicense = trim((string)($antivirusLicenses[$index] ?? ""));
+        $antivirusExpiredDate = appNormalizeDateInput($antivirusExpiredDates[$index] ?? "");
+
+        if($licensePageType === "antivirus"){
+            $officeLicense = "";
+            $officeExpiredDate = null;
+        }
+        else{
+            $antivirusLicense = "";
+            $antivirusExpiredDate = null;
+        }
+
         $row = [
             "family" => trim((string)($families[$index] ?? "")),
-            "office365_license" => trim((string)($officeLicenses[$index] ?? "")),
-            "office365_expired_date" => appNormalizeDateInput($officeExpiredDates[$index] ?? ""),
-            "antivirus_license" => trim((string)($antivirusLicenses[$index] ?? "")),
-            "antivirus_expired_date" => appNormalizeDateInput($antivirusExpiredDates[$index] ?? "")
+            "office365_license" => $officeLicense,
+            "office365_expired_date" => $officeExpiredDate,
+            "antivirus_license" => $antivirusLicense,
+            "antivirus_expired_date" => $antivirusExpiredDate
         ];
 
         if(
@@ -103,7 +123,7 @@ function officeLicensePostedFamilyRows($post){
     return $rows;
 }
 
-function officeLicenseFamilyRowsError($owner, $rows){
+function officeLicenseFamilyRowsError($owner, $rows, $licensePageType = "office365"){
     if($owner === ""){
         return "Owner is required.";
     }
@@ -118,9 +138,15 @@ function officeLicenseFamilyRowsError($owner, $rows){
         $officeExpired = $row['office365_expired_date'] ?? null;
         $antivirusLicense = trim((string)($row['antivirus_license'] ?? ""));
         $antivirusExpired = $row['antivirus_expired_date'] ?? null;
+        $activeLicense = $licensePageType === "antivirus" ? $antivirusLicense : $officeLicense;
+        $activeLabel = $licensePageType === "antivirus" ? "Antivirus" : "Office 365";
 
         if($family === ""){
             return "Family is required for every row.";
+        }
+
+        if($activeLicense === ""){
+            return "$activeLabel license is required for every row.";
         }
 
         if($officeExpired !== null && $officeLicense === ""){
@@ -153,6 +179,37 @@ function officeLicenseRecordExists($mysqli, $owner, $family, $licenseName, $expi
     $stmt->bind_param("ssss", $owner, $family, $licenseName, $expiredDate);
     $stmt->execute();
     return $stmt->get_result()->num_rows > 0;
+}
+
+function officeLicenseModeOptions($licensePageType){
+    return $licensePageType === "antivirus"
+        ? officeInventoryAntivirusLicenseOptions()
+        : officeInventoryOfficeLicenseOptions();
+}
+
+function officeLicenseIsModeLicense($licenseName, $licensePageType){
+    $licenseName = trim((string)$licenseName);
+
+    if($licenseName === ""){
+        return false;
+    }
+
+    $options = officeLicenseModeOptions($licensePageType);
+    return isset($options[$licenseName]);
+}
+
+function officeLicenseModeWhereSql($mysqli, $licensePageType){
+    $names = array_keys(officeLicenseModeOptions($licensePageType));
+
+    if(empty($names)){
+        return "1 = 0";
+    }
+
+    $escaped = array_map(function($name) use ($mysqli){
+        return "'" . $mysqli->real_escape_string($name) . "'";
+    }, $names);
+
+    return "license_name IN (" . implode(", ", $escaped) . ")";
 }
 
 function officeLicenseDeleteFamilyPlaceholder($mysqli, $owner, $family){
@@ -202,7 +259,7 @@ function officeLicenseInsertIfMissing($mysqli, $owner, $family, $licenseName, $e
     $stmt->execute();
 }
 
-function officeLicenseSaveOwnerFamilyRows($mysqli, $owner, $rows, $createdBy){
+function officeLicenseSaveOwnerFamilyRows($mysqli, $owner, $rows, $createdBy, $licensePageType = "office365"){
     foreach($rows as $row){
         $family = trim((string)($row['family'] ?? ""));
         $officeLicense = trim((string)($row['office365_license'] ?? ""));
@@ -214,24 +271,74 @@ function officeLicenseSaveOwnerFamilyRows($mysqli, $owner, $rows, $createdBy){
             continue;
         }
 
-        if($officeLicense === "" && $antivirusLicense === ""){
-            officeLicenseInsertIfMissing($mysqli, $owner, $family, "", null, $createdBy, true);
-            continue;
+        if($licensePageType === "antivirus"){
+            officeLicenseInsertIfMissing($mysqli, $owner, $family, $antivirusLicense, $antivirusExpired, $createdBy);
         }
-
-        officeLicenseInsertIfMissing($mysqli, $owner, $family, $officeLicense, $officeExpired, $createdBy);
-        officeLicenseInsertIfMissing($mysqli, $owner, $family, $antivirusLicense, $antivirusExpired, $createdBy);
+        else{
+            officeLicenseInsertIfMissing($mysqli, $owner, $family, $officeLicense, $officeExpired, $createdBy);
+        }
     }
 }
 
-function officeLicenseDeleteOwnerRows($mysqli, $owner){
-    $stmt = $mysqli->prepare("DELETE FROM office_licenses WHERE owner = ?");
+function officeLicenseDeleteOwnerRows($mysqli, $owner, $licensePageType = null){
+    $whereSql = $licensePageType === null ? "" : " AND " . officeLicenseModeWhereSql($mysqli, $licensePageType);
+    $stmt = $mysqli->prepare("DELETE FROM office_licenses WHERE owner = ?" . $whereSql);
 
     if(!$stmt){
         die("SQL Error: " . $mysqli->error);
     }
 
     $stmt->bind_param("s", $owner);
+    $stmt->execute();
+}
+
+function officeLicenseUpdateOwner($mysqli, $oldOwner, $newOwner, $licensePageType = null){
+    $whereSql = $licensePageType === null ? "" : " AND " . officeLicenseModeWhereSql($mysqli, $licensePageType);
+    $stmt = $mysqli->prepare("
+        UPDATE office_licenses
+        SET owner = ?,
+            updated_at = NOW()
+        WHERE owner = ?" . $whereSql . "
+    ");
+
+    if(!$stmt){
+        die("SQL Error: " . $mysqli->error);
+    }
+
+    $stmt->bind_param("ss", $newOwner, $oldOwner);
+    $stmt->execute();
+}
+
+function officeLicenseDeleteFamilyRows($mysqli, $owner, $family, $licensePageType = null){
+    $whereSql = $licensePageType === null ? "" : " AND " . officeLicenseModeWhereSql($mysqli, $licensePageType);
+
+    if($family === "Unassigned"){
+        $stmt = $mysqli->prepare("
+            DELETE FROM office_licenses
+            WHERE owner = ?
+              AND (family = ? OR TRIM(COALESCE(family, '')) = '')" . $whereSql . "
+        ");
+
+        if(!$stmt){
+            die("SQL Error: " . $mysqli->error);
+        }
+
+        $stmt->bind_param("ss", $owner, $family);
+        $stmt->execute();
+        return;
+    }
+
+    $stmt = $mysqli->prepare("
+        DELETE FROM office_licenses
+        WHERE owner = ?
+          AND family = ?" . $whereSql . "
+    ");
+
+    if(!$stmt){
+        die("SQL Error: " . $mysqli->error);
+    }
+
+    $stmt->bind_param("ss", $owner, $family);
     $stmt->execute();
 }
 
@@ -289,7 +396,7 @@ function officeLicenseNumberedHtml($values){
     return $html;
 }
 
-function officeLicenseBuildOwnerGroups($mysqli){
+function officeLicenseBuildOwnerGroups($mysqli, $licensePageType = "office365"){
     $result = $mysqli->query("
         SELECT *
         FROM office_licenses
@@ -300,11 +407,16 @@ function officeLicenseBuildOwnerGroups($mysqli){
         die("SQL Error: " . $mysqli->error);
     }
 
-    $officeOptions = officeInventoryOfficeLicenseOptions();
-    $antivirusOptions = officeInventoryAntivirusLicenseOptions();
     $groups = [];
 
     while($row = $result->fetch_assoc()){
+        $licenseName = trim((string)($row['license_name'] ?? ""));
+
+        if(!officeLicenseIsModeLicense($licenseName, $licensePageType)){
+            continue;
+        }
+
+        $expiredDate = appNormalizeDateInput($row['expired_date'] ?? "");
         $owner = trim((string)($row['owner'] ?? ""));
 
         if($owner === ""){
@@ -343,14 +455,7 @@ function officeLicenseBuildOwnerGroups($mysqli){
         $groups[$owner]['latest_id'] = max($groups[$owner]['latest_id'], $id);
         $groups[$owner]['families'][$familyKey]['min_id'] = min($groups[$owner]['families'][$familyKey]['min_id'], $id);
 
-        $licenseName = trim((string)($row['license_name'] ?? ""));
-        $expiredDate = appNormalizeDateInput($row['expired_date'] ?? "");
-
-        if($licenseName === ""){
-            continue;
-        }
-
-        if(isset($officeOptions[$licenseName])){
+        if($licensePageType === "office365"){
             if($groups[$owner]['families'][$familyKey]['office365_license'] === ""){
                 $groups[$owner]['families'][$familyKey]['office365_license'] = $licenseName;
                 $groups[$owner]['families'][$familyKey]['office365_expired_date'] = $expiredDate;
@@ -359,19 +464,10 @@ function officeLicenseBuildOwnerGroups($mysqli){
             continue;
         }
 
-        if(isset($antivirusOptions[$licenseName])){
-            if($groups[$owner]['families'][$familyKey]['antivirus_license'] === ""){
-                $groups[$owner]['families'][$familyKey]['antivirus_license'] = $licenseName;
-                $groups[$owner]['families'][$familyKey]['antivirus_expired_date'] = $expiredDate;
-            }
-
-            continue;
+        if($groups[$owner]['families'][$familyKey]['antivirus_license'] === ""){
+            $groups[$owner]['families'][$familyKey]['antivirus_license'] = $licenseName;
+            $groups[$owner]['families'][$familyKey]['antivirus_expired_date'] = $expiredDate;
         }
-
-        $groups[$owner]['families'][$familyKey]['extra_licenses'][] = [
-            "license_name" => $licenseName,
-            "expired_date" => $expiredDate
-        ];
     }
 
     foreach($groups as $owner => $group){
@@ -389,19 +485,14 @@ function officeLicenseBuildOwnerGroups($mysqli){
             $licenseParts = [];
             $expiredParts = [];
 
-            if($familyRow['office365_license'] !== ""){
+            if($licensePageType === "office365" && $familyRow['office365_license'] !== ""){
                 $licenseParts[] = $familyRow['office365_license'];
                 $expiredParts[] = officeLicenseFormatDate($familyRow['office365_expired_date']) ?: "-";
             }
 
-            if($familyRow['antivirus_license'] !== ""){
+            if($licensePageType === "antivirus" && $familyRow['antivirus_license'] !== ""){
                 $licenseParts[] = $familyRow['antivirus_license'];
                 $expiredParts[] = officeLicenseFormatDate($familyRow['antivirus_expired_date']) ?: "-";
-            }
-
-            foreach($familyRow['extra_licenses'] as $extraLicense){
-                $licenseParts[] = $extraLicense['license_name'];
-                $expiredParts[] = officeLicenseFormatDate($extraLicense['expired_date']) ?: "-";
             }
 
             $familyValues[] = $familyRow['family'];
@@ -444,11 +535,11 @@ if($licenseAction === "save"){
     }
 
     $owner = trim($_POST['owner'] ?? "");
-    $familyRows = officeLicensePostedFamilyRows($_POST);
-    $error = officeLicenseFamilyRowsError($owner, $familyRows);
+    $familyRows = officeLicensePostedFamilyRows($_POST, $officeLicensePageType);
+    $error = officeLicenseFamilyRowsError($owner, $familyRows, $officeLicensePageType);
 
     if($error === ""){
-        officeLicenseSaveOwnerFamilyRows($mysqli, $owner, $familyRows, $username);
+        officeLicenseSaveOwnerFamilyRows($mysqli, $owner, $familyRows, $username, $officeLicensePageType);
 
         $ip = $_SERVER['REMOTE_ADDR'] ?? "Unknown";
         $time = date("Y-m-d H:i:s");
@@ -464,7 +555,7 @@ Time: $time";
 
         logActivity($mysqli, $username, $role, "ADD OFFICE LICENSE", $description);
 
-        header("Location: office_license.php");
+        header("Location: $officeLicensePageUrl");
         exit();
     }
 }
@@ -475,8 +566,8 @@ elseif($licenseAction === "update"){
 
     $originalOwner = trim($_POST['original_owner'] ?? "");
     $owner = trim($_POST['owner'] ?? "");
-    $familyRows = officeLicensePostedFamilyRows($_POST);
-    $error = officeLicenseFamilyRowsError($owner, $familyRows);
+    $familyRows = officeLicensePostedFamilyRows($_POST, $officeLicensePageType);
+    $error = officeLicenseFamilyRowsError($owner, $familyRows, $officeLicensePageType);
 
     if($originalOwner === ""){
         $error = "Original owner is missing.";
@@ -486,8 +577,8 @@ elseif($licenseAction === "update"){
         $mysqli->begin_transaction();
 
         try{
-            officeLicenseDeleteOwnerRows($mysqli, $originalOwner);
-            officeLicenseSaveOwnerFamilyRows($mysqli, $owner, $familyRows, $username);
+            officeLicenseDeleteOwnerRows($mysqli, $originalOwner, $officeLicensePageType);
+            officeLicenseSaveOwnerFamilyRows($mysqli, $owner, $familyRows, $username, $officeLicensePageType);
             $mysqli->commit();
         }
         catch(Throwable $exception){
@@ -510,7 +601,82 @@ Time: $time";
 
         logActivity($mysqli, $username, $role, "UPDATE OFFICE LICENSE", $description);
 
-        header("Location: office_license.php");
+        header("Location: $officeLicensePageUrl");
+        exit();
+    }
+}
+elseif($licenseAction === "update_owner"){
+    if(!$canEdit){
+        die("Access denied");
+    }
+
+    $originalOwner = trim($_POST['original_owner'] ?? "");
+    $owner = trim($_POST['owner'] ?? "");
+
+    if($originalOwner === "" || $owner === ""){
+        $error = "Owner is required.";
+    }
+    else{
+        officeLicenseUpdateOwner($mysqli, $originalOwner, $owner, $officeLicensePageType);
+
+        $ip = $_SERVER['REMOTE_ADDR'] ?? "Unknown";
+        $time = date("Y-m-d H:i:s");
+
+        $description = "User [$username] updated office license owner.
+Old Owner: $originalOwner
+New Owner: $owner
+IP Address: $ip
+Time: $time";
+
+        logActivity($mysqli, $username, $role, "UPDATE OFFICE LICENSE OWNER", $description);
+
+        header("Location: $officeLicensePageUrl");
+        exit();
+    }
+}
+elseif($licenseAction === "update_family"){
+    if(!$canEdit){
+        die("Access denied");
+    }
+
+    $originalOwner = trim($_POST['original_owner'] ?? "");
+    $originalFamily = trim($_POST['original_family'] ?? "");
+    $owner = trim($_POST['owner'] ?? "");
+    $familyRows = officeLicensePostedFamilyRows($_POST, $officeLicensePageType);
+    $familyRows = array_slice($familyRows, 0, 1);
+    $error = officeLicenseFamilyRowsError($owner, $familyRows, $officeLicensePageType);
+
+    if($originalOwner === "" || $originalFamily === ""){
+        $error = "Original family row is missing.";
+    }
+
+    if($error === ""){
+        $mysqli->begin_transaction();
+
+        try{
+            officeLicenseDeleteFamilyRows($mysqli, $originalOwner, $originalFamily, $officeLicensePageType);
+            officeLicenseSaveOwnerFamilyRows($mysqli, $owner, $familyRows, $username, $officeLicensePageType);
+            $mysqli->commit();
+        }
+        catch(Throwable $exception){
+            $mysqli->rollback();
+            throw $exception;
+        }
+
+        $newFamily = trim((string)($familyRows[0]['family'] ?? ""));
+        $ip = $_SERVER['REMOTE_ADDR'] ?? "Unknown";
+        $time = date("Y-m-d H:i:s");
+
+        $description = "User [$username] updated office license family row.
+Owner: $owner
+Old Family: $originalFamily
+New Family: $newFamily
+IP Address: $ip
+Time: $time";
+
+        logActivity($mysqli, $username, $role, "UPDATE OFFICE LICENSE FAMILY", $description);
+
+        header("Location: $officeLicensePageUrl");
         exit();
     }
 }
@@ -522,7 +688,7 @@ elseif($licenseAction === "delete_group"){
     $owner = trim($_POST['owner_key'] ?? "");
 
     if($owner !== ""){
-        officeLicenseDeleteOwnerRows($mysqli, $owner);
+        officeLicenseDeleteOwnerRows($mysqli, $owner, $officeLicensePageType);
 
         $ip = $_SERVER['REMOTE_ADDR'] ?? "Unknown";
         $time = date("Y-m-d H:i:s");
@@ -534,18 +700,44 @@ Time: $time";
 
         logActivity($mysqli, $username, $role, "DELETE OFFICE LICENSE", $description);
 
-        header("Location: office_license.php");
+        header("Location: $officeLicensePageUrl");
+        exit();
+    }
+}
+elseif($licenseAction === "delete_family"){
+    if(!$canDelete){
+        die("Access denied");
+    }
+
+    $owner = trim($_POST['owner_key'] ?? "");
+    $family = trim($_POST['family_key'] ?? "");
+
+    if($owner !== "" && $family !== ""){
+        officeLicenseDeleteFamilyRows($mysqli, $owner, $family, $officeLicensePageType);
+
+        $ip = $_SERVER['REMOTE_ADDR'] ?? "Unknown";
+        $time = date("Y-m-d H:i:s");
+
+        $description = "User [$username] deleted office license family.
+Owner: $owner
+Family: $family
+IP Address: $ip
+Time: $time";
+
+        logActivity($mysqli, $username, $role, "DELETE OFFICE LICENSE FAMILY", $description);
+
+        header("Location: $officeLicensePageUrl");
         exit();
     }
 }
 
-$ownerGroups = officeLicenseBuildOwnerGroups($mysqli);
+$ownerGroups = officeLicenseBuildOwnerGroups($mysqli, $officeLicensePageType);
 ?>
 
 <!DOCTYPE html>
 <html>
 <head>
-<title>Office License</title>
+<title><?= officeLicenseEscape($officeLicensePageTitle) ?></title>
 
 <link rel="icon" type="image/png" href="../image/logo.png?v=<?= $faviconVersion ?>">
 <link rel="shortcut icon" type="image/png" href="../image/logo.png?v=<?= $faviconVersion ?>">
@@ -577,7 +769,7 @@ html, body{
 
 #officeLicenseTable{
     width:100% !important;
-    min-width:520px;
+    min-width:360px;
     table-layout:auto;
 }
 
@@ -595,6 +787,19 @@ html, body{
 
 .office-license-owner-row{
     cursor:pointer;
+}
+
+.office-license-owner-name{
+    font-weight:700;
+    color:#212529;
+}
+
+.office-license-owner-preview{
+    margin-top:2px;
+    color:#6c757d;
+    font-size:11px;
+    line-height:1.25;
+    overflow-wrap:anywhere;
 }
 
 #officeLicenseTable_wrapper{
@@ -671,7 +876,7 @@ html, body{
 
 .office-license-family-row-grid{
     display:grid;
-    grid-template-columns:minmax(160px,1.1fr) minmax(150px,1fr) minmax(132px,.85fr) minmax(150px,1fr) minmax(132px,.85fr) 40px;
+    grid-template-columns:minmax(180px,1.1fr) minmax(170px,1fr) minmax(150px,.85fr) 40px;
     gap:10px;
     align-items:end;
 }
@@ -686,7 +891,7 @@ html, body{
 
 @media(max-width:992px){
     #officeLicenseTable{
-        min-width:520px;
+        min-width:360px;
     }
 
     .office-license-family-row-grid{
@@ -723,7 +928,7 @@ html, body{
 
 <div class="main">
 
-<h2 class="mb-4">License</h2>
+<h2 class="mb-4"><?= officeLicenseEscape($officeLicensePageTitle) ?></h2>
 
 <?php if($error !== ""): ?>
 <div class="alert alert-danger"><?= officeLicenseEscape($error) ?></div>
@@ -749,7 +954,7 @@ html, body{
 
 <?php if($canAdd): ?>
 <button type="button" class="btn btn-warning mb-3" onclick="openOfficeLicenseModal()">
-    <i class="fa fa-plus"></i> Add License
+    <i class="fa fa-plus"></i> Add <?= officeLicenseEscape($officeLicenseLicenseLabel) ?>
 </button>
 <?php endif; ?>
 
@@ -758,7 +963,6 @@ html, body{
 <thead>
 <tr>
     <th>Owner</th>
-    <th>Action</th>
 </tr>
 </thead>
 <tbody>
@@ -766,6 +970,7 @@ html, body{
     <?php
     $payload = [
         "owner" => $group['owner'],
+        "owner_option" => officeInventoryNicknameFromName($group['owner']),
         "rows" => $group['families'],
         "family_values" => $group['family_values'] ?? [],
         "license_values" => $group['license_values'] ?? [],
@@ -778,34 +983,13 @@ html, body{
         data-search="<?= officeLicenseEscape($group['search_text'] ?? '') ?>"
         onclick='openOfficeLicenseDetail(<?= officeLicenseEscape($payloadJson) ?>)'
     >
-        <td class="fw-semibold"><?= officeLicenseEscape($group['owner'] ?? '-') ?></td>
         <td>
-            <div class="office-license-actions">
-                <?php if($canEdit): ?>
-                    <button
-                        type="button"
-                        class="btn btn-sm btn-primary"
-                        onclick='event.stopPropagation(); openOfficeLicenseModal(<?= officeLicenseEscape($payloadJson) ?>)'
-                        title="Edit"
-                    >
-                        <i class="fa fa-pen"></i>
-                    </button>
-                <?php endif; ?>
-
-                <?php if($canDelete): ?>
-                    <form method="POST" class="d-inline" onclick="event.stopPropagation();" onsubmit="event.stopPropagation(); return confirm('Delete this owner license group?');">
-                        <input type="hidden" name="license_action" value="delete_group">
-                        <input type="hidden" name="owner_key" value="<?= officeLicenseEscape($group['owner'] ?? '') ?>">
-                        <button type="submit" class="btn btn-sm btn-danger" title="Delete">
-                            <i class="fa fa-trash"></i>
-                        </button>
-                    </form>
-                <?php endif; ?>
-
-                <?php if(!$canEdit && !$canDelete): ?>
-                    <span class="badge bg-secondary">View Only</span>
-                <?php endif; ?>
-            </div>
+            <div class="office-license-owner-name"><?= officeLicenseEscape($group['owner'] ?? '-') ?></div>
+            <?php if(!empty($group['family_values'][0])): ?>
+                <div class="office-license-owner-preview">
+                    Family: <?= officeLicenseEscape($group['family_values'][0]) ?>
+                </div>
+            <?php endif; ?>
         </td>
     </tr>
 <?php endforeach; ?>
@@ -830,12 +1014,63 @@ html, body{
   </div>
 </div>
 
+<form method="POST" id="officeLicenseDeleteFamilyForm" class="d-none">
+    <input type="hidden" name="license_action" value="delete_family">
+    <input type="hidden" name="license_page_type" value="<?= officeLicenseEscape($officeLicensePageType) ?>">
+    <input type="hidden" name="owner_key" id="officeLicenseDeleteFamilyOwner">
+    <input type="hidden" name="family_key" id="officeLicenseDeleteFamilyName">
+</form>
+
+<form method="POST" id="officeLicenseDeleteOwnerForm" class="d-none">
+    <input type="hidden" name="license_action" value="delete_group">
+    <input type="hidden" name="license_page_type" value="<?= officeLicenseEscape($officeLicensePageType) ?>">
+    <input type="hidden" name="owner_key" id="officeLicenseDeleteOwnerName">
+</form>
+
+<?php if($canEdit): ?>
+<div class="modal fade office-license-modal" id="officeLicenseOwnerModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-md modal-dialog-centered">
+    <form method="POST" class="modal-content">
+      <input type="hidden" name="license_action" value="update_owner">
+      <input type="hidden" name="license_page_type" value="<?= officeLicenseEscape($officeLicensePageType) ?>">
+      <input type="hidden" name="original_owner" id="officeLicenseOwnerOriginal">
+
+      <div class="modal-header bg-dark text-white">
+        <h5 class="modal-title">
+          <i class="fa fa-user-pen text-warning"></i>
+          Edit Owner
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+        <label class="form-label">Owner *</label>
+        <select name="owner" id="officeLicenseOwnerEditSelect" class="form-select" required>
+            <option value="">Select Owner</option>
+            <?php foreach($peopleOptions as $option): ?>
+                <option value="<?= officeLicenseEscape($option) ?>"><?= officeLicenseEscape($option) ?></option>
+            <?php endforeach; ?>
+        </select>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-warning">Update</button>
+      </div>
+    </form>
+  </div>
+</div>
+<?php endif; ?>
+
 <?php if($canAdd || $canEdit): ?>
 <div class="modal fade office-license-modal" id="officeLicenseFormModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
     <form method="POST" class="modal-content">
       <input type="hidden" name="license_action" id="officeLicenseAction" value="save">
+      <input type="hidden" name="license_page_type" value="<?= officeLicenseEscape($officeLicensePageType) ?>">
       <input type="hidden" name="original_owner" id="officeLicenseOriginalOwner" value="">
+      <input type="hidden" name="original_family" id="officeLicenseOriginalFamily" value="">
+      <input type="hidden" name="owner" id="officeLicenseOwnerHidden" value="" disabled>
 
       <div class="modal-header bg-dark text-white">
         <h5 class="modal-title" id="officeLicenseFormTitle">
@@ -883,6 +1118,14 @@ let officeLicenseTable;
 const officeLicensePeopleOptions = <?= json_encode($peopleOptions, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
 const officeLicenseOfficeOptions = <?= json_encode(officeInventoryOfficeLicenseOptions(), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
 const officeLicenseAntivirusOptions = <?= json_encode(officeInventoryAntivirusLicenseOptions(), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
+const officeLicensePageType = <?= json_encode($officeLicensePageType) ?>;
+const officeLicensePageUrl = <?= json_encode($officeLicensePageUrl) ?>;
+const officeLicensePageTitle = <?= json_encode($officeLicensePageTitle) ?>;
+const officeLicenseLicenseLabel = <?= json_encode($officeLicenseLicenseLabel) ?>;
+const officeLicenseExpiredLabel = <?= json_encode($officeLicenseExpiredLabel) ?>;
+const officeLicenseCanEdit = <?= json_encode($canEdit) ?>;
+const officeLicenseCanDelete = <?= json_encode($canDelete) ?>;
+let currentOfficeLicenseDetailGroup = null;
 
 function escapeHtml(value){
     return String(value ?? "")
@@ -958,6 +1201,12 @@ function optionMapHtml(options, selectedValue, emptyLabel){
 
 function createOfficeLicenseFamilyRow(row){
     const data = row || {};
+    const isAntivirus = officeLicensePageType === "antivirus";
+    const selectedLicense = isAntivirus ? (data.antivirus_license || "") : (data.office365_license || "");
+    const selectedExpired = isAntivirus ? (data.antivirus_expired_date || "") : (data.office365_expired_date || "");
+    const licenseOptions = isAntivirus ? officeLicenseAntivirusOptions : officeLicenseOfficeOptions;
+    const licenseFieldName = isAntivirus ? "family_antivirus_license[]" : "family_office365_license[]";
+    const expiredFieldName = isAntivirus ? "family_antivirus_expired_date[]" : "family_office365_expired_date[]";
 
     return '<div class="office-license-family-row">' +
         '<div class="office-license-family-row-grid">' +
@@ -966,20 +1215,12 @@ function createOfficeLicenseFamilyRow(row){
                 '<select name="license_family[]" class="form-select" required>' + peopleOptionsHtml(data.family || "") + '</select>' +
             '</div>' +
             '<div>' +
-                '<label class="form-label">Office License</label>' +
-                '<select name="family_office365_license[]" class="form-select">' + optionMapHtml(officeLicenseOfficeOptions, data.office365_license || "", "None") + '</select>' +
+                '<label class="form-label">' + escapeHtml(officeLicenseLicenseLabel) + '</label>' +
+                '<select name="' + licenseFieldName + '" class="form-select" required>' + optionMapHtml(licenseOptions, selectedLicense, "Select License") + '</select>' +
             '</div>' +
             '<div>' +
-                '<label class="form-label">Office Expired</label>' +
-                '<input type="date" name="family_office365_expired_date[]" class="form-control" value="' + escapeHtml(data.office365_expired_date || "") + '">' +
-            '</div>' +
-            '<div>' +
-                '<label class="form-label">Antivirus</label>' +
-                '<select name="family_antivirus_license[]" class="form-select">' + optionMapHtml(officeLicenseAntivirusOptions, data.antivirus_license || "", "None") + '</select>' +
-            '</div>' +
-            '<div>' +
-                '<label class="form-label">AV Expired</label>' +
-                '<input type="date" name="family_antivirus_expired_date[]" class="form-control" value="' + escapeHtml(data.antivirus_expired_date || "") + '">' +
+                '<label class="form-label">' + escapeHtml(officeLicenseExpiredLabel) + '</label>' +
+                '<input type="date" name="' + expiredFieldName + '" class="form-control" value="' + escapeHtml(selectedExpired) + '">' +
             '</div>' +
             '<div>' +
                 '<button type="button" class="btn btn-outline-danger office-license-family-remove" title="Remove">' +
@@ -1001,36 +1242,98 @@ function renderOfficeLicenseFamilyRows(rows){
     container.innerHTML = list.map(createOfficeLicenseFamilyRow).join("");
 }
 
+function formatOfficeLicenseDetailDate(value){
+    value = String(value || "");
+
+    if(value === ""){
+        return "-";
+    }
+
+    const parts = value.split("-");
+
+    if(parts.length !== 3){
+        return value;
+    }
+
+    return parts[2] + "/" + parts[1] + "/" + parts[0].slice(-2);
+}
+
+function officeLicenseDetailActionHtml(index){
+    let html = "<div class='office-license-actions'>";
+
+    if(officeLicenseCanEdit){
+        html += "<button type='button' class='btn btn-sm btn-primary office-license-detail-edit' data-index='" + index + "' title='Edit'>" +
+            "<i class='fa fa-pen'></i>" +
+        "</button>";
+    }
+
+    if(officeLicenseCanDelete){
+        html += "<button type='button' class='btn btn-sm btn-danger office-license-detail-delete' data-index='" + index + "' title='Delete'>" +
+            "<i class='fa fa-trash'></i>" +
+        "</button>";
+    }
+
+    if(!officeLicenseCanEdit && !officeLicenseCanDelete){
+        html += "<span class='badge bg-secondary'>View Only</span>";
+    }
+
+    html += "</div>";
+    return html;
+}
+
+function officeLicenseOwnerActionHtml(){
+    let html = "<div class='d-flex flex-wrap gap-2 mb-3'>";
+
+    if(officeLicenseCanEdit){
+        html += "<button type='button' class='btn btn-sm btn-primary office-license-owner-edit'>" +
+            "<i class='fa fa-user-pen'></i> Edit Owner" +
+        "</button>";
+    }
+
+    if(officeLicenseCanDelete){
+        html += "<button type='button' class='btn btn-sm btn-danger office-license-owner-delete'>" +
+            "<i class='fa fa-trash'></i> Delete Owner" +
+        "</button>";
+    }
+
+    html += "</div>";
+    return html;
+}
+
 function openOfficeLicenseDetail(group){
     const record = group || {};
-    const families = Array.isArray(record.family_values) ? record.family_values : [];
-    const licenses = Array.isArray(record.license_values) ? record.license_values : [];
-    const expired = Array.isArray(record.expired_values) ? record.expired_values : [];
-    const count = Math.max(families.length, licenses.length, expired.length);
+    const rowsData = Array.isArray(record.rows) ? record.rows : [];
+    currentOfficeLicenseDetailGroup = record;
+    const isAntivirus = officeLicensePageType === "antivirus";
 
     document.getElementById("officeLicenseDetailTitle").innerHTML =
         '<i class="fa fa-circle-info text-warning"></i> ' + escapeHtml(record.owner || "License Details");
 
-    if(count === 0){
+    if(rowsData.length === 0){
         document.getElementById("officeLicenseDetailContent").innerHTML =
             "<div class='alert alert-secondary mb-0'>No license details found.</div>";
     }
     else{
         let rows = "";
 
-        for(let index = 0; index < count; index++){
+        rowsData.forEach(function(row, index){
+            const licenseName = isAntivirus ? (row.antivirus_license || "-") : (row.office365_license || "-");
+            const expiredDate = isAntivirus ? row.antivirus_expired_date : row.office365_expired_date;
+
             rows += "<tr>" +
-                "<td>" + escapeHtml(families[index] || "-") + "</td>" +
-                "<td>" + escapeHtml(licenses[index] || "-") + "</td>" +
-                "<td>" + escapeHtml(expired[index] || "-") + "</td>" +
+                "<td>" + escapeHtml(row.family || "-") + "</td>" +
+                "<td>" + escapeHtml(licenseName) + "</td>" +
+                "<td>" + escapeHtml(formatOfficeLicenseDetailDate(expiredDate)) + "</td>" +
+                "<td>" + officeLicenseDetailActionHtml(index) + "</td>" +
             "</tr>";
-        }
+        });
 
         document.getElementById("officeLicenseDetailContent").innerHTML =
+            officeLicenseOwnerActionHtml() +
             "<div class='table-responsive'>" +
                 "<table class='table table-sm table-bordered align-middle mb-0'>" +
                     "<thead class='table-light'>" +
-                        "<tr><th>Family</th><th>License</th><th>Expired</th></tr>" +
+                        "<tr><th>Family</th><th>" + escapeHtml(officeLicenseLicenseLabel) + "</th><th>Expired</th><th>Action</th></tr>" +
                     "</thead>" +
                     "<tbody>" + rows + "</tbody>" +
                 "</table>" +
@@ -1040,9 +1343,63 @@ function openOfficeLicenseDetail(group){
     bootstrap.Modal.getOrCreateInstance(document.getElementById("officeLicenseDetailModal")).show();
 }
 
-function openOfficeLicenseModal(group){
+function openOfficeLicenseOwnerModal(owner, ownerOption){
+    const modal = document.getElementById("officeLicenseOwnerModal");
+
+    if(!modal){
+        return;
+    }
+
+    document.getElementById("officeLicenseOwnerOriginal").value = owner || "";
+    setSelectValue("officeLicenseOwnerEditSelect", ownerOption || owner || "");
+    bootstrap.Modal.getOrCreateInstance(modal).show();
+}
+
+function deleteOfficeLicenseOwner(owner){
+    if(!owner){
+        return;
+    }
+
+    if(!confirm("Delete this owner and all family license data?")){
+        return;
+    }
+
+    document.getElementById("officeLicenseDeleteOwnerName").value = owner;
+    document.getElementById("officeLicenseDeleteOwnerForm").submit();
+}
+
+function deleteOfficeLicenseFamily(owner, family){
+    if(!owner || !family){
+        return;
+    }
+
+    if(!confirm("Delete this family license row?")){
+        return;
+    }
+
+    document.getElementById("officeLicenseDeleteFamilyOwner").value = owner;
+    document.getElementById("officeLicenseDeleteFamilyName").value = family;
+    document.getElementById("officeLicenseDeleteFamilyForm").submit();
+}
+
+function configureOfficeLicenseOwnerField(isLocked, owner){
+    const select = document.getElementById("officeLicenseOwner");
+    const hidden = document.getElementById("officeLicenseOwnerHidden");
+
+    if(!select || !hidden){
+        return;
+    }
+
+    setSelectValue("officeLicenseOwner", owner || "");
+    select.disabled = !!isLocked;
+    hidden.disabled = !isLocked;
+    hidden.value = isLocked ? (owner || "") : "";
+}
+
+function openOfficeLicenseModal(group, mode){
     const record = group || {};
     const isEdit = !!record.owner;
+    const isFamilyEdit = mode === "family";
     const modal = document.getElementById("officeLicenseFormModal");
 
     if(!modal){
@@ -1050,18 +1407,87 @@ function openOfficeLicenseModal(group){
     }
 
     document.getElementById("officeLicenseFormTitle").innerHTML =
-        '<i class="fa fa-key text-warning"></i> ' + (isEdit ? "Edit License" : "Add License");
-    document.getElementById("officeLicenseAction").value = isEdit ? "update" : "save";
+        '<i class="fa fa-key text-warning"></i> ' + (isFamilyEdit ? "Edit " + officeLicenseLicenseLabel : "Add " + officeLicenseLicenseLabel);
+    document.getElementById("officeLicenseAction").value = isFamilyEdit ? "update_family" : "save";
     document.getElementById("officeLicenseOriginalOwner").value = isEdit ? record.owner : "";
-    document.getElementById("officeLicenseSubmitBtn").textContent = isEdit ? "Update" : "Save";
+    document.getElementById("officeLicenseOriginalFamily").value = isFamilyEdit ? (record.original_family || "") : "";
+    document.getElementById("officeLicenseSubmitBtn").textContent = isFamilyEdit ? "Update" : "Save";
 
-    setSelectValue("officeLicenseOwner", isEdit ? record.owner : "");
+    configureOfficeLicenseOwnerField(isFamilyEdit, isEdit ? record.owner : "");
     renderOfficeLicenseFamilyRows(isEdit ? record.rows : [{}]);
+    document.getElementById("addOfficeLicenseFamilyBtn").classList.toggle("d-none", isFamilyEdit);
+
+    document.querySelectorAll("#officeLicenseFamilyRows .office-license-family-remove").forEach(function(button){
+        button.classList.toggle("d-none", isFamilyEdit);
+    });
 
     bootstrap.Modal.getOrCreateInstance(modal).show();
 }
 
+function openOfficeLicenseFamilyModal(index){
+    if(!currentOfficeLicenseDetailGroup || !Array.isArray(currentOfficeLicenseDetailGroup.rows)){
+        return;
+    }
+
+    const row = currentOfficeLicenseDetailGroup.rows[index];
+
+    if(!row){
+        return;
+    }
+
+    bootstrap.Modal.getInstance(document.getElementById("officeLicenseDetailModal"))?.hide();
+    openOfficeLicenseModal({
+        owner: currentOfficeLicenseDetailGroup.owner,
+        original_family: row.family || "",
+        rows: [row]
+    }, "family");
+}
+
 document.addEventListener("click", function(event){
+    if(event.target.closest(".office-license-owner-edit")){
+        if(currentOfficeLicenseDetailGroup){
+            openOfficeLicenseOwnerModal(
+                currentOfficeLicenseDetailGroup.owner,
+                currentOfficeLicenseDetailGroup.owner_option || currentOfficeLicenseDetailGroup.owner
+            );
+        }
+
+        return;
+    }
+
+    if(event.target.closest(".office-license-owner-delete")){
+        if(currentOfficeLicenseDetailGroup){
+            deleteOfficeLicenseOwner(currentOfficeLicenseDetailGroup.owner);
+        }
+
+        return;
+    }
+
+    const detailEditButton = event.target.closest(".office-license-detail-edit");
+
+    if(detailEditButton){
+        const index = parseInt(detailEditButton.getAttribute("data-index") || "-1", 10);
+        openOfficeLicenseFamilyModal(index);
+
+        return;
+    }
+
+    const detailDeleteButton = event.target.closest(".office-license-detail-delete");
+
+    if(detailDeleteButton){
+        const index = parseInt(detailDeleteButton.getAttribute("data-index") || "-1", 10);
+        const rows = currentOfficeLicenseDetailGroup && Array.isArray(currentOfficeLicenseDetailGroup.rows)
+            ? currentOfficeLicenseDetailGroup.rows
+            : [];
+        const row = index >= 0 ? rows[index] : null;
+
+        if(row){
+            deleteOfficeLicenseFamily(currentOfficeLicenseDetailGroup.owner, row.family);
+        }
+
+        return;
+    }
+
     if(event.target.closest("#addOfficeLicenseFamilyBtn")){
         document.getElementById("officeLicenseFamilyRows").insertAdjacentHTML("beforeend", createOfficeLicenseFamilyRow({}));
         return;
@@ -1121,8 +1547,7 @@ $(document).ready(function(){
             info:"Showing _START_ to _END_ of _TOTAL_ license records"
         },
         columnDefs:[
-            {width:"78%", targets:0},
-            {width:"22%", targets:1, orderable:false, searchable:false}
+            {width:"100%", targets:0}
         ]
     });
 
@@ -1130,7 +1555,7 @@ $(document).ready(function(){
         officeLicenseTable.draw();
 
         let keyword = this.value.trim();
-        let newUrl = "office_license.php" + (keyword !== "" ? "?search=" + encodeURIComponent(keyword) : "");
+        let newUrl = officeLicensePageUrl + (keyword !== "" ? "?search=" + encodeURIComponent(keyword) : "");
 
         if(window.history.replaceState){
             window.history.replaceState({}, document.title, newUrl);

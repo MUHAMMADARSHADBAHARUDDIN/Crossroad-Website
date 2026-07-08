@@ -119,6 +119,7 @@ $hasCreatedBy = taskColumnExists($mysqli, "contract_tasks", "created_by");
 $hasCompletedBy = taskColumnExists($mysqli, "contract_tasks", "completed_by");
 $hasCompletedAt = taskColumnExists($mysqli, "contract_tasks", "completed_at");
 $hasClaimAmount = taskColumnExists($mysqli, "contract_tasks", "claim_amount");
+$hasInvoice = taskColumnExists($mysqli, "contract_tasks", "invoice");
 
 if($hasIsCompleted){
     $completeSql = "CASE WHEN is_completed = 1 THEN 1 ELSE 0 END AS is_done";
@@ -134,6 +135,7 @@ $dateSelect = $hasTaskDates
     ? ", task_start_date, task_end_date"
     : ", NULL AS task_start_date, NULL AS task_end_date";
 $claimSelect = ($hasClaimAmount && $canViewClaim) ? ", claim_amount" : ", NULL AS claim_amount";
+$invoiceSelect = $hasInvoice ? ", invoice" : ", NULL AS invoice";
 $metaSelect = ""
     . ($hasCreatedBy ? ", created_by" : ", '' AS created_by")
     . ($hasCompletedBy ? ", completed_by" : ", '' AS completed_by")
@@ -141,7 +143,7 @@ $metaSelect = ""
 $orderColumn = taskColumnExists($mysqli, "contract_tasks", "created_at") ? "created_at" : $idColumn;
 
 $sql = "
-    SELECT `$idColumn` AS task_id, `$textColumn` AS task_text, $completeSql $dateSelect $claimSelect $metaSelect
+    SELECT `$idColumn` AS task_id, `$textColumn` AS task_text, $completeSql $dateSelect $claimSelect $invoiceSelect $metaSelect
     FROM contract_tasks
     WHERE contract_id = ?
     ORDER BY `$orderColumn` ASC
@@ -249,6 +251,10 @@ $percent = $total > 0 ? round(($done / $total) * 100) : 0;
                 <input type="number" id="newTaskClaimAmount" class="form-control" min="0.01" step="0.01" placeholder="0.00">
             </div>
         <?php endif; ?>
+        <div class="col-md-3 task-entry-field task-claim-field d-none">
+            <label class="form-label small mb-1">Invoice</label>
+            <input type="text" id="newTaskInvoice" class="form-control" placeholder="Invoice no." autocomplete="off">
+        </div>
         <div class="col-md-2 d-grid task-entry-field task-common-field d-none">
             <button type="button" class="btn btn-warning" id="addTaskBtn" onclick="addContractTask()">
                 <i class="fa fa-plus"></i> Add
@@ -286,6 +292,7 @@ $percent = $total > 0 ? round(($done / $total) * 100) : 0;
     $claimAmount = $task['claim_amount'];
     $claimAmountValue = ($claimAmount === null || $claimAmount === "") ? "" : number_format((float)$claimAmount, 2, '.', '');
     $claimAmountText = $claimAmountValue !== "" && (float)$claimAmountValue > 0 ? "RM " . number_format((float)$claimAmountValue, 2) : "";
+    $invoice = trim((string)($task['invoice'] ?? ""));
     $isDone = (int)$task['is_done'] === 1;
     $documentCount = $documentCounts[$taskId] ?? 0;
     $hasAssignedDate = !empty($taskStartDate) && $taskStartDate !== "0000-00-00";
@@ -330,6 +337,12 @@ $percent = $total > 0 ? round(($done / $total) * 100) : 0;
                             <?= taskEscape($claimAmountText) ?>
                         </span>
                     <?php endif; ?>
+                    <?php if($invoice !== ""): ?>
+                        <span class="task-document-indicator">
+                            <i class="fa fa-file-invoice"></i>
+                            Invoice: <?= taskEscape($invoice) ?>
+                        </span>
+                    <?php endif; ?>
                 </div>
                 <?php if(!empty($taskMetaParts)): ?>
                     <div class="contract-task-meta">
@@ -342,7 +355,7 @@ $percent = $total > 0 ? round(($done / $total) * 100) : 0;
         <div class="contract-task-actions">
             <?php if($canEditTask): ?>
                 <button type="button" class="btn btn-sm btn-primary task-icon-btn" title="Edit task"
-                        onclick='openEditTaskModal(<?= $taskId ?>, <?= taskEscape(json_encode($taskText)) ?>, <?= taskEscape(json_encode($taskStartDate)) ?>, <?= taskEscape(json_encode($taskEndDate)) ?>, <?= taskEscape(json_encode($claimAmountValue)) ?>)'>
+                        onclick='openEditTaskModal(<?= $taskId ?>, <?= taskEscape(json_encode($taskText)) ?>, <?= taskEscape(json_encode($taskStartDate)) ?>, <?= taskEscape(json_encode($taskEndDate)) ?>, <?= taskEscape(json_encode($claimAmountValue)) ?>, <?= taskEscape(json_encode($invoice)) ?>)'>
                     <i class="fa fa-pen"></i>
                 </button>
             <?php endif; ?>

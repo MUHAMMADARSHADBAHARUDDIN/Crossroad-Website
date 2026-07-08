@@ -1572,6 +1572,10 @@ body{
         <label class="form-label mt-3">Claim Amount</label>
         <input type="number" id="editTaskClaimAmount" class="form-control" min="0" step="0.01" placeholder="0.00">
     <?php endif; ?>
+    <div id="editTaskInvoiceWrapper" class="d-none">
+        <label class="form-label mt-3">Invoice</label>
+        <input type="text" id="editTaskInvoice" class="form-control" placeholder="Invoice no." autocomplete="off">
+    </div>
     <small class="text-muted d-block mt-2">
         Dated unfinished tasks appear in the Preventive Management dashboard bulletin until they are completed.
     </small>
@@ -1819,6 +1823,7 @@ function syncNewTaskEntryFields(){
 function resetNewTaskEntryDetails(){
     $("#newTaskMaintenanceNumber").val("");
     $("#newTaskClaimRemark").val("");
+    $("#newTaskInvoice").val("");
     $("#newContractTaskText").val("");
     $("#newTaskStartDate").val("");
     $("#newTaskEndDate").val("");
@@ -1889,6 +1894,7 @@ function addContractTask(){
     let taskStartDate = $("#newTaskStartDate").val();
     let taskEndDate = $("#newTaskEndDate").val();
     let claimAmount = taskType === "claim" && canViewClaim ? (($("#newTaskClaimAmount").val() || "").trim()) : "";
+    let invoice = taskType === "claim" ? (($("#newTaskInvoice").val() || "").trim()) : "";
     let taskDocumentInput = document.getElementById("newTaskDocument");
 
     if(!contractId){
@@ -1920,6 +1926,11 @@ function addContractTask(){
         return;
     }
 
+    if(taskType === "claim" && invoice === ""){
+        alert("Please enter the invoice.");
+        return;
+    }
+
     if(claimAmount !== "" && (isNaN(parseFloat(claimAmount)) || parseFloat(claimAmount) < 0)){
         alert("Claim amount must be a positive number.");
         return;
@@ -1934,10 +1945,12 @@ function addContractTask(){
     let formData = new FormData();
     formData.append("csrf_token", contractCsrfToken);
     formData.append("contract_id", contractId);
+    formData.append("task_type", taskType);
     formData.append("task_text", taskText);
     formData.append("task_start_date", taskStartDate);
     formData.append("task_end_date", taskEndDate);
     formData.append("claim_amount", claimAmount);
+    formData.append("invoice", invoice);
 
     if(taskDocumentInput && taskDocumentInput.files.length > 0){
         formData.append("task_document", taskDocumentInput.files[0]);
@@ -1995,15 +2008,31 @@ function toggleContractTask(id, isCompleted, checkboxEl){
     });
 }
 
-function openEditTaskModal(id, taskText, taskStartDate, taskEndDate, claimAmount){
+function openEditTaskModal(id, taskText, taskStartDate, taskEndDate, claimAmount, invoice){
     $("#editTaskId").val(id);
     $("#editTaskText").val(taskText);
     $("#editTaskStartDate").val(taskStartDate || "");
     $("#editTaskEndDate").val(taskEndDate || "");
     $("#editTaskClaimAmount").val(claimAmount || "");
+    $("#editTaskInvoice").val(invoice || "");
+
+    if(String(taskText || "").toLowerCase().indexOf("claim -") === 0){
+        $("#editTaskInvoiceWrapper").removeClass("d-none");
+    } else {
+        $("#editTaskInvoiceWrapper").addClass("d-none");
+    }
 
     new bootstrap.Modal(document.getElementById("editTaskModal")).show();
 }
+
+$(document).on("input", "#editTaskText", function(){
+    if(String($(this).val() || "").toLowerCase().indexOf("claim -") === 0){
+        $("#editTaskInvoiceWrapper").removeClass("d-none");
+    } else {
+        $("#editTaskInvoiceWrapper").addClass("d-none");
+        $("#editTaskInvoice").val("");
+    }
+});
 
 function updateContractTask(){
     let id = $("#editTaskId").val();
@@ -2011,6 +2040,7 @@ function updateContractTask(){
     let taskStartDate = $("#editTaskStartDate").val();
     let taskEndDate = $("#editTaskEndDate").val();
     let claimAmount = canViewClaim ? (($("#editTaskClaimAmount").val() || "").trim()) : "";
+    let invoice = $("#editTaskInvoiceWrapper").hasClass("d-none") ? "" : (($("#editTaskInvoice").val() || "").trim());
 
     if(taskText === ""){
         alert("Task cannot be empty.");
@@ -2032,11 +2062,17 @@ function updateContractTask(){
         return;
     }
 
+    if(String(taskText || "").toLowerCase().indexOf("claim -") === 0 && invoice === ""){
+        alert("Please enter the invoice.");
+        return;
+    }
+
     let postData = {
         id: id,
         task_text: taskText,
         task_start_date: taskStartDate,
-        task_end_date: taskEndDate
+        task_end_date: taskEndDate,
+        invoice: invoice
     };
 
     if(canViewClaim){
@@ -2420,7 +2456,7 @@ $(document).ready(function(){
         syncNewTaskEntryFields();
     });
 
-    $(document).on("keypress", "#newContractTaskText, #newTaskClaimRemark", function(e){
+    $(document).on("keypress", "#newContractTaskText, #newTaskClaimRemark, #newTaskInvoice", function(e){
         if(e.which === 13){
             e.preventDefault();
             addContractTask();

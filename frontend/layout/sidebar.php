@@ -26,6 +26,7 @@ $canViewContracts = hasPermission($mysqli, "contracts_view");
 $canViewMasterBudget = hasContractMasterBudgetAccess($mysqli);
 $canViewInventory = hasPermission($mysqli, "inventory_view");
 $canViewOfficeInventory = hasPermission($mysqli, "office_inventory_view");
+$canViewPlanner = hasPermission($mysqli, "planner_view");
 
 $menu = [
 
@@ -35,6 +36,12 @@ $menu = [
             "icon" => "fa-dashboard",
             "link" => "dashboard.php",
             "show" => true
+        ],
+        [
+            "name" => "Technical Planner",
+            "icon" => "fa-calendar-days",
+            "link" => "planner.php",
+            "show" => $canViewPlanner
         ],
     ],
 
@@ -98,9 +105,17 @@ $menu = [
         ],
 
         [
-            "name" => "License",
+            "name" => "License Office 365",
             "icon" => "fa-angle-right",
             "link" => "office_license.php",
+            "submenu" => true,
+            "show" => $canViewOfficeInventory
+        ],
+
+        [
+            "name" => "License Antivirus",
+            "icon" => "fa-angle-right",
+            "link" => "office_license_antivirus.php",
             "submenu" => true,
             "show" => $canViewOfficeInventory
         ],

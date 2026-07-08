@@ -34,7 +34,8 @@ function isFullAdministratorAccess($permissions)
         in_array("users_full", $permissions, true) &&
         in_array("contracts_full", $permissions, true) &&
         in_array("inventory_full", $permissions, true) &&
-        in_array("office_inventory_full", $permissions, true)
+        in_array("office_inventory_full", $permissions, true) &&
+        in_array("planner_full", $permissions, true)
     );
 }
 
@@ -88,7 +89,16 @@ function allowedPermissionsList()
         "office_inventory_view",
         "office_inventory_add",
         "office_inventory_edit",
-        "office_inventory_delete"
+        "office_inventory_delete",
+        "office_inventory_document_view",
+        "office_inventory_document_download",
+        "office_inventory_document_delete",
+
+        "planner_full",
+        "planner_view",
+        "planner_add",
+        "planner_edit",
+        "planner_delete"
     ];
 }
 

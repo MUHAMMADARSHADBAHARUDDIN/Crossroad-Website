@@ -1,6 +1,54 @@
 <?php
+if(!function_exists('officeInventoryNicknameFromName')){
+    function officeInventoryNicknameFromName($fullName){
+        $fullName = trim((string)($fullName ?? ""));
+
+        if($fullName === ""){
+            return "";
+        }
+
+        $parts = preg_split('/\s+/', $fullName);
+
+        if(count($parts) === 1){
+            return $parts[0];
+        }
+
+        $skipFirstNames = [
+            "muhammad",
+            "muhamad",
+            "mohammad",
+            "mohamad",
+            "mohd",
+            "ahmad",
+            "nur",
+            "wan",
+            "siti",
+            "syed",
+            "sharifah",
+            "tengku",
+            "nik"
+        ];
+
+        foreach($parts as $part){
+            $cleanPart = strtolower(trim($part));
+
+            if($cleanPart === ""){
+                continue;
+            }
+
+            if(in_array($cleanPart, $skipFirstNames, true)){
+                continue;
+            }
+
+            return $part;
+        }
+
+        return $parts[0];
+    }
+}
+
 if(!function_exists('officeInventoryFetchFamilyOptions')){
-    function officeInventoryFetchFamilyOptions($mysqli){
+    function officeInventoryFetchFamilyOptions($mysqli, $useNicknames = true){
         $options = [];
         $seen = [];
 
@@ -25,6 +73,10 @@ if(!function_exists('officeInventoryFetchFamilyOptions')){
 
                 if($name === ""){
                     continue;
+                }
+
+                if($useNicknames){
+                    $name = officeInventoryNicknameFromName($name);
                 }
 
                 $key = strtolower($name);

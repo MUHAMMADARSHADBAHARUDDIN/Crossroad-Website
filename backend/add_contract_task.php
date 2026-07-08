@@ -38,9 +38,11 @@ function validTaskDate($value){
 
 $contractId = isset($_POST['contract_id']) ? (int)$_POST['contract_id'] : 0;
 $taskText = trim($_POST['task_text'] ?? "");
+$taskType = trim($_POST['task_type'] ?? "");
 $taskStartDate = trim($_POST['task_start_date'] ?? "");
 $taskEndDate = trim($_POST['task_end_date'] ?? "");
 $claimAmountRaw = trim((string)($_POST['claim_amount'] ?? ""));
+$invoice = trim((string)($_POST['invoice'] ?? ""));
 $claimAmount = null;
 
 if($contractId <= 0){
@@ -49,6 +51,10 @@ if($contractId <= 0){
 
 if($taskText === ""){
     exit("Task cannot be empty.");
+}
+
+if($taskType === "claim" && $invoice === ""){
+    exit("Please enter the invoice.");
 }
 
 if($claimAmountRaw !== ""){
@@ -197,6 +203,15 @@ if(addTaskColumnExists($mysqli, "contract_tasks", "claim_amount") && $canViewCla
     exit("claim_amount column not found.");
 }
 
+if(addTaskColumnExists($mysqli, "contract_tasks", "invoice")){
+    $columns[] = "invoice";
+    $placeholders[] = "?";
+    $types .= "s";
+    $params[] = $invoice !== "" ? $invoice : null;
+} elseif($invoice !== ""){
+    exit("invoice column not found.");
+}
+
 $sql = "INSERT INTO contract_tasks (`" . implode("`, `", $columns) . "`) VALUES (" . implode(", ", $placeholders) . ")";
 $stmt = $mysqli->prepare($sql);
 
@@ -266,6 +281,7 @@ $description = "User [$username] added a contract task.\n"
     . "Task: $taskText\n"
     . "Task Date: $dateText\n"
     . "Claim Amount: " . ($claimAmount === null ? "Not Assigned" : number_format($claimAmount, 2)) . "\n"
+    . "Invoice: " . ($invoice === "" ? "Not Assigned" : $invoice) . "\n"
     . ($uploadedDocumentName !== "" ? "Attached Document: $uploadedDocumentName\n" : "")
     . "Status: Pending\n"
     . "IP Address: $ip\n"

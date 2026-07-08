@@ -45,6 +45,13 @@ if(!function_exists('ensureContractTaskCompletionSchema')){
             ");
         }
 
+        if(!contractTaskSchemaColumnExists($mysqli, "contract_tasks", "invoice")){
+            $mysqli->query("
+                ALTER TABLE `contract_tasks`
+                ADD COLUMN `invoice` varchar(150) DEFAULT NULL
+            ");
+        }
+
         $done = true;
     }
 }

@@ -94,6 +94,10 @@ if(!function_exists('ensureInventoryReportSchema')){
                     `license_family` text NULL,
                     `license_family_details` longtext DEFAULT NULL,
                     `license_expired_date` date DEFAULT NULL,
+                    `document_file_name` varchar(255) DEFAULT NULL,
+                    `document_original_name` varchar(255) DEFAULT NULL,
+                    `document_uploaded_by` varchar(100) DEFAULT NULL,
+                    `document_uploaded_at` datetime DEFAULT NULL,
                     `created_by` varchar(100) DEFAULT NULL,
                     `created_at` datetime NOT NULL DEFAULT current_timestamp(),
                     `updated_at` datetime DEFAULT NULL,
@@ -108,6 +112,10 @@ if(!function_exists('ensureInventoryReportSchema')){
         if(inventoryReportTableExists($mysqli, "laptop_inventory")){
             inventoryReportEnsureColumn($mysqli, "laptop_inventory", "license_family", "text NULL AFTER `license_ownership`");
             inventoryReportEnsureColumn($mysqli, "laptop_inventory", "license_family_details", "longtext DEFAULT NULL AFTER `license_family`");
+            inventoryReportEnsureColumn($mysqli, "laptop_inventory", "document_file_name", "varchar(255) DEFAULT NULL AFTER `license_expired_date`");
+            inventoryReportEnsureColumn($mysqli, "laptop_inventory", "document_original_name", "varchar(255) DEFAULT NULL AFTER `document_file_name`");
+            inventoryReportEnsureColumn($mysqli, "laptop_inventory", "document_uploaded_by", "varchar(100) DEFAULT NULL AFTER `document_original_name`");
+            inventoryReportEnsureColumn($mysqli, "laptop_inventory", "document_uploaded_at", "datetime DEFAULT NULL AFTER `document_uploaded_by`");
 
             $licenseFamilyType = inventoryReportColumnType($mysqli, "laptop_inventory", "license_family");
 

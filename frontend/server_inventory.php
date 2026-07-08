@@ -812,8 +812,8 @@ function renderServerStockOutComponentChoices(serial, components){
         const partNumber = component.part_number || "-";
         const serialNumber = component.serial_number || "-";
 
-        return "<div class='server-stockout-component-option is-selected' role='checkbox' tabindex='0' aria-checked='true'>" +
-            "<input class='server-keep-component-check' type='checkbox' value='" + escapeHtml(id) + "' checked>" +
+        return "<div class='server-stockout-component-option' role='checkbox' tabindex='0' aria-checked='false'>" +
+            "<input class='server-keep-component-check' type='checkbox' value='" + escapeHtml(id) + "'>" +
             "<div class='server-component-card-head'>" +
                 "<span class='server-component-card-icon'><i class='fa fa-microchip'></i></span>" +
                 "<div>" +
@@ -823,7 +823,7 @@ function renderServerStockOutComponentChoices(serial, components){
                 "</div>" +
             "</div>" +
             "<div class='server-component-card-footer'>" +
-                "<span class='server-stockout-component-state'>Move to Parts Inventory</span>" +
+                "<span class='server-stockout-component-state'>Leave with Server</span>" +
                 "<span class='server-component-visual-dot'><i class='fa fa-check'></i></span>" +
             "</div>" +
         "</div>";

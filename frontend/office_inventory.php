@@ -4,6 +4,7 @@ require_once "../includes/db_connect.php";
 require_once "../includes/activity_log.php";
 require_once "../includes/permissions.php";
 require_once "../includes/inventory_report_schema.php";
+require_once "../includes/office_inventory_documents.php";
 
 if(!isset($_SESSION['username'])){
     header("Location: index.html");
@@ -22,6 +23,9 @@ $role = $_SESSION['role'] ?? "UNKNOWN";
 $canAdd = hasPermission($mysqli, "office_inventory_add");
 $canEdit = hasPermission($mysqli, "office_inventory_edit");
 $canDelete = hasPermission($mysqli, "office_inventory_delete");
+$canDocumentView = hasPermission($mysqli, "office_inventory_document_view");
+$canDocumentDownload = hasPermission($mysqli, "office_inventory_document_download");
+$canDocumentDelete = hasPermission($mysqli, "office_inventory_document_delete");
 $search = trim($_GET['search'] ?? "");
 
 function officeInventoryEscape($value){
@@ -60,12 +64,16 @@ function officeInventoryFormatDateTime($value){
     return date("d/m/y H:i", $timestamp);
 }
 
+function officeInventoryPackOwnerRows($items){
+    return empty($items) ? [] : [$items];
+}
+
 if(isset($_POST['delete_office_id']) && $canDelete){
     $deleteId = (int)$_POST['delete_office_id'];
 
     if($deleteId > 0){
         $fetchStmt = $mysqli->prepare("
-            SELECT owner, serial_number, brand, model
+            SELECT owner, serial_number, brand, model, document_file_name
             FROM laptop_inventory
             WHERE id = ?
             LIMIT 1
@@ -89,6 +97,16 @@ if(isset($_POST['delete_office_id']) && $canDelete){
             $deleteStmt->bind_param("i", $deleteId);
 
             if($deleteStmt->execute()){
+                $documentFileName = trim((string)($deleteRow['document_file_name'] ?? ""));
+
+                if($documentFileName !== ""){
+                    $documentPath = officeInventoryDocumentDiskPath($documentFileName);
+
+                    if(is_file($documentPath)){
+                        unlink($documentPath);
+                    }
+                }
+
                 $ip = $_SERVER['REMOTE_ADDR'] ?? "Unknown";
                 $time = date("Y-m-d H:i:s");
 
@@ -155,7 +173,7 @@ html, body{
 
 #officeInventoryTable{
     width:100% !important;
-    min-width:640px;
+    min-width:0;
     table-layout:auto;
 }
 
@@ -164,15 +182,76 @@ html, body{
     white-space:normal !important;
     word-break:break-word;
     overflow-wrap:anywhere;
-    vertical-align:middle;
+    vertical-align:top;
 }
 
-#officeInventoryTable tbody tr{
+#officeInventoryTable tbody td{
+    border:0 !important;
+}
+
+.office-inventory-data-cell{
+    padding:6px 0 !important;
+}
+
+.office-owner-pack{
+    display:flex;
+    align-items:stretch;
+    flex-wrap:wrap;
+    gap:8px;
+    width:100%;
+    background:#fff;
+    overflow:visible;
+}
+
+.office-owner-slot{
+    flex:0 0 auto;
+    max-width:100%;
+    border:1px solid #111;
+    border-radius:4px;
+    background:#fff;
+}
+
+.office-owner-entry{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    position:relative;
     cursor:pointer;
+    min-height:40px;
+    padding:6px 12px;
+    text-align:center;
 }
 
-#officeInventoryTable tbody tr:hover{
+.office-owner-name{
+    min-width:0;
+    overflow-wrap:anywhere;
+    word-break:break-word;
+}
+
+.office-detail-actions{
+    display:flex;
+    align-items:center;
+    justify-content:flex-end;
+    flex-wrap:wrap;
+    gap:8px;
+    margin-top:14px;
+}
+
+.office-owner-entry:hover .office-owner-name{
+    color:#856404;
+}
+
+.office-owner-slot:hover{
     background:#fff3cd !important;
+}
+
+.office-owner-slot-filtered,
+.office-owner-slot-filtered:hover{
+    background:#fff !important;
+}
+
+.office-owner-slot-filtered{
+    display:none;
 }
 
 #officeInventoryTable_wrapper{
@@ -260,9 +339,23 @@ html, body{
     word-break:break-word;
 }
 
+.office-document-actions{
+    display:flex;
+    align-items:center;
+    flex-wrap:wrap;
+    gap:6px;
+    margin-top:8px;
+}
+
+.office-document-actions .btn{
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+}
+
 @media(max-width:768px){
     #officeInventoryTable{
-        min-width:640px;
+        min-width:0;
     }
 
     #officeInventoryTable th,
@@ -273,6 +366,20 @@ html, body{
 
     .office-detail-grid{
         grid-template-columns:1fr;
+    }
+
+    .office-detail-actions{
+        justify-content:stretch;
+    }
+
+    .office-detail-actions .btn,
+    .office-detail-actions form{
+        width:100%;
+    }
+
+    .office-document-actions .btn{
+        justify-content:center;
+        width:100%;
     }
 }
 </style>
@@ -312,17 +419,11 @@ html, body{
 <?php endif; ?>
 
 <div class="table-responsive">
-<?php $officeInventoryDetailTemplates = []; ?>
-<table class="table table-striped table-hover align-middle" id="officeInventoryTable">
-<thead>
-<tr>
-    <th>Owner</th>
-    <th>Action</th>
-</tr>
-</thead>
-<tbody>
-<?php while($row = $result->fetch_assoc()): ?>
-    <?php
+<?php
+$officeInventoryDetailTemplates = [];
+$officeInventoryRows = [];
+
+while($row = $result->fetch_assoc()):
     $id = (int)$row['id'];
     $office365 = trim((string)($row['office365_license'] ?? ''));
     $antivirus = trim((string)($row['antivirus_license'] ?? ''));
@@ -392,52 +493,110 @@ html, body{
             <span>Last Updated</span>
             <strong><?= officeInventoryEscape($updatedAt !== '' ? $updatedAt : '-') ?></strong>
         </div>
+        <div class="office-detail-box">
+            <span>Document</span>
+            <?php if(trim((string)($row['document_file_name'] ?? '')) !== ''): ?>
+                <?php if($canDocumentView || $canDocumentDownload || $canDocumentDelete): ?>
+                    <strong><?= officeInventoryEscape(officeInventoryDocumentDisplayName($row)) ?></strong>
+                    <div class="office-document-actions">
+                        <?php if($canDocumentView): ?>
+                            <a
+                                href="../backend/view_office_inventory_document.php?id=<?= $id ?>"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="btn btn-sm btn-info text-white"
+                            >
+                                <i class="fa fa-eye"></i> View
+                            </a>
+                        <?php endif; ?>
+
+                        <?php if($canDocumentDownload): ?>
+                            <a href="../backend/download_office_inventory_document.php?id=<?= $id ?>" class="btn btn-sm btn-success">
+                                <i class="fa fa-download"></i> Download
+                            </a>
+                        <?php endif; ?>
+
+                        <?php if($canDocumentDelete): ?>
+                            <button type="button" class="btn btn-sm btn-danger" onclick="deleteOfficeInventoryDocument(<?= $id ?>)">
+                                <i class="fa fa-trash"></i> Delete
+                            </button>
+                        <?php endif; ?>
+                    </div>
+                <?php else: ?>
+                    <strong class="text-muted">Restricted</strong>
+                <?php endif; ?>
+            <?php else: ?>
+                <strong>-</strong>
+            <?php endif; ?>
+        </div>
     </div>
+    <?php if($canEdit || $canDelete): ?>
+        <div class="office-detail-actions">
+            <?php if($canEdit): ?>
+                <a href="office_edit.php?id=<?= $id ?>" class="btn btn-primary">
+                    <i class="fa fa-pen"></i> Edit
+                </a>
+            <?php endif; ?>
+
+            <?php if($canDelete): ?>
+                <form method="POST" class="m-0" onsubmit="return confirm('Delete this office inventory record?');">
+                    <input type="hidden" name="delete_office_id" value="<?= $id ?>">
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fa fa-trash"></i> Delete
+                    </button>
+                </form>
+            <?php endif; ?>
+        </div>
+    <?php endif; ?>
     <?php
     $officeInventoryDetailTemplates[$id] = ob_get_clean();
+
+    ob_start();
     ?>
-    <tr
-        class="office-owner-row"
-        data-search="<?= officeInventoryEscape($searchText) ?>"
+    <div
+        class="office-owner-entry"
         data-detail-id="office-inventory-detail-<?= $id ?>"
+        data-search="<?= officeInventoryEscape($searchText) ?>"
         onclick="openOfficeInventoryDetail(this)"
     >
-        <td class="office-owner-cell">
-            <span class="fw-semibold"><?= officeInventoryEscape($row['owner'] ?? '') ?></span>
-            <div class="office-hover-card">
-                <div class="office-hover-line"><?= officeInventoryEscape($hoverText) ?></div>
-            </div>
-        </td>
-        <td>
-            <div class="d-flex flex-wrap gap-1">
-                <?php if($canEdit): ?>
-                    <a href="office_edit.php?id=<?= $id ?>"
-                       class="btn btn-sm btn-primary"
-                       onclick="event.stopPropagation();"
-                       title="Edit">
-                        <i class="fa fa-pen"></i>
-                    </a>
-                <?php endif; ?>
-
-                <?php if($canDelete): ?>
-                    <form method="POST" class="d-inline" onsubmit="event.stopPropagation(); return confirm('Delete this office inventory record?');">
-                        <input type="hidden" name="delete_office_id" value="<?= $id ?>">
-                        <button type="submit"
-                                class="btn btn-sm btn-danger"
-                                onclick="event.stopPropagation();"
-                                title="Delete">
-                            <i class="fa fa-trash"></i>
-                        </button>
-                    </form>
-                <?php endif; ?>
-
-                <?php if(!$canEdit && !$canDelete): ?>
-                    <span class="badge bg-secondary">View Only</span>
-                <?php endif; ?>
+        <span class="fw-semibold office-owner-name"><?= officeInventoryEscape($row['owner'] ?? '') ?></span>
+        <div class="office-hover-card">
+            <div class="office-hover-line"><?= officeInventoryEscape($hoverText) ?></div>
+        </div>
+    </div>
+    <?php
+    $officeInventoryRows[] = [
+        'search' => $searchText,
+        'html' => ob_get_clean()
+    ];
+endwhile;
+$officeInventoryPackedRows = officeInventoryPackOwnerRows($officeInventoryRows);
+?>
+<table class="table align-middle" id="officeInventoryTable">
+<thead>
+<tr>
+    <th>Owner</th>
+</tr>
+</thead>
+<tbody>
+<?php foreach($officeInventoryPackedRows as $officeInventoryPack): ?>
+    <?php
+    $packedSearchText = trim(implode(' ', array_map(function($item){
+        return $item['search'] ?? '';
+    }, $officeInventoryPack)));
+    ?>
+    <tr data-search="<?= officeInventoryEscape($packedSearchText) ?>">
+        <td class="office-inventory-data-cell">
+            <div class="office-owner-pack">
+                <?php foreach($officeInventoryPack as $officeInventoryItem): ?>
+                    <div class="office-owner-slot">
+                        <?= $officeInventoryItem['html'] ?>
+                    </div>
+                <?php endforeach; ?>
             </div>
         </td>
     </tr>
-<?php endwhile; ?>
+<?php endforeach; ?>
 </tbody>
 </table>
 </div>
@@ -478,10 +637,10 @@ function hideOfficeHoverCards(){
     });
 }
 
-function openOfficeInventoryDetail(row){
+function openOfficeInventoryDetail(entry){
     hideOfficeHoverCards();
 
-    const detailId = row.getAttribute("data-detail-id");
+    const detailId = entry.getAttribute("data-detail-id");
     const template = detailId ? document.getElementById(detailId) : null;
 
     if(!template){
@@ -490,6 +649,32 @@ function openOfficeInventoryDetail(row){
 
     document.getElementById("officeInventoryDetailContent").innerHTML = template.innerHTML;
     bootstrap.Modal.getOrCreateInstance(document.getElementById("officeInventoryDetailModal")).show();
+}
+
+function deleteOfficeInventoryDocument(id){
+    if(!confirm("Delete this office inventory document?")){
+        return;
+    }
+
+    fetch("../backend/delete_office_inventory_document.php", {
+        method:"POST",
+        headers:{
+            "Content-Type":"application/x-www-form-urlencoded"
+        },
+        body:"id=" + encodeURIComponent(id)
+    })
+    .then(response => response.text())
+    .then(text => {
+        if(text.trim() === "success"){
+            window.location.reload();
+            return;
+        }
+
+        alert(text);
+    })
+    .catch(() => {
+        alert("Failed to delete document.");
+    });
 }
 
 function positionOfficeHoverCard(card, event){
@@ -511,19 +696,19 @@ function positionOfficeHoverCard(card, event){
 }
 
 document.addEventListener("mousemove", function(event){
-    const row = event.target.closest(".office-owner-row");
+    const entry = event.target.closest(".office-owner-entry");
 
     document.querySelectorAll(".office-hover-card.is-visible").forEach(function(card){
-        if(!row || !row.contains(card)){
+        if(!entry || !entry.contains(card)){
             card.classList.remove("is-visible");
         }
     });
 
-    if(!row){
+    if(!entry){
         return;
     }
 
-    const card = row.querySelector(".office-hover-card");
+    const card = entry.querySelector(".office-hover-card");
 
     if(!card){
         return;
@@ -537,20 +722,63 @@ document.addEventListener("mouseleave", function(){
     hideOfficeHoverCards();
 });
 
+function getOfficeSearchTerms(){
+    const input = document.getElementById("liveOfficeSearch");
+    const keyword = input ? input.value.toLowerCase().trim() : "";
+
+    if(keyword === ""){
+        return [];
+    }
+
+    return keyword.split(",").map(term => term.trim()).filter(term => term !== "");
+}
+
+function officeEntryMatchesTerms(entry, terms){
+    const searchText = entry ? (entry.getAttribute("data-search") || "") : "";
+
+    return terms.every(term => searchText.includes(term));
+}
+
+function syncOfficeInventorySlots(){
+    const terms = getOfficeSearchTerms();
+
+    document.querySelectorAll("#officeInventoryTable tbody .office-owner-pack").forEach(function(pack){
+        const slots = Array.from(pack.querySelectorAll(".office-owner-slot"));
+
+        slots.forEach(function(slot){
+            const entry = slot.querySelector(".office-owner-entry");
+
+            if(!entry){
+                return;
+            }
+
+            const shouldShow = terms.length === 0 || officeEntryMatchesTerms(entry, terms);
+            slot.classList.toggle("office-owner-slot-filtered", !shouldShow);
+        });
+    });
+}
+
 $.fn.dataTable.ext.search.push(function(settings, data, dataIndex){
     if(settings.nTable.id !== "officeInventoryTable"){
         return true;
     }
 
-    const input = document.getElementById("liveOfficeSearch");
-    const keyword = input ? input.value.toLowerCase().trim() : "";
+    const terms = getOfficeSearchTerms();
 
-    if(keyword === ""){
+    if(terms.length === 0){
         return true;
     }
 
-    const terms = keyword.split(",").map(term => term.trim()).filter(term => term !== "");
     const rowNode = settings.aoData[dataIndex].nTr;
+
+    if(rowNode){
+        const entries = Array.from(rowNode.querySelectorAll(".office-owner-entry"));
+
+        if(entries.length > 0){
+            return entries.some(entry => officeEntryMatchesTerms(entry, terms));
+        }
+    }
+
     const searchText = rowNode ? (rowNode.getAttribute("data-search") || "") : "";
 
     return terms.every(term => searchText.includes(term));
@@ -560,7 +788,7 @@ $(document).ready(function(){
     officeInventoryTable = $("#officeInventoryTable").DataTable({
         pageLength:10,
         lengthMenu:[10,25,50,100],
-        ordering:true,
+        ordering:false,
         searching:true,
         autoWidth:false,
         scrollX:false,
@@ -569,13 +797,14 @@ $(document).ready(function(){
         language:{
             zeroRecords:"No records found",
             lengthMenu:"Show _MENU_ entries",
-            info:"Showing _START_ to _END_ of _TOTAL_ office records"
+            info:"Showing _START_ to _END_ of _TOTAL_ office rows"
         },
         columnDefs:[
-            {width:"75%", targets:0},
-            {width:"25%", targets:1, orderable:false, searchable:false}
+            {width:"100%", targets:0, orderable:false}
         ]
     });
+
+    officeInventoryTable.on("draw", syncOfficeInventorySlots);
 
     $("#liveOfficeSearch").on("input", function(){
         officeInventoryTable.draw();
@@ -589,6 +818,7 @@ $(document).ready(function(){
     });
 
     officeInventoryTable.draw();
+    syncOfficeInventorySlots();
 });
 </script>
 

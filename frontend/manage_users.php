@@ -83,7 +83,20 @@ $permissionGroups = [
             "office_inventory_view" => "View",
             "office_inventory_add" => "Add",
             "office_inventory_edit" => "Edit",
-            "office_inventory_delete" => "Delete"
+            "office_inventory_delete" => "Delete",
+            "office_inventory_document_view" => "Document View",
+            "office_inventory_document_download" => "Document Download",
+            "office_inventory_document_delete" => "Document Delete"
+        ]
+    ],
+    "planner" => [
+        "title" => "Planner",
+        "full" => "planner_full",
+        "items" => [
+            "planner_view" => "View",
+            "planner_add" => "Add",
+            "planner_edit" => "Edit",
+            "planner_delete" => "Delete"
         ]
     ]
 ];
@@ -704,8 +717,46 @@ if(in_array("office_inventory_full", $permissions, true)){
         $officeInventoryLabels[] = "Delete";
     }
 
+    if(in_array("office_inventory_document_view", $permissions, true)){
+        $officeInventoryLabels[] = "Document View";
+    }
+
+    if(in_array("office_inventory_document_download", $permissions, true)){
+        $officeInventoryLabels[] = "Document Download";
+    }
+
+    if(in_array("office_inventory_document_delete", $permissions, true)){
+        $officeInventoryLabels[] = "Document Delete";
+    }
+
     if(!empty($officeInventoryLabels)){
         $permissionText[] = "Office Inventory: " . implode(", ", $officeInventoryLabels);
+    }
+}
+
+if(in_array("planner_full", $permissions, true)){
+    $permissionText[] = "Planner: Full";
+} else {
+    $plannerLabels = [];
+
+    if(in_array("planner_view", $permissions, true)){
+        $plannerLabels[] = "View";
+    }
+
+    if(in_array("planner_add", $permissions, true)){
+        $plannerLabels[] = "Add";
+    }
+
+    if(in_array("planner_edit", $permissions, true)){
+        $plannerLabels[] = "Edit";
+    }
+
+    if(in_array("planner_delete", $permissions, true)){
+        $plannerLabels[] = "Delete";
+    }
+
+    if(!empty($plannerLabels)){
+        $permissionText[] = "Planner: " . implode(", ", $plannerLabels);
     }
 }
 
@@ -1126,7 +1177,7 @@ document.querySelectorAll(".editUserBtn").forEach(button => {
             checkbox.checked = permissions.includes(checkbox.value);
         });
 
-        ["users", "contracts", "inventory", "office_inventory"].forEach(module => {
+        ["users", "contracts", "inventory", "office_inventory", "planner"].forEach(module => {
             syncFullCheckbox(form, module);
         });
     });

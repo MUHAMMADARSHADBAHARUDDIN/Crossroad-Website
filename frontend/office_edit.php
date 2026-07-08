@@ -5,6 +5,7 @@ require_once "../includes/activity_log.php";
 require_once "../includes/permissions.php";
 require_once "../includes/inventory_report_schema.php";
 require_once "../includes/office_family_helper.php";
+require_once "../includes/office_inventory_documents.php";
 require_once "../includes/date_helpers.php";
 
 if(!isset($_SESSION['username'])){
@@ -21,7 +22,6 @@ ensureInventoryReportSchema($mysqli);
 $username = $_SESSION['username'];
 $role = $_SESSION['role'] ?? "UNKNOWN";
 $canEdit = hasPermission($mysqli, "office_inventory_edit");
-$canDelete = hasPermission($mysqli, "office_inventory_delete");
 $error = "";
 $ownerOptions = officeInventoryFetchFamilyOptions($mysqli);
 
@@ -72,36 +72,6 @@ if(!$row){
     die("Office inventory record not found");
 }
 
-if(isset($_POST['delete']) && $canDelete){
-    $deleteStmt = $mysqli->prepare("DELETE FROM laptop_inventory WHERE id = ? LIMIT 1");
-
-    if(!$deleteStmt){
-        die("SQL Error: " . $mysqli->error);
-    }
-
-    $deleteStmt->bind_param("i", $id);
-
-    if($deleteStmt->execute()){
-        $ip = $_SERVER['REMOTE_ADDR'] ?? "Unknown";
-        $time = date("Y-m-d H:i:s");
-
-        $description = "User [$username] deleted office inventory.
-Owner: {$row['owner']}
-Serial Number: {$row['serial_number']}
-Brand: {$row['brand']}
-Model: {$row['model']}
-IP Address: $ip
-Time: $time";
-
-        logActivity($mysqli, $username, $role, "DELETE OFFICE INVENTORY", $description);
-
-        header("Location: office_inventory.php");
-        exit();
-    }
-
-    $error = "Delete failed: " . $deleteStmt->error;
-}
-
 if(isset($_POST['update']) && $canEdit){
     $deliveryDate = appNormalizeDateInput($_POST['delivery_date'] ?? "");
     $owner = trim($_POST['owner'] ?? "");
@@ -115,11 +85,26 @@ if(isset($_POST['update']) && $canEdit){
     $licenseFamily = "";
     $licenseFamilyDetails = null;
     $licenseExpiredDate = null;
+    $documentFileName = $row['document_file_name'] ?? null;
+    $documentOriginalName = $row['document_original_name'] ?? null;
+    $documentUploadedBy = $row['document_uploaded_by'] ?? null;
+    $documentUploadedAt = $row['document_uploaded_at'] ?? null;
+    $oldDocumentFileName = trim((string)$documentFileName);
+    $uploadedPath = "";
+    $hasDocumentUpload = isset($_FILES['office_document']) && (int)($_FILES['office_document']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
 
-    if($owner === "" || $serialNumber === ""){
+    if($hasDocumentUpload){
+        $uploadError = officeInventoryDocumentValidateUpload($_FILES['office_document']);
+
+        if($uploadError !== ""){
+            $error = $uploadError;
+        }
+    }
+
+    if($error === "" && ($owner === "" || $serialNumber === "")){
         $error = "Owner and Serial Number are required.";
     }
-    else{
+    elseif($error === ""){
         $checkStmt = $mysqli->prepare("
             SELECT id
             FROM laptop_inventory
@@ -153,6 +138,10 @@ if(isset($_POST['update']) && $canEdit){
                     license_family = ?,
                     license_family_details = ?,
                     license_expired_date = ?,
+                    document_file_name = ?,
+                    document_original_name = ?,
+                    document_uploaded_by = ?,
+                    document_uploaded_at = ?,
                     updated_at = NOW()
                 WHERE id = ?
             ");
@@ -161,28 +150,54 @@ if(isset($_POST['update']) && $canEdit){
                 die("SQL Error: " . $mysqli->error);
             }
 
-            $updateStmt->bind_param(
-                "ssssssssssssi",
-                $deliveryDate,
-                $owner,
-                $serialNumber,
-                $brand,
-                $model,
-                $office365License,
-                $antivirusLicense,
-                $licenseType,
-                $licenseOwnership,
-                $licenseFamily,
-                $licenseFamilyDetails,
-                $licenseExpiredDate,
-                $id
-            );
+            if($hasDocumentUpload){
+                $documentOriginalName = basename((string)($_FILES['office_document']['name'] ?? ""));
+                $documentFileName = officeInventoryDocumentStoredFileName($documentOriginalName);
+                $documentUploadedBy = $username;
+                $documentUploadedAt = date("Y-m-d H:i:s");
+                $uploadDir = officeInventoryDocumentEnsureUploadDir();
+                $uploadedPath = $uploadDir . "/" . $documentFileName;
 
-            if($updateStmt->execute()){
-                $ip = $_SERVER['REMOTE_ADDR'] ?? "Unknown";
-                $time = date("Y-m-d H:i:s");
+                if(!move_uploaded_file($_FILES['office_document']['tmp_name'], $uploadedPath)){
+                    $error = "Failed to move uploaded document.";
+                }
+            }
 
-                $description = "User [$username] updated office inventory.
+            if($error === ""){
+                $updateStmt->bind_param(
+                    "ssssssssssssssssi",
+                    $deliveryDate,
+                    $owner,
+                    $serialNumber,
+                    $brand,
+                    $model,
+                    $office365License,
+                    $antivirusLicense,
+                    $licenseType,
+                    $licenseOwnership,
+                    $licenseFamily,
+                    $licenseFamilyDetails,
+                    $licenseExpiredDate,
+                    $documentFileName,
+                    $documentOriginalName,
+                    $documentUploadedBy,
+                    $documentUploadedAt,
+                    $id
+                );
+
+                if($updateStmt->execute()){
+                    if($hasDocumentUpload && $oldDocumentFileName !== ""){
+                        $oldDocumentPath = officeInventoryDocumentDiskPath($oldDocumentFileName);
+
+                        if(is_file($oldDocumentPath)){
+                            unlink($oldDocumentPath);
+                        }
+                    }
+
+                    $ip = $_SERVER['REMOTE_ADDR'] ?? "Unknown";
+                    $time = date("Y-m-d H:i:s");
+
+                    $description = "User [$username] updated office inventory.
 Office Inventory ID: $id
 
 OLD DATA:
@@ -202,17 +217,23 @@ NEW DATA:
 - Office License For Owner: $office365License
 - Antivirus For Owner: $antivirusLicense
 - Delivery Date: $deliveryDate
+- Document: " . (trim((string)$documentOriginalName) !== "" ? $documentOriginalName : "-") . "
 
 IP Address: $ip
 Time: $time";
 
-                logActivity($mysqli, $username, $role, "UPDATE OFFICE INVENTORY", $description);
+                    logActivity($mysqli, $username, $role, "UPDATE OFFICE INVENTORY", $description);
 
-                header("Location: office_inventory.php");
-                exit();
+                    header("Location: office_inventory.php");
+                    exit();
+                }
+
+                $error = "Update failed: " . $updateStmt->error;
             }
 
-            $error = "Update failed: " . $updateStmt->error;
+            if($uploadedPath !== "" && is_file($uploadedPath)){
+                unlink($uploadedPath);
+            }
         }
     }
 }
@@ -220,6 +241,8 @@ Time: $time";
 $formValues = array_merge($row, $_POST);
 
 $currentOwner = trim((string)($formValues['owner'] ?? ""));
+$currentOwner = officeInventoryNicknameFromName($currentOwner);
+$formValues['owner'] = $currentOwner;
 
 if($currentOwner !== "" && !in_array($currentOwner, $ownerOptions, true)){
     $ownerOptions[] = $currentOwner;
@@ -251,7 +274,8 @@ if($currentOwner !== "" && !in_array($currentOwner, $ownerOptions, true)){
 <div class="alert alert-danger"><?= officeEditEscape($error) ?></div>
 <?php endif; ?>
 
-<form method="POST">
+<form method="POST" enctype="multipart/form-data">
+<input type="hidden" name="MAX_FILE_SIZE" value="<?= officeInventoryDocumentMaxUploadBytes() ?>">
 <div class="row">
 
 <div class="col-md-6 mb-3">
@@ -310,14 +334,31 @@ if($currentOwner !== "" && !in_array($currentOwner, $ownerOptions, true)){
     </select>
 </div>
 
+<div class="col-12 mb-3">
+    <label>Document</label>
+    <?php if(trim((string)($row['document_file_name'] ?? '')) !== ''): ?>
+        <div class="form-text mb-2">
+            Current: <?= officeEditEscape(officeInventoryDocumentDisplayName($row)) ?>
+        </div>
+    <?php else: ?>
+        <div class="form-text mb-2">No document uploaded.</div>
+    <?php endif; ?>
+
+    <?php if($canEdit): ?>
+        <input
+            type="file"
+            name="office_document"
+            class="form-control"
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png,.zip"
+        >
+        <div class="form-text">Maximum <?= officeEditEscape(officeInventoryDocumentMaxUploadLabel()) ?>. Choosing a new file will replace the current document.</div>
+    <?php endif; ?>
+</div>
+
 </div>
 
 <?php if($canEdit): ?>
 <button class="btn btn-warning" name="update">Update</button>
-<?php endif; ?>
-
-<?php if($canDelete): ?>
-<button class="btn btn-danger" name="delete" onclick="return confirm('Delete this office inventory record?')">Delete</button>
 <?php endif; ?>
 
 <a href="office_inventory.php" class="btn btn-secondary">Cancel</a>
