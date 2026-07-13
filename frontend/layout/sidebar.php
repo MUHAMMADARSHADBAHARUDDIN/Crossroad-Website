@@ -38,9 +38,23 @@ $menu = [
             "show" => true
         ],
         [
-            "name" => "Technical Planner",
+            "name" => "CSSB Planner",
             "icon" => "fa-calendar-days",
             "link" => "planner.php",
+            "show" => $canViewPlanner
+        ],
+        [
+            "name" => "Personal Planner",
+            "icon" => "fa-angle-right",
+            "link" => "personal_planner.php",
+            "submenu" => true,
+            "show" => $canViewPlanner
+        ],
+        [
+            "name" => "Technical Planner",
+            "icon" => "fa-angle-right",
+            "link" => "technical_planner.php",
+            "submenu" => true,
             "show" => $canViewPlanner
         ],
     ],

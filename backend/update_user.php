@@ -4,6 +4,7 @@ session_start();
 include("../includes/db_connect.php");
 require_once "../includes/activity_log.php";
 require_once "../includes/permissions.php";
+require_once "../includes/planner_profiles.php";
 
 if(!isset($_SESSION['username']) || !isset($_SESSION['role'])){
     die("No session");
@@ -12,6 +13,8 @@ if(!isset($_SESSION['username']) || !isset($_SESSION['role'])){
 if(!hasPermission($mysqli, "users_edit")){
     die("Access denied.");
 }
+
+ensurePlannerProfileSchema($mysqli);
 
 /* =========================
    SELECTED PERMISSIONS
@@ -295,10 +298,11 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
     $newEmail = trim($_POST['email'] ?? "");
     $newRole = trim($_POST['role'] ?? "");
     $password = trim($_POST['password'] ?? "");
+    $plannerRole = plannerNormalizeOperationalRole($_POST['planner_role'] ?? "");
 
     $permissions = selectedPermissions();
 
-    if($oldUsername === "" || $oldAccountType === "" || $newUsername === "" || $newEmail === "" || $newRole === ""){
+    if($oldUsername === "" || $oldAccountType === "" || $newUsername === "" || $newEmail === "" || $newRole === "" || $plannerRole === ""){
         die("Invalid request.");
     }
 
@@ -311,6 +315,8 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
     if(!$oldData){
         die("User not found.");
     }
+
+    $oldPlannerProfile = plannerGetUserProfile($mysqli, $oldUsername, $oldAccountType);
 
     if(duplicateAccountExists($mysqli, $newUsername, $newEmail, $oldUsername, $oldAccountType)){
         echo "<script>
@@ -510,6 +516,14 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
         }
     }
 
+    if(!plannerSaveUserProfile($mysqli, $newUsername, $finalAccountType, $plannerRole)){
+        die("Unable to save the planner role.");
+    }
+
+    if($oldUsername !== $newUsername || $oldAccountType !== $finalAccountType){
+        plannerDeleteUserProfiles($mysqli, $oldUsername, $oldAccountType);
+    }
+
     $ip = $_SERVER['REMOTE_ADDR'];
     $time = date("Y-m-d H:i:s");
 
@@ -519,12 +533,14 @@ OLD DATA:
 Username: {$oldData['username']}
 Email: {$oldData['email']}
 Role/Title: {$oldData['role']}
+Planner Role: " . plannerOperationalRoleLabel($oldPlannerProfile['operational_role'] ?? "") . "
 Account Type: $oldAccountType
 
 NEW DATA:
 Username: $newUsername
 Email: $newEmail
 Role/Title: $newRole
+Planner Role: " . plannerOperationalRoleLabel($plannerRole) . "
 Account Type: $finalAccountType
 
 Details: $actionNote

@@ -47,6 +47,7 @@ if(!function_exists('ensurePlannerSchema')){
                     `task_time` time DEFAULT NULL,
                     `color` varchar(20) DEFAULT '#0d6efd',
                     `created_by` varchar(100) DEFAULT NULL,
+                    `created_account_type` varchar(30) DEFAULT NULL,
                     `created_at` datetime NOT NULL DEFAULT current_timestamp(),
                     `updated_by` varchar(100) DEFAULT NULL,
                     `updated_at` datetime DEFAULT NULL,
@@ -64,7 +65,8 @@ if(!function_exists('ensurePlannerSchema')){
             plannerEnsureColumn($mysqli, "planner_tasks", "task_time", "time DEFAULT NULL AFTER `end_date`");
             plannerEnsureColumn($mysqli, "planner_tasks", "color", "varchar(20) DEFAULT '#0d6efd' AFTER `end_date`");
             plannerEnsureColumn($mysqli, "planner_tasks", "created_by", "varchar(100) DEFAULT NULL AFTER `color`");
-            plannerEnsureColumn($mysqli, "planner_tasks", "created_at", "datetime NOT NULL DEFAULT current_timestamp() AFTER `created_by`");
+            plannerEnsureColumn($mysqli, "planner_tasks", "created_account_type", "varchar(30) DEFAULT NULL AFTER `created_by`");
+            plannerEnsureColumn($mysqli, "planner_tasks", "created_at", "datetime NOT NULL DEFAULT current_timestamp() AFTER `created_account_type`");
             plannerEnsureColumn($mysqli, "planner_tasks", "updated_by", "varchar(100) DEFAULT NULL AFTER `created_at`");
             plannerEnsureColumn($mysqli, "planner_tasks", "updated_at", "datetime DEFAULT NULL AFTER `updated_by`");
             $mysqli->query("UPDATE `planner_tasks` SET `title` = 'Training', `color` = '#e83e8c' WHERE `title` = 'Trainning'");
@@ -78,6 +80,28 @@ if(!function_exists('ensurePlannerSchema')){
                     `data_json` longtext NOT NULL,
                     `fetched_at` datetime NOT NULL DEFAULT current_timestamp(),
                     PRIMARY KEY (`holiday_year`, `country_code`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+            ");
+        }
+
+        if(!plannerTableExists($mysqli, "planner_email_reminders")){
+            $mysqli->query("
+                CREATE TABLE `planner_email_reminders` (
+                    `id` bigint(20) NOT NULL AUTO_INCREMENT,
+                    `task_id` int(11) NOT NULL,
+                    `planner_name` varchar(100) NOT NULL,
+                    `recipient_email` varchar(255) NOT NULL,
+                    `reminder_type` varchar(30) NOT NULL,
+                    `scheduled_for` datetime NOT NULL,
+                    `status` varchar(20) NOT NULL DEFAULT 'pending',
+                    `attempts` int(11) NOT NULL DEFAULT 0,
+                    `provider_response` text DEFAULT NULL,
+                    `sent_at` datetime DEFAULT NULL,
+                    `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+                    `updated_at` datetime DEFAULT NULL,
+                    PRIMARY KEY (`id`),
+                    UNIQUE KEY `uq_planner_email_reminder` (`task_id`, `recipient_email`, `reminder_type`),
+                    KEY `idx_planner_email_reminder_status` (`status`, `scheduled_for`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
             ");
         }

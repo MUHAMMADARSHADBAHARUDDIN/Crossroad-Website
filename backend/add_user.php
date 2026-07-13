@@ -4,6 +4,7 @@ session_start();
 include("../includes/db_connect.php");
 require_once "../includes/activity_log.php";
 require_once "../includes/permissions.php";
+require_once "../includes/planner_profiles.php";
 
 if(!isset($_SESSION['username']) || !isset($_SESSION['role'])){
     die("No session");
@@ -12,6 +13,8 @@ if(!isset($_SESSION['username']) || !isset($_SESSION['role'])){
 if(!hasPermission($mysqli, "users_add")){
     die("Access denied.");
 }
+
+ensurePlannerProfileSchema($mysqli);
 
 /* =========================
    SELECTED PERMISSIONS
@@ -197,10 +200,11 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
     $email = trim($_POST['email'] ?? "");
     $password = trim($_POST['password'] ?? "");
     $role = trim($_POST['role'] ?? "");
+    $plannerRole = plannerNormalizeOperationalRole($_POST['planner_role'] ?? "");
 
     $permissions = selectedPermissions();
 
-    if($username === "" || $email === "" || $password === "" || $role === ""){
+    if($username === "" || $email === "" || $password === "" || $role === "" || $plannerRole === ""){
         die("Please fill in all required fields.");
     }
 
@@ -296,6 +300,10 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
         $actionNote = "Created normal user account with selected permissions.";
     }
 
+    if(!plannerSaveUserProfile($mysqli, $username, $accountType, $plannerRole)){
+        die("Unable to save the planner role.");
+    }
+
     $ip = $_SERVER['REMOTE_ADDR'];
     $time = date("Y-m-d H:i:s");
 
@@ -303,6 +311,7 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
 Username: $username
 Email: $email
 Role/Title: $role
+Planner Role: " . plannerOperationalRoleLabel($plannerRole) . "
 Account Type: $accountType
 Details: $actionNote
 IP Address: $ip

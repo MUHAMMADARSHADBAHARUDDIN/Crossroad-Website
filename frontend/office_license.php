@@ -129,7 +129,9 @@ function officeLicenseFamilyRowsError($owner, $rows, $licensePageType = "office3
     }
 
     if(empty($rows)){
-        return "Please add at least one family.";
+        return $licensePageType === "antivirus"
+            ? "Please add at least one antivirus license."
+            : "Please add at least one family.";
     }
 
     foreach($rows as $row){
@@ -141,7 +143,7 @@ function officeLicenseFamilyRowsError($owner, $rows, $licensePageType = "office3
         $activeLicense = $licensePageType === "antivirus" ? $antivirusLicense : $officeLicense;
         $activeLabel = $licensePageType === "antivirus" ? "Antivirus" : "Office 365";
 
-        if($family === ""){
+        if($family === "" && $licensePageType !== "antivirus"){
             return "Family is required for every row.";
         }
 
@@ -228,8 +230,8 @@ function officeLicenseDeleteFamilyPlaceholder($mysqli, $owner, $family){
     $stmt->execute();
 }
 
-function officeLicenseInsertIfMissing($mysqli, $owner, $family, $licenseName, $expiredDate, $createdBy, $allowEmptyLicense = false){
-    if($owner === "" || $family === ""){
+function officeLicenseInsertIfMissing($mysqli, $owner, $family, $licenseName, $expiredDate, $createdBy, $allowEmptyLicense = false, $allowEmptyFamily = false){
+    if($owner === "" || ($family === "" && !$allowEmptyFamily)){
         return;
     }
 
@@ -268,11 +270,13 @@ function officeLicenseSaveOwnerFamilyRows($mysqli, $owner, $rows, $createdBy, $l
         $antivirusExpired = $row['antivirus_expired_date'] ?? null;
 
         if($family === ""){
-            continue;
+            if($licensePageType !== "antivirus"){
+                continue;
+            }
         }
 
         if($licensePageType === "antivirus"){
-            officeLicenseInsertIfMissing($mysqli, $owner, $family, $antivirusLicense, $antivirusExpired, $createdBy);
+            officeLicenseInsertIfMissing($mysqli, $owner, $family, $antivirusLicense, $antivirusExpired, $createdBy, false, true);
         }
         else{
             officeLicenseInsertIfMissing($mysqli, $owner, $family, $officeLicense, $officeExpired, $createdBy);
@@ -1207,12 +1211,13 @@ function createOfficeLicenseFamilyRow(row){
     const licenseOptions = isAntivirus ? officeLicenseAntivirusOptions : officeLicenseOfficeOptions;
     const licenseFieldName = isAntivirus ? "family_antivirus_license[]" : "family_office365_license[]";
     const expiredFieldName = isAntivirus ? "family_antivirus_expired_date[]" : "family_office365_expired_date[]";
+    const familyRequired = isAntivirus ? "" : " required";
 
     return '<div class="office-license-family-row">' +
         '<div class="office-license-family-row-grid">' +
             '<div>' +
                 '<label class="form-label">Family</label>' +
-                '<select name="license_family[]" class="form-select" required>' + peopleOptionsHtml(data.family || "") + '</select>' +
+                '<select name="license_family[]" class="form-select"' + familyRequired + '>' + peopleOptionsHtml(data.family || "") + '</select>' +
             '</div>' +
             '<div>' +
                 '<label class="form-label">' + escapeHtml(officeLicenseLicenseLabel) + '</label>' +

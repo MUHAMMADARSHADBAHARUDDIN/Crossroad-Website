@@ -1,9 +1,12 @@
 <?php
-session_start();
+if(session_status() === PHP_SESSION_NONE){
+    session_start();
+}
 require_once "../includes/db_connect.php";
 require_once "../includes/activity_log.php";
 require_once "../includes/permissions.php";
 require_once "../includes/planner_schema.php";
+require_once "../includes/planner_profiles.php";
 require_once "../includes/office_family_helper.php";
 
 if(!isset($_SESSION['username'])){
@@ -16,24 +19,97 @@ if(!hasPermission($mysqli, "planner_view")){
 }
 
 ensurePlannerSchema($mysqli);
+ensurePlannerProfileSchema($mysqli);
 
 $username = $_SESSION['username'];
 $role = $_SESSION['role'] ?? "UNKNOWN";
-$canAdd = hasPermission($mysqli, "planner_add");
-$canEdit = hasPermission($mysqli, "planner_edit");
-$canDelete = hasPermission($mysqli, "planner_delete");
+$plannerViewMode = isset($plannerViewMode) ? strtolower(trim((string)$plannerViewMode)) : "cssb";
+$plannerViewMode = in_array($plannerViewMode, ["cssb", "personal", "technical"], true) ? $plannerViewMode : "cssb";
+$plannerViewNames = [
+    "cssb" => "CSSB Planner",
+    "personal" => "Personal Planner",
+    "technical" => "Technical Planner"
+];
+$plannerPageTitle = $plannerViewNames[$plannerViewMode];
+$plannerPageUrl = basename($_SERVER['SCRIPT_NAME'] ?? "planner.php");
+$plannerReadOnly = $plannerViewMode !== "cssb";
+$canAdd = !$plannerReadOnly && hasPermission($mysqli, "planner_add");
+$canEdit = !$plannerReadOnly && hasPermission($mysqli, "planner_edit");
+$canDelete = !$plannerReadOnly && hasPermission($mysqli, "planner_delete");
+$creatorAccountType = getCurrentAccountType($mysqli);
+$currentPicName = plannerCurrentPicName($mysqli);
 $error = "";
-$personOptions = officeInventoryFetchFamilyOptions($mysqli);
+$personOptions = plannerPicOptions($mysqli);
+$taskOptions = plannerTaskOptions($mysqli);
 
-function plannerTaskOptions(){
+function plannerPicOptions($mysqli){
+    $options = [];
+    $seen = [];
+
+    foreach(["user", "administrator"] as $accountTable){
+        $result = $mysqli->query("SELECT username FROM `$accountTable` WHERE username IS NOT NULL AND username <> ''");
+
+        if(!$result){
+            continue;
+        }
+
+        while($row = $result->fetch_assoc()){
+            $nickname = plannerAccountNickname($row['username'] ?? "");
+            $key = strtolower($nickname);
+
+            if($nickname === "" || isset($seen[$key])){
+                continue;
+            }
+
+            $seen[$key] = true;
+            $options[] = $nickname;
+        }
+    }
+
+    natcasesort($options);
+    return array_values($options);
+}
+
+function plannerDefaultTaskOptions(){
     return [
         "PM" => "#fd7e14",
         "CM" => "#dc3545",
         "Kickoff" => "#0d6efd",
         "Meeting" => "#198754",
         "Site Assestment" => "#ffc107",
-        "Training" => "#e83e8c"
+        "Training" => "#e83e8c",
+        "Deployment" => "#6f42c1"
     ];
+}
+
+function plannerTaskOptions($mysqli = null){
+    $options = plannerDefaultTaskOptions();
+
+    if(!$mysqli){
+        return $options;
+    }
+
+    $result = $mysqli->query("
+        SELECT title, color
+        FROM planner_tasks
+        WHERE title IS NOT NULL
+          AND title <> ''
+        ORDER BY id ASC
+    ");
+
+    if($result){
+        while($row = $result->fetch_assoc()){
+            $title = plannerNormalizeTaskTitle($row['title'] ?? "");
+
+            if($title === "" || strcasecmp($title, "Other") === 0 || isset(plannerDefaultTaskOptions()[$title])){
+                continue;
+            }
+
+            $options[$title] = plannerColor($row['color'] ?? "");
+        }
+    }
+
+    return $options;
 }
 
 function plannerNormalizeTaskTitle($title){
@@ -64,6 +140,11 @@ function plannerDateInput($value){
     }
 
     return $value;
+}
+
+function plannerDateObject($value){
+    $value = plannerDateInput($value);
+    return $value !== null ? DateTime::createFromFormat("!Y-m-d", $value) : null;
 }
 
 function plannerTimeInput($value){
@@ -116,9 +197,9 @@ function plannerColor($value){
     return "#0d6efd";
 }
 
-function plannerColorForTitle($title){
+function plannerColorForTitle($title, $taskOptions = null){
     $title = plannerNormalizeTaskTitle($title);
-    $options = plannerTaskOptions();
+    $options = is_array($taskOptions) ? $taskOptions : plannerDefaultTaskOptions();
     return $options[$title] ?? "#0d6efd";
 }
 
@@ -157,10 +238,10 @@ function plannerPersonsText($value){
     return implode(", ", plannerPersonValues($value));
 }
 
-function plannerBusyPersonsForRange($mysqli, $startDate, $endDate, $excludeTaskId = 0){
+function plannerBusyPersonsForRange($mysqli, $startDate, $endDate, $taskTime = null, $excludeTaskId = 0){
     $busy = [];
 
-    if($startDate === null || $endDate === null){
+    if($startDate === null || $endDate === null || $taskTime === null){
         return $busy;
     }
 
@@ -169,6 +250,7 @@ function plannerBusyPersonsForRange($mysqli, $startDate, $endDate, $excludeTaskI
         FROM planner_tasks
         WHERE start_date <= ?
           AND COALESCE(end_date, start_date) >= ?
+          AND task_time = ?
           AND id <> ?
     ");
 
@@ -177,7 +259,7 @@ function plannerBusyPersonsForRange($mysqli, $startDate, $endDate, $excludeTaskI
     }
 
     $excludeTaskId = (int)$excludeTaskId;
-    $stmt->bind_param("ssi", $endDate, $startDate, $excludeTaskId);
+    $stmt->bind_param("sssi", $endDate, $startDate, $taskTime, $excludeTaskId);
     $stmt->execute();
     $result = $stmt->get_result();
 
@@ -204,14 +286,32 @@ function plannerBusySelectedPersons($selectedPersons, $busyPersons){
     return array_values(array_unique($busySelected));
 }
 
-function plannerRedirectMonth($fallbackMonth){
-    $month = trim((string)($_POST['current_month'] ?? $fallbackMonth));
+function plannerViewUrl($pageUrl, $view, $period, $start = "", $end = ""){
+    $params = [
+        "view" => in_array($view, ["month", "week"], true) ? $view : "month",
+        "period" => in_array($period, ["this", "next", "range"], true) ? $period : "this"
+    ];
 
-    if(!preg_match('/^\d{4}-\d{2}$/', $month)){
-        $month = date("Y-m");
+    if($params['period'] === "range"){
+        $start = plannerDateInput($start);
+        $end = plannerDateInput($end);
+
+        if($start !== null && $end !== null){
+            $params['start'] = $start;
+            $params['end'] = $end;
+        }
     }
 
-    header("Location: planner.php?month=" . urlencode($month));
+    return $pageUrl . "?" . http_build_query($params);
+}
+
+function plannerRedirectView($pageUrl = "planner.php"){
+    $view = trim((string)($_POST['current_view'] ?? "month"));
+    $period = trim((string)($_POST['current_period'] ?? "this"));
+    $start = trim((string)($_POST['current_start'] ?? ""));
+    $end = trim((string)($_POST['current_end'] ?? ""));
+
+    header("Location: " . plannerViewUrl($pageUrl, $view, $period, $start, $end));
     exit();
 }
 
@@ -330,36 +430,145 @@ function plannerFetchMalaysiaHolidayYear($mysqli, $year){
     return $holidays;
 }
 
-$monthParam = trim((string)($_GET['month'] ?? date("Y-m")));
-$monthDate = DateTime::createFromFormat("!Y-m", $monthParam);
+$calendarView = strtolower(trim((string)($_GET['view'] ?? "month")));
+$calendarView = in_array($calendarView, ["month", "week"], true) ? $calendarView : "month";
+$calendarPeriod = strtolower(trim((string)($_GET['period'] ?? "this")));
+$calendarPeriod = in_array($calendarPeriod, ["this", "next", "range"], true) ? $calendarPeriod : "this";
+$today = new DateTime("today");
+$legacyMonth = trim((string)($_GET['month'] ?? ""));
+$legacyMonthDate = DateTime::createFromFormat("!Y-m", $legacyMonth);
 
-if(!$monthDate){
-    $monthDate = new DateTime("first day of this month");
+if($legacyMonthDate && !isset($_GET['view']) && !isset($_GET['period'])){
+    $calendarView = "month";
+    $calendarPeriod = "range";
+    $displayStart = clone $legacyMonthDate;
+    $displayEnd = (clone $legacyMonthDate)->modify("last day of this month");
+}
+elseif($calendarView === "week"){
+    $thisWeekStart = (clone $today)->modify("-" . (int)$today->format("w") . " days");
+
+    if($calendarPeriod === "next"){
+        $displayStart = (clone $thisWeekStart)->modify("+7 days");
+    }
+    elseif($calendarPeriod === "range"){
+        $displayStart = plannerDateObject($_GET['start'] ?? "") ?: clone $thisWeekStart;
+    }
+    else{
+        $calendarPeriod = "this";
+        $displayStart = clone $thisWeekStart;
+    }
+
+    $displayEnd = (clone $displayStart)->modify("+6 days");
+}
+else{
+    $thisMonthStart = (clone $today)->modify("first day of this month");
+
+    if($calendarPeriod === "next"){
+        $displayStart = (clone $thisMonthStart)->modify("first day of next month");
+        $displayEnd = (clone $displayStart)->modify("last day of this month");
+    }
+    elseif($calendarPeriod === "range"){
+        $displayStart = plannerDateObject($_GET['start'] ?? "") ?: clone $thisMonthStart;
+        $displayEnd = plannerDateObject($_GET['end'] ?? "") ?: (clone $displayStart)->modify("last day of this month");
+
+        if($displayEnd < $displayStart){
+            $displayEnd = clone $displayStart;
+        }
+
+        $rangeDays = (int)$displayStart->diff($displayEnd)->format("%a");
+
+        if($rangeDays > 365){
+            $displayEnd = (clone $displayStart)->modify("+365 days");
+        }
+    }
+    else{
+        $calendarPeriod = "this";
+        $displayStart = clone $thisMonthStart;
+        $displayEnd = (clone $displayStart)->modify("last day of this month");
+    }
 }
 
-$currentMonth = $monthDate->format("Y-m");
-$monthStart = clone $monthDate;
-$monthEnd = clone $monthDate;
-$monthEnd->modify("last day of this month");
+$displayIsWholeMonth = $displayStart->format("Y-m-d") === $displayStart->format("Y-m-01")
+    && $displayEnd->format("Y-m-d") === (clone $displayStart)->modify("last day of this month")->format("Y-m-d");
+$gridStart = clone $displayStart;
+$gridEnd = clone $displayEnd;
 
-$gridStart = clone $monthStart;
-$gridStart->modify("-" . (int)$gridStart->format("w") . " days");
+if($calendarView === "month" && $displayIsWholeMonth){
+    $gridStart->modify("-" . (int)$gridStart->format("w") . " days");
+    $gridEnd->modify("+" . (6 - (int)$gridEnd->format("w")) . " days");
+}
 
-$gridEnd = clone $monthEnd;
-$gridEnd->modify("+" . (6 - (int)$gridEnd->format("w")) . " days");
+$displayStartValue = $displayStart->format("Y-m-d");
+$displayEndValue = $displayEnd->format("Y-m-d");
+$periodDayCount = (int)$displayStart->diff($displayEnd)->format("%a") + 1;
+
+if($calendarView === "week"){
+    $calendarLabel = $displayStart->format("j M") . " - " . $displayEnd->format("j M Y");
+    $previousStart = (clone $displayStart)->modify("-7 days");
+    $previousEnd = (clone $previousStart)->modify("+6 days");
+    $nextStart = (clone $displayStart)->modify("+7 days");
+    $nextEnd = (clone $nextStart)->modify("+6 days");
+}
+else{
+    $calendarLabel = $displayIsWholeMonth
+        ? $displayStart->format("F Y")
+        : $displayStart->format("j M Y") . " - " . $displayEnd->format("j M Y");
+
+    if($displayIsWholeMonth){
+        $previousStart = (clone $displayStart)->modify("first day of previous month");
+        $previousEnd = (clone $previousStart)->modify("last day of this month");
+        $nextStart = (clone $displayStart)->modify("first day of next month");
+        $nextEnd = (clone $nextStart)->modify("last day of this month");
+    }
+    else{
+        $previousStart = (clone $displayStart)->modify("-" . $periodDayCount . " days");
+        $previousEnd = (clone $displayEnd)->modify("-" . $periodDayCount . " days");
+        $nextStart = (clone $displayStart)->modify("+" . $periodDayCount . " days");
+        $nextEnd = (clone $displayEnd)->modify("+" . $periodDayCount . " days");
+    }
+}
+
+$previousViewUrl = plannerViewUrl(
+    $plannerPageUrl,
+    $calendarView,
+    "range",
+    $previousStart->format("Y-m-d"),
+    $previousEnd->format("Y-m-d")
+);
+$nextViewUrl = plannerViewUrl(
+    $plannerPageUrl,
+    $calendarView,
+    "range",
+    $nextStart->format("Y-m-d"),
+    $nextEnd->format("Y-m-d")
+);
+$weekdayLabels = [];
+$weekdayCursor = clone $gridStart;
+
+for($weekdayIndex = 0; $weekdayIndex < 7; $weekdayIndex++){
+    $weekdayLabels[] = substr($weekdayCursor->format("D"), 0, 1);
+    $weekdayCursor->modify("+1 day");
+}
 
 if($_SERVER["REQUEST_METHOD"] === "POST"){
+    if($plannerReadOnly){
+        die("This planner view is read only.");
+    }
+
     $action = trim((string)($_POST['planner_action'] ?? ""));
     $id = (int)($_POST['task_id'] ?? 0);
-    $title = plannerNormalizeTaskTitle($_POST['title'] ?? "");
+    $selectedTitle = plannerNormalizeTaskTitle($_POST['title'] ?? "");
+    $customTitle = plannerNormalizeTaskTitle($_POST['custom_title'] ?? "");
+    $customColor = plannerColor($_POST['custom_color'] ?? "");
+    $isOtherTitle = strcasecmp($selectedTitle, "Other") === 0;
+    $title = $isOtherTitle ? $customTitle : $selectedTitle;
     $personInCharge = plannerPersonsText($_POST['person_in_charge'] ?? []);
     $description = trim((string)($_POST['description'] ?? ""));
     $startDate = plannerDateInput($_POST['start_date'] ?? "");
     $endDate = plannerDateInput($_POST['end_date'] ?? "");
     $taskTimeRaw = trim((string)($_POST['task_time'] ?? ""));
     $taskTime = plannerTimeInput($taskTimeRaw);
-    $color = plannerColorForTitle($title);
-    $taskOptions = plannerTaskOptions();
+    $color = $isOtherTitle ? $customColor : plannerColorForTitle($title, $taskOptions);
 
     if($endDate === null){
         $endDate = $startDate;
@@ -374,10 +583,13 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
             die("Access denied");
         }
 
-        if($title === "" || $startDate === null){
+        if($selectedTitle === "" || $title === "" || $startDate === null){
             $error = "Task title and start date are required.";
         }
-        elseif(!isset($taskOptions[$title])){
+        elseif($isOtherTitle && strcasecmp($title, "Other") === 0){
+            $error = "Please enter a valid custom task title.";
+        }
+        elseif(!$isOtherTitle && !isset($taskOptions[$title])){
             $error = "Please choose a valid task title.";
         }
         elseif($taskTimeRaw !== "" && $taskTime === null){
@@ -387,26 +599,26 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
             $error = "End date cannot be earlier than start date.";
         }
         else{
-            $busyPersons = plannerBusyPersonsForRange($mysqli, $startDate, $endDate, $action === "edit" ? $id : 0);
+            $busyPersons = plannerBusyPersonsForRange($mysqli, $startDate, $endDate, $taskTime, $action === "edit" ? $id : 0);
             $busySelected = plannerBusySelectedPersons($personInCharge, $busyPersons);
 
             if(!empty($busySelected)){
-                $error = "PIC already occupied for the selected day: " . implode(", ", $busySelected) . ".";
+                $error = "PIC already occupied for the selected time: " . implode(", ", $busySelected) . ".";
             }
         }
 
         if($error === "" && $action === "add"){
             $stmt = $mysqli->prepare("
                 INSERT INTO planner_tasks
-                    (title, description, person_in_charge, start_date, end_date, task_time, color, created_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    (title, description, person_in_charge, start_date, end_date, task_time, color, created_by, created_account_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
 
             if(!$stmt){
                 die("SQL Error: " . $mysqli->error);
             }
 
-            $stmt->bind_param("ssssssss", $title, $description, $personInCharge, $startDate, $endDate, $taskTime, $color, $username);
+            $stmt->bind_param("sssssssss", $title, $description, $personInCharge, $startDate, $endDate, $taskTime, $color, $username, $creatorAccountType);
 
             if($stmt->execute()){
                 $ip = $_SERVER['REMOTE_ADDR'] ?? "Unknown";
@@ -421,7 +633,7 @@ IP Address: $ip
 Time: $time";
 
                 logActivity($mysqli, $username, $role, "ADD PLANNER TASK", $descriptionLog);
-                plannerRedirectMonth($currentMonth);
+                plannerRedirectView($plannerPageUrl);
             }
 
             $error = "Add failed: " . $stmt->error;
@@ -462,6 +674,13 @@ Time: $time";
                 $stmt->bind_param("ssssssssi", $title, $description, $personInCharge, $startDate, $endDate, $taskTime, $color, $username, $id);
 
                 if($stmt->execute()){
+                    $clearReminderStmt = $mysqli->prepare("DELETE FROM planner_email_reminders WHERE task_id = ?");
+
+                    if($clearReminderStmt){
+                        $clearReminderStmt->bind_param("i", $id);
+                        $clearReminderStmt->execute();
+                    }
+
                     $ip = $_SERVER['REMOTE_ADDR'] ?? "Unknown";
                     $time = date("Y-m-d H:i:s");
                     $descriptionLog = "User [$username] updated planner task.
@@ -480,7 +699,7 @@ IP Address: $ip
 Time: $time";
 
                     logActivity($mysqli, $username, $role, "UPDATE PLANNER TASK", $descriptionLog);
-                    plannerRedirectMonth($currentMonth);
+                    plannerRedirectView($plannerPageUrl);
                 }
 
                 $error = "Update failed: " . $stmt->error;
@@ -522,6 +741,13 @@ Time: $time";
                 $stmt->bind_param("i", $id);
 
                 if($stmt->execute()){
+                    $clearReminderStmt = $mysqli->prepare("DELETE FROM planner_email_reminders WHERE task_id = ?");
+
+                    if($clearReminderStmt){
+                        $clearReminderStmt->bind_param("i", $id);
+                        $clearReminderStmt->execute();
+                    }
+
                     $ip = $_SERVER['REMOTE_ADDR'] ?? "Unknown";
                     $time = date("Y-m-d H:i:s");
                     $descriptionLog = "User [$username] deleted planner task.
@@ -534,7 +760,7 @@ IP Address: $ip
 Time: $time";
 
                     logActivity($mysqli, $username, $role, "DELETE PLANNER TASK", $descriptionLog);
-                    plannerRedirectMonth($currentMonth);
+                    plannerRedirectView($plannerPageUrl);
                 }
 
                 $error = "Delete failed: " . $stmt->error;
@@ -545,7 +771,7 @@ Time: $time";
 
 $tasks = [];
 $taskStmt = $mysqli->prepare("
-    SELECT id, title, description, person_in_charge, start_date, COALESCE(end_date, start_date) AS end_date, task_time, color, created_by, created_at, updated_by, updated_at
+    SELECT id, title, description, person_in_charge, start_date, COALESCE(end_date, start_date) AS end_date, task_time, color, created_by, created_account_type, created_at, updated_by, updated_at
     FROM planner_tasks
     WHERE start_date <= ?
       AND COALESCE(end_date, start_date) >= ?
@@ -556,38 +782,65 @@ if(!$taskStmt){
     die("SQL Error: " . $mysqli->error);
 }
 
-$gridEndValue = $gridEnd->format("Y-m-d");
-$gridStartValue = $gridStart->format("Y-m-d");
-$taskStmt->bind_param("ss", $gridEndValue, $gridStartValue);
+$taskStmt->bind_param("ss", $displayEndValue, $displayStartValue);
 $taskStmt->execute();
 $taskResult = $taskStmt->get_result();
 
 while($row = $taskResult->fetch_assoc()){
     $normalizedTitle = plannerNormalizeTaskTitle($row['title']);
+    $taskPics = plannerPersonValues($row['person_in_charge'] ?? "");
+
+    if($plannerViewMode === "personal"){
+        $matchesCurrentUser = false;
+
+        foreach($taskPics as $taskPic){
+            if(strcasecmp($taskPic, $currentPicName) === 0){
+                $matchesCurrentUser = true;
+                break;
+            }
+        }
+
+        if(!$matchesCurrentUser){
+            continue;
+        }
+    }
+
+    if($plannerViewMode === "technical"){
+        $creatorPlannerRole = plannerCreatorOperationalRole(
+            $mysqli,
+            $row['created_by'] ?? "",
+            $row['created_account_type'] ?? ""
+        );
+
+        if($creatorPlannerRole !== "technical"){
+            continue;
+        }
+    }
 
     $tasks[] = [
         "id" => (int)$row['id'],
         "title" => $normalizedTitle,
         "description" => (string)($row['description'] ?? ""),
-        "person_in_charge" => plannerPersonValues($row['person_in_charge'] ?? ""),
+        "person_in_charge" => $taskPics,
         "start_date" => (string)$row['start_date'],
         "end_date" => (string)($row['end_date'] ?? $row['start_date']),
         "task_time" => $row['task_time'] !== null ? substr((string)$row['task_time'], 0, 5) : "",
         "task_time_display" => plannerTimeDisplay($row['task_time'] ?? ""),
-        "color" => plannerColorForTitle($normalizedTitle),
+        "color" => plannerColor($row['color'] ?? plannerColorForTitle($normalizedTitle, $taskOptions)),
         "created_by" => (string)($row['created_by'] ?? ""),
+        "created_account_type" => (string)($row['created_account_type'] ?? ""),
         "updated_by" => (string)($row['updated_by'] ?? "")
     ];
 }
 
 $holidayTasks = [];
-$holidayYears = range((int)$gridStart->format("Y"), (int)$gridEnd->format("Y"));
+$holidayYears = range((int)$displayStart->format("Y"), (int)$displayEnd->format("Y"));
 
 foreach($holidayYears as $holidayYear){
     foreach(plannerFetchMalaysiaHolidayYear($mysqli, $holidayYear) as $holiday){
         $holidayDate = plannerDateInput($holiday['date'] ?? "");
 
-        if($holidayDate === null || $holidayDate < $gridStartValue || $holidayDate > $gridEndValue){
+        if($holidayDate === null || $holidayDate < $displayStartValue || $holidayDate > $displayEndValue){
             continue;
         }
 
@@ -622,18 +875,13 @@ while($cursor <= $gridEnd){
         "date" => $cursor->format("Y-m-d"),
         "day" => $cursor->format("j"),
         "month" => $cursor->format("Y-m"),
-        "is_current_month" => $cursor->format("Y-m") === $currentMonth,
+        "is_in_range" => $cursor >= $displayStart && $cursor <= $displayEnd,
         "is_today" => $cursor->format("Y-m-d") === date("Y-m-d")
     ];
 
     $cursor->modify("+1 day");
 }
 
-$previousMonth = (clone $monthDate)->modify("-1 month")->format("Y-m");
-$nextMonth = (clone $monthDate)->modify("+1 month")->format("Y-m");
-$monthLabel = $monthDate->format("F Y");
-$selectedYear = (int)$monthDate->format("Y");
-$yearOptions = range($selectedYear - 10, $selectedYear + 10);
 ?>
 
 <?php include "layout/header.php"; ?>
@@ -647,6 +895,13 @@ body{
 
 .planner-shell{
     max-width:100%;
+}
+
+.planner-page-title{
+    margin:0 0 14px;
+    font-size:28px;
+    font-weight:700;
+    color:#17212b;
 }
 
 .planner-toolbar{
@@ -677,6 +932,23 @@ body{
 
 .planner-month-title:hover{
     background:#fff3cd;
+}
+
+.planner-view-controls{
+    display:flex;
+    align-items:center;
+    justify-content:flex-end;
+    gap:8px;
+    margin-left:auto;
+}
+
+.planner-view-toggle .btn{
+    min-width:86px;
+}
+
+.planner-period-select{
+    width:auto;
+    min-width:160px;
 }
 
 .planner-calendar{
@@ -729,6 +1001,10 @@ body{
 
 .planner-day.is-today{
     box-shadow:inset 0 0 0 2px #ffc107;
+}
+
+.planner-calendar.is-week .planner-day{
+    min-height:260px;
 }
 
 .planner-day-number{
@@ -929,6 +1205,7 @@ body{
     }
 
     .planner-month-nav,
+    .planner-view-controls,
     .planner-toolbar > .btn{
         width:100%;
     }
@@ -943,9 +1220,31 @@ body{
         text-align:center;
     }
 
+    .planner-view-controls{
+        justify-content:space-between;
+    }
+
+    .planner-view-toggle{
+        flex:1 1 auto;
+    }
+
+    .planner-view-toggle .btn{
+        flex:1 1 50%;
+        min-width:0;
+    }
+
+    .planner-period-select{
+        flex:0 1 180px;
+        min-width:0;
+    }
+
     .planner-day{
         min-height:108px;
         padding:6px;
+    }
+
+    .planner-calendar.is-week .planner-day{
+        min-height:150px;
     }
 
     .planner-detail-row{
@@ -956,36 +1255,52 @@ body{
 </style>
 
 <div class="main planner-shell">
+    <h1 class="planner-page-title"><?= plannerEscape($plannerPageTitle) ?></h1>
+
     <div class="planner-toolbar">
         <div class="planner-month-nav">
-            <a href="planner.php?month=<?= plannerEscape($previousMonth) ?>" class="btn btn-outline-secondary" title="Previous month">
+            <a href="<?= plannerEscape($previousViewUrl) ?>" class="btn btn-outline-secondary" title="Previous <?= plannerEscape($calendarView) ?>">
                 <i class="fa fa-chevron-left"></i>
             </a>
 
-            <button type="button" class="planner-month-title" data-bs-toggle="modal" data-bs-target="#plannerMonthModal">
-                <?= plannerEscape($monthLabel) ?>
+            <button type="button" class="planner-month-title" data-bs-toggle="modal" data-bs-target="#plannerRangeModal">
+                <?= plannerEscape($calendarLabel) ?>
             </button>
 
-            <a href="planner.php?month=<?= plannerEscape($nextMonth) ?>" class="btn btn-outline-secondary" title="Next month">
+            <a href="<?= plannerEscape($nextViewUrl) ?>" class="btn btn-outline-secondary" title="Next <?= plannerEscape($calendarView) ?>">
                 <i class="fa fa-chevron-right"></i>
             </a>
         </div>
 
+        <div class="planner-view-controls">
+            <div class="btn-group planner-view-toggle" role="group" aria-label="Planner view">
+                <a href="<?= plannerEscape(plannerViewUrl($plannerPageUrl, 'week', 'this')) ?>"
+                   class="btn <?= $calendarView === 'week' ? 'btn-warning' : 'btn-outline-secondary' ?>">
+                    <i class="fa fa-calendar-week"></i> Week
+                </a>
+                <a href="<?= plannerEscape(plannerViewUrl($plannerPageUrl, 'month', 'this')) ?>"
+                   class="btn <?= $calendarView === 'month' ? 'btn-warning' : 'btn-outline-secondary' ?>">
+                    <i class="fa fa-calendar-days"></i> Month
+                </a>
+            </div>
+
+            <select id="plannerPeriodSelect" class="form-select planner-period-select" aria-label="Planner period">
+                <option value="this" <?= $calendarPeriod === 'this' ? 'selected' : '' ?>>This <?= plannerEscape(ucfirst($calendarView)) ?></option>
+                <option value="next" <?= $calendarPeriod === 'next' ? 'selected' : '' ?>>Next <?= plannerEscape(ucfirst($calendarView)) ?></option>
+                <option value="range" <?= $calendarPeriod === 'range' ? 'selected' : '' ?>>Custom Range</option>
+            </select>
+        </div>
     </div>
 
     <?php if($error !== ""): ?>
         <div class="alert alert-danger"><?= plannerEscape($error) ?></div>
     <?php endif; ?>
 
-    <div class="planner-calendar">
+    <div class="planner-calendar is-<?= plannerEscape($calendarView) ?>">
         <div class="planner-weekdays">
-            <div class="planner-weekday">S</div>
-            <div class="planner-weekday">M</div>
-            <div class="planner-weekday">T</div>
-            <div class="planner-weekday">W</div>
-            <div class="planner-weekday">T</div>
-            <div class="planner-weekday">F</div>
-            <div class="planner-weekday">S</div>
+            <?php foreach($weekdayLabels as $weekdayLabel): ?>
+                <div class="planner-weekday"><?= plannerEscape($weekdayLabel) ?></div>
+            <?php endforeach; ?>
         </div>
 
         <div class="planner-grid" id="plannerGrid"></div>
@@ -998,40 +1313,31 @@ body{
     </button>
 <?php endif; ?>
 
-<div class="modal fade" id="plannerMonthModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-sm modal-dialog-centered">
-    <form method="GET" action="planner.php" class="modal-content">
+<div class="modal fade" id="plannerRangeModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-md modal-dialog-centered">
+    <form method="GET" action="<?= plannerEscape($plannerPageUrl) ?>" class="modal-content">
+      <input type="hidden" name="view" value="<?= plannerEscape($calendarView) ?>">
+      <input type="hidden" name="period" value="range">
+
       <div class="modal-header bg-dark text-white">
         <h5 class="modal-title">
           <i class="fa fa-calendar text-warning"></i>
-          Choose Month
+          Choose <?= $calendarView === 'week' ? 'Week' : 'Date' ?> Range
         </h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
 
       <div class="modal-body">
-        <div class="mb-3">
-            <label class="form-label">Month</label>
-            <select id="plannerMonthPart" class="form-select">
-                <?php for($monthOption = 1; $monthOption <= 12; $monthOption++): ?>
-                    <?php $monthOptionValue = str_pad((string)$monthOption, 2, "0", STR_PAD_LEFT); ?>
-                    <option value="<?= plannerEscape($monthOptionValue) ?>" <?= $monthOptionValue === $monthDate->format("m") ? "selected" : "" ?>>
-                        <?= plannerEscape(DateTime::createFromFormat("!m", $monthOptionValue)->format("F")) ?>
-                    </option>
-                <?php endfor; ?>
-            </select>
-        </div>
+        <div class="row">
+            <div class="col-md-6 mb-3 mb-md-0">
+                <label class="form-label">Start Date</label>
+                <input type="date" name="start" id="plannerRangeStart" class="form-control" value="<?= plannerEscape($displayStartValue) ?>" required>
+            </div>
 
-        <div>
-            <label class="form-label">Year</label>
-            <select id="plannerYearPart" class="form-select">
-                <?php foreach($yearOptions as $yearOption): ?>
-                    <option value="<?= (int)$yearOption ?>" <?= (int)$yearOption === $selectedYear ? "selected" : "" ?>>
-                        <?= (int)$yearOption ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-            <input type="hidden" name="month" id="plannerMonthPickerValue" value="<?= plannerEscape($currentMonth) ?>">
+            <div class="col-md-6">
+                <label class="form-label">End Date</label>
+                <input type="date" name="end" id="plannerRangeEnd" class="form-control" value="<?= plannerEscape($displayEndValue) ?>" <?= $calendarView === 'week' ? 'readonly' : '' ?> required>
+            </div>
         </div>
       </div>
 
@@ -1048,7 +1354,10 @@ body{
     <form method="POST" class="modal-content">
       <input type="hidden" name="planner_action" id="plannerAction" value="add">
       <input type="hidden" name="task_id" id="plannerTaskId" value="">
-      <input type="hidden" name="current_month" value="<?= plannerEscape($currentMonth) ?>">
+      <input type="hidden" name="current_view" value="<?= plannerEscape($calendarView) ?>">
+      <input type="hidden" name="current_period" value="<?= plannerEscape($calendarPeriod) ?>">
+      <input type="hidden" name="current_start" value="<?= plannerEscape($displayStartValue) ?>">
+      <input type="hidden" name="current_end" value="<?= plannerEscape($displayEndValue) ?>">
       <input type="hidden" name="color" id="plannerColor" value="#0d6efd">
 
       <div class="modal-header bg-dark text-white">
@@ -1065,12 +1374,23 @@ body{
                 <label class="form-label">Task Title *</label>
                 <select name="title" id="plannerTitle" class="form-select" required>
                     <option value="">Select Task</option>
-                    <?php foreach(plannerTaskOptions() as $taskTitle => $taskColor): ?>
+                    <?php foreach($taskOptions as $taskTitle => $taskColor): ?>
                         <option value="<?= plannerEscape($taskTitle) ?>" data-color="<?= plannerEscape($taskColor) ?>">
                             <?= plannerEscape($taskTitle) ?>
                         </option>
                     <?php endforeach; ?>
+                    <option value="Other" data-color="#0d6efd">Other</option>
                 </select>
+            </div>
+
+            <div class="col-md-6 mb-3 d-none" id="plannerCustomTitleWrap">
+                <label class="form-label">Other Task Title *</label>
+                <input type="text" name="custom_title" id="plannerCustomTitle" class="form-control">
+            </div>
+
+            <div class="col-md-6 mb-3 d-none" id="plannerCustomColorWrap">
+                <label class="form-label">Other Task Color</label>
+                <input type="color" name="custom_color" id="plannerCustomColor" class="form-control form-control-color" value="#0d6efd">
             </div>
 
             <div class="col-md-6 mb-3">
@@ -1155,7 +1475,10 @@ body{
 <form method="POST" class="d-none" id="plannerDeleteForm">
     <input type="hidden" name="planner_action" value="delete">
     <input type="hidden" name="task_id" id="plannerDeleteTaskId" value="">
-    <input type="hidden" name="current_month" value="<?= plannerEscape($currentMonth) ?>">
+    <input type="hidden" name="current_view" value="<?= plannerEscape($calendarView) ?>">
+    <input type="hidden" name="current_period" value="<?= plannerEscape($calendarPeriod) ?>">
+    <input type="hidden" name="current_start" value="<?= plannerEscape($displayStartValue) ?>">
+    <input type="hidden" name="current_end" value="<?= plannerEscape($displayEndValue) ?>">
 </form>
 <?php endif; ?>
 
@@ -1168,10 +1491,13 @@ const plannerTasks = <?= json_encode($tasks, JSON_HEX_TAG | JSON_HEX_APOS | JSON
 const plannerHolidayTasks = <?= json_encode($holidayTasks, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
 const plannerAllItems = plannerTasks.concat(plannerHolidayTasks);
 const plannerPersonOptions = <?= json_encode($personOptions, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
-const plannerTaskColors = <?= json_encode(plannerTaskOptions(), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
+const plannerTaskColors = <?= json_encode($taskOptions, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
 const plannerCanAdd = <?= json_encode($canAdd) ?>;
 const plannerCanEdit = <?= json_encode($canEdit) ?>;
 const plannerCanDelete = <?= json_encode($canDelete) ?>;
+const plannerCalendarView = <?= json_encode($calendarView) ?>;
+const plannerCalendarPeriod = <?= json_encode($calendarPeriod) ?>;
+const plannerPageUrl = <?= json_encode($plannerPageUrl) ?>;
 let plannerSelectedTask = null;
 let plannerSelectedPics = [];
 
@@ -1279,6 +1605,26 @@ function plannerTaskDisplayTime(task){
     return time === "" ? "" : "-" + time;
 }
 
+function plannerSyncCustomTaskFields(){
+    const titleSelect = document.getElementById("plannerTitle");
+    const customTitleWrap = document.getElementById("plannerCustomTitleWrap");
+    const customColorWrap = document.getElementById("plannerCustomColorWrap");
+    const customTitle = document.getElementById("plannerCustomTitle");
+    const customColor = document.getElementById("plannerCustomColor");
+    const isOther = titleSelect && titleSelect.value === "Other";
+
+    customTitleWrap?.classList.toggle("d-none", !isOther);
+    customColorWrap?.classList.toggle("d-none", !isOther);
+
+    if(customTitle){
+        customTitle.required = !!isOther;
+    }
+
+    if(customColor && isOther){
+        document.getElementById("plannerColor").value = customColor.value || "#0d6efd";
+    }
+}
+
 function setPlannerTitleValue(value){
     const titleSelect = document.getElementById("plannerTitle");
 
@@ -1286,8 +1632,21 @@ function setPlannerTitleValue(value){
         return;
     }
 
-    titleSelect.value = value || "";
+    value = String(value || "");
+
+    if(value !== "" && plannerTaskColors[value] === undefined){
+        titleSelect.value = "Other";
+        document.getElementById("plannerCustomTitle").value = value;
+        document.getElementById("plannerCustomColor").value = "#0d6efd";
+    }
+    else{
+        titleSelect.value = value;
+        document.getElementById("plannerCustomTitle").value = "";
+        document.getElementById("plannerCustomColor").value = plannerTaskColors[value] || "#0d6efd";
+    }
+
     document.getElementById("plannerColor").value = plannerTaskColors[titleSelect.value] || "#0d6efd";
+    plannerSyncCustomTaskFields();
 }
 
 function normalizePlannerPicList(values){
@@ -1337,6 +1696,12 @@ function plannerSelectedDateRange(){
     };
 }
 
+function plannerSelectedTaskTime(){
+    const input = document.getElementById("plannerTaskTime");
+
+    return input ? String(input.value || "") : "";
+}
+
 function plannerRangesOverlap(startA, endA, startB, endB){
     return String(startA || "") <= String(endB || startB || "") && String(endA || startA || "") >= String(startB || "");
 }
@@ -1344,9 +1709,10 @@ function plannerRangesOverlap(startA, endA, startB, endB){
 function plannerBusyPicKeysForSelectedDates(){
     const range = plannerSelectedDateRange();
     const currentTaskId = plannerCurrentTaskId();
+    const selectedTime = plannerSelectedTaskTime();
     const busy = {};
 
-    if(!range){
+    if(!range || selectedTime === ""){
         return busy;
     }
 
@@ -1360,6 +1726,10 @@ function plannerBusyPicKeysForSelectedDates(){
         }
 
         if(!plannerRangesOverlap(task.start_date, task.end_date || task.start_date, range.start, range.end)){
+            return;
+        }
+
+        if(String(task.task_time || "") !== selectedTime){
             return;
         }
 
@@ -1426,16 +1796,67 @@ function addPlannerPic(value){
     renderPlannerPicSelect();
 }
 
-function syncPlannerMonthPicker(){
-    const monthSelect = document.getElementById("plannerMonthPart");
-    const yearSelect = document.getElementById("plannerYearPart");
-    const hidden = document.getElementById("plannerMonthPickerValue");
+function plannerDatePlusDays(value, days){
+    const parts = String(value || "").split("-").map(Number);
 
-    if(!monthSelect || !yearSelect || !hidden){
+    if(parts.length !== 3 || parts.some(function(part){ return !Number.isFinite(part); })){
+        return "";
+    }
+
+    const date = new Date(parts[0], parts[1] - 1, parts[2]);
+    date.setDate(date.getDate() + days);
+
+    return [
+        date.getFullYear(),
+        String(date.getMonth() + 1).padStart(2, "0"),
+        String(date.getDate()).padStart(2, "0")
+    ].join("-");
+}
+
+function syncPlannerRangeFields(){
+    const start = document.getElementById("plannerRangeStart");
+    const end = document.getElementById("plannerRangeEnd");
+
+    if(!start || !end || start.value === ""){
         return;
     }
 
-    hidden.value = yearSelect.value + "-" + monthSelect.value;
+    if(plannerCalendarView === "week"){
+        end.value = plannerDatePlusDays(start.value, 6);
+        return;
+    }
+
+    end.min = start.value;
+
+    if(end.value === "" || end.value < start.value){
+        end.value = start.value;
+    }
+}
+
+function openPlannerRangeModal(){
+    const modalElement = document.getElementById("plannerRangeModal");
+
+    if(!modalElement){
+        return;
+    }
+
+    syncPlannerRangeFields();
+    bootstrap.Modal.getOrCreateInstance(modalElement).show();
+}
+
+function navigatePlannerPeriod(period){
+    period = String(period || "this");
+
+    if(period === "range"){
+        openPlannerRangeModal();
+        return;
+    }
+
+    const params = new URLSearchParams({
+        view:plannerCalendarView,
+        period:period
+    });
+    window.location.href = plannerPageUrl + "?" + params.toString();
 }
 
 function hidePlannerTaskHover(){
@@ -1624,7 +2045,7 @@ function renderPlannerCalendar(){
     grid.innerHTML = plannerDays.map(function(day){
         const classes = ["planner-day"];
 
-        if(!day.is_current_month){
+        if(!day.is_in_range){
             classes.push("is-muted");
         }
 
@@ -1702,7 +2123,16 @@ document.getElementById("plannerViewEditButton")?.addEventListener("click", func
 document.getElementById("plannerViewDeleteButton")?.addEventListener("click", deletePlannerSelectedTask);
 
 document.getElementById("plannerTitle")?.addEventListener("change", function(){
-    document.getElementById("plannerColor").value = plannerTaskColors[this.value] || "#0d6efd";
+    document.getElementById("plannerColor").value = this.value === "Other"
+        ? (document.getElementById("plannerCustomColor")?.value || "#0d6efd")
+        : (plannerTaskColors[this.value] || "#0d6efd");
+    plannerSyncCustomTaskFields();
+});
+
+document.getElementById("plannerCustomColor")?.addEventListener("input", function(){
+    if(document.getElementById("plannerTitle")?.value === "Other"){
+        document.getElementById("plannerColor").value = this.value || "#0d6efd";
+    }
 });
 
 document.getElementById("plannerPicSelect")?.addEventListener("change", function(){
@@ -1711,6 +2141,7 @@ document.getElementById("plannerPicSelect")?.addEventListener("change", function
 
 document.getElementById("plannerStartDate")?.addEventListener("change", renderPlannerPicSelect);
 document.getElementById("plannerEndDate")?.addEventListener("change", renderPlannerPicSelect);
+document.getElementById("plannerTaskTime")?.addEventListener("change", renderPlannerPicSelect);
 
 document.getElementById("plannerPicSelected")?.addEventListener("click", function(event){
     const removeButton = event.target.closest("button[data-pic-index]");
@@ -1727,11 +2158,21 @@ document.getElementById("plannerPicSelected")?.addEventListener("click", functio
     }
 });
 
-document.getElementById("plannerMonthPart")?.addEventListener("change", syncPlannerMonthPicker);
-document.getElementById("plannerYearPart")?.addEventListener("change", syncPlannerMonthPicker);
-document.querySelector("#plannerMonthModal form")?.addEventListener("submit", syncPlannerMonthPicker);
+document.getElementById("plannerPeriodSelect")?.addEventListener("change", function(){
+    navigatePlannerPeriod(this.value);
+});
 
-syncPlannerMonthPicker();
+document.getElementById("plannerRangeStart")?.addEventListener("change", syncPlannerRangeFields);
+document.querySelector("#plannerRangeModal form")?.addEventListener("submit", syncPlannerRangeFields);
+document.getElementById("plannerRangeModal")?.addEventListener("hidden.bs.modal", function(){
+    const periodSelect = document.getElementById("plannerPeriodSelect");
+
+    if(periodSelect){
+        periodSelect.value = plannerCalendarPeriod;
+    }
+});
+
+syncPlannerRangeFields();
 renderPlannerPicSelect();
 renderPlannerCalendar();
 </script>

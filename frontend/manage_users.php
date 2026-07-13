@@ -9,6 +9,7 @@ if(!isset($_SESSION['username'])){
 
 include("../includes/db_connect.php");
 require_once "../includes/permissions.php";
+require_once "../includes/planner_profiles.php";
 
 if(!hasPermission($mysqli, "users_view")){
     die("Access denied.");
@@ -17,6 +18,8 @@ if(!hasPermission($mysqli, "users_view")){
 $canAddUser = hasPermission($mysqli, "users_add");
 $canEditUser = hasPermission($mysqli, "users_edit");
 $canDeleteUser = hasPermission($mysqli, "users_delete");
+ensurePlannerProfileSchema($mysqli);
+$plannerOperationalRoles = plannerOperationalRoles();
 
 $search = "";
 
@@ -186,6 +189,8 @@ if($userResult){
     while($row = $userResult->fetch_assoc()){
         $row['account_type'] = "user";
         $row['display_role'] = $row['role'];
+        $profile = plannerGetUserProfile($mysqli, $row['username'], "user");
+        $row['planner_role'] = $profile['operational_role'] ?? "";
         $accounts[] = $row;
     }
 }
@@ -218,6 +223,8 @@ if($administratorResult){
         }
 
         $row['display_role'] = $row['role'];
+        $profile = plannerGetUserProfile($mysqli, $row['username'], "administrator");
+        $row['planner_role'] = $profile['operational_role'] ?? "";
         $accounts[] = $row;
     }
 }
@@ -760,6 +767,8 @@ if(in_array("planner_full", $permissions, true)){
     }
 }
 
+$permissionText[] = "Planner Role: " . plannerOperationalRoleLabel($row['planner_role'] ?? "");
+
 $permissionDetailJson = htmlspecialchars(json_encode($permissionText), ENT_QUOTES, 'UTF-8');
 ?>
 
@@ -767,6 +776,7 @@ $permissionDetailJson = htmlspecialchars(json_encode($permissionText), ENT_QUOTE
 data-username="<?= htmlspecialchars($row['username'], ENT_QUOTES, 'UTF-8') ?>"
 data-email="<?= htmlspecialchars($row['email'], ENT_QUOTES, 'UTF-8') ?>"
 data-role="<?= htmlspecialchars($row['display_role'], ENT_QUOTES, 'UTF-8') ?>"
+data-planner-role="<?= htmlspecialchars($row['planner_role'] ?? "", ENT_QUOTES, 'UTF-8') ?>"
 data-account-type="<?= htmlspecialchars($row['account_type'], ENT_QUOTES, 'UTF-8') ?>"
 data-permission-detail="<?= $permissionDetailJson ?>"
 >
@@ -803,6 +813,7 @@ class="btn btn-sm btn-primary action-btn editUserBtn"
 data-username="<?= htmlspecialchars($row['username'], ENT_QUOTES, 'UTF-8') ?>"
 data-account-type="<?= htmlspecialchars($row['account_type'], ENT_QUOTES, 'UTF-8') ?>"
 data-display-role="<?= htmlspecialchars($row['display_role'], ENT_QUOTES, 'UTF-8') ?>"
+data-planner-role="<?= htmlspecialchars($row['planner_role'] ?? "", ENT_QUOTES, 'UTF-8') ?>"
 data-email="<?= htmlspecialchars($row['email'], ENT_QUOTES, 'UTF-8') ?>"
 data-permissions="<?= $permissionsJson ?>"
 data-bs-toggle="modal"
@@ -965,6 +976,19 @@ Password must contain at least 8 characters, 1 uppercase letter, and 1 symbol.
 </div>
 </div>
 
+<div class="row">
+<div class="col-md-6 mb-3">
+<label>Planner Role</label>
+<select name="planner_role" class="form-control" required>
+    <option value="">Select Planner Role</option>
+    <?php foreach($plannerOperationalRoles as $plannerRoleValue => $plannerRoleLabel): ?>
+        <option value="<?= htmlspecialchars($plannerRoleValue) ?>"><?= htmlspecialchars($plannerRoleLabel) ?></option>
+    <?php endforeach; ?>
+</select>
+</div>
+
+</div>
+
 <hr>
 
 <h5 class="mb-3">
@@ -1063,6 +1087,19 @@ Leave empty if you do not want to change password.
 
 </div>
 
+<div class="row">
+<div class="col-md-6 mb-3">
+<label>Planner Role</label>
+<select name="planner_role" id="edit_planner_role" class="form-control" required>
+    <option value="">Select Planner Role</option>
+    <?php foreach($plannerOperationalRoles as $plannerRoleValue => $plannerRoleLabel): ?>
+        <option value="<?= htmlspecialchars($plannerRoleValue) ?>"><?= htmlspecialchars($plannerRoleLabel) ?></option>
+    <?php endforeach; ?>
+</select>
+</div>
+
+</div>
+
 <hr>
 
 <h5 class="mb-3">
@@ -1137,6 +1174,7 @@ document.querySelectorAll(".editUserBtn").forEach(button => {
         const username = this.dataset.username;
         const accountType = this.dataset.accountType;
         const displayRole = this.dataset.displayRole;
+        const plannerRole = this.dataset.plannerRole || "";
         const email = this.dataset.email || "";
 
         let permissions = [];
@@ -1170,6 +1208,7 @@ document.querySelectorAll(".editUserBtn").forEach(button => {
         }
 
         roleSelect.value = displayRole;
+        document.getElementById("edit_planner_role").value = plannerRole;
 
         form.querySelector('input[name="password"]').value = "";
 

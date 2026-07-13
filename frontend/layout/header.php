@@ -17,6 +17,7 @@ if(!isset($mysqli)){
 
 require_once __DIR__ . "/../../includes/permissions.php";
 require_once __DIR__ . "/../../includes/auth_schema.php";
+require_once __DIR__ . "/../../includes/planner_profiles.php";
 
 $currentScript = basename($_SERVER['SCRIPT_NAME'] ?? "");
 if($currentScript !== "change_password.php" && authCurrentAccountMustChangePassword($mysqli)){
@@ -38,62 +39,8 @@ if($currentScript !== "change_password.php" && authCurrentAccountMustChangePassw
      Wan Nur Azlin Binti Mohd Ghazali => Azlin
 ========================================================= */
 function getNickname($fullName){
-    $fullName = trim($fullName);
-
-    if($fullName === ""){
-        return "User";
-    }
-
-    $parts = preg_split('/\s+/', $fullName);
-
-    if(count($parts) === 1){
-        return $parts[0];
-    }
-
-    /*
-        ✅ IMPORTANT:
-        Keep all words lowercase because we compare using strtolower().
-        Add more names here if you want to skip them.
-    */
-    $skipFirstNames = [
-        "muhammad",
-        "muhamad",
-        "mohammad",
-        "mohamad",
-        "mohd",
-        "ahmad",
-        "nur",
-        "wan",
-        "siti",
-        "syed",
-        "sharifah",
-        "tengku",
-        "nik"
-    ];
-
-    /*
-        ✅ This will skip multiple front names.
-        Example:
-        Wan Nur Azlin Binti Mohd Ghazali
-        - skip Wan
-        - skip Nur
-        - show Azlin
-    */
-    foreach($parts as $part){
-        $cleanPart = strtolower(trim($part));
-
-        if($cleanPart === ""){
-            continue;
-        }
-
-        if(in_array($cleanPart, $skipFirstNames, true)){
-            continue;
-        }
-
-        return $part;
-    }
-
-    return $parts[0];
+    $nickname = plannerAccountNickname($fullName);
+    return $nickname !== "" ? $nickname : "User";
 }
 
 $nickname = getNickname($username);
