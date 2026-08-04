@@ -4,10 +4,26 @@ require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
 require_once "../includes/date_helpers.php";
 require_once "../includes/project_dashboard_data.php";
+require_once "../includes/bulletin_schema.php";
 
 if(!isset($_SESSION['username'])){
     header("Location: ../frontend/index.html");
     exit();
+}
+
+$activeStandbyBulletins = [];
+$standaloneBulletinMessages = [];
+if(ensureBulletinSchema($mysqli)){
+    $today = date('Y-m-d');
+    $standbyStmt = $mysqli->prepare('SELECT standby_name, start_date, end_date FROM standby_bulletins WHERE start_date <= ? AND end_date >= ? ORDER BY start_date ASC, id ASC');
+    if($standbyStmt){
+        $standbyStmt->bind_param('ss', $today, $today);
+        $standbyStmt->execute();
+        $standbyResult = $standbyStmt->get_result();
+        while($standbyResult && $standbyRow = $standbyResult->fetch_assoc()){ $activeStandbyBulletins[] = $standbyRow; }
+    }
+    $messageResult = $mysqli->query('SELECT message FROM bulletin_messages ORDER BY created_at ASC, id ASC');
+    while($messageResult && $messageRow = $messageResult->fetch_assoc()){ $standaloneBulletinMessages[] = $messageRow['message']; }
 }
 
 function dashboardEscape($value){
@@ -636,6 +652,60 @@ $pmTaskCount = count($pmTasks);
 .pm-modern-control.carousel-control-next{
     right:18px !important;
     left:auto !important;
+}
+
+.standby-bulletin{
+    position:fixed;
+    left:230px;
+    right:0;
+    bottom:0;
+    z-index:1040;
+    min-height:44px;
+    padding:10px 18px;
+    background:#d60000;
+    color:#fff;
+    border-top:3px solid #ffda00;
+    box-shadow:0 -5px 18px rgba(0,0,0,.2);
+    display:flex;
+    align-items:center;
+    justify-content:flex-start;
+    gap:10px;
+    font-size:15px;
+    font-weight:700;
+    line-height:1.35;
+    transition:left .3s ease;
+    overflow:hidden;
+}
+.standby-bulletin i{color:#ffda00;flex:0 0 auto;z-index:1}
+.standby-bulletin-track{flex:1;min-width:0;overflow:hidden}
+.standby-bulletin-runner{
+    display:flex;
+    width:max-content;
+    animation:standbyTicker 22s linear infinite;
+    will-change:transform;
+}
+.standby-bulletin-message{
+    display:block;
+    flex:0 0 var(--standby-ticker-width, 100vw);
+    width:var(--standby-ticker-width, 100vw);
+    white-space:nowrap;
+}
+.standby-bulletin:hover .standby-bulletin-runner{animation-play-state:paused}
+@keyframes standbyTicker{
+    from{transform:translateX(0)}
+    to{transform:translateX(calc(-1 * var(--standby-ticker-width, 100vw)))}
+}
+.sidebar.collapsed ~ .standby-bulletin{left:70px}
+body.dashboard-has-standby{padding-bottom:58px}
+@media(max-width:768px){
+    .standby-bulletin,.sidebar.collapsed ~ .standby-bulletin{left:0;padding:9px 12px;font-size:13px}
+    .standby-bulletin-message{overflow:hidden;text-overflow:ellipsis}
+}
+@media(prefers-reduced-motion:reduce){
+    .standby-bulletin-track{overflow-x:auto;text-align:center}
+    .standby-bulletin-runner{display:block;width:100%;animation:none}
+    .standby-bulletin-message{white-space:normal;padding-right:0}
+    .standby-bulletin-message[aria-hidden="true"]{display:none}
 }
 
 .pm-nav-bubble i{
@@ -1307,6 +1377,47 @@ $pmTaskCount = count($pmTasks);
         </div>
     </div>
 </div>
+<?php endif; ?>
+
+<?php if(!empty($activeStandbyBulletins) || !empty($standaloneBulletinMessages)): ?>
+<div class="standby-bulletin" role="status" aria-label="Current standby bulletin">
+    <i class="fa fa-bullhorn" aria-hidden="true"></i>
+    <div class="standby-bulletin-track">
+        <div class="standby-bulletin-runner">
+            <?php for($tickerCopy = 0; $tickerCopy < 2; $tickerCopy++): ?>
+            <span class="standby-bulletin-message"<?= $tickerCopy === 1 ? ' aria-hidden="true"' : '' ?>>
+            <?php foreach($activeStandbyBulletins as $index => $standby): ?>
+                <?php if($index > 0): ?> &nbsp;&bull;&nbsp; <?php endif; ?>
+                <?= dashboardEscape($standby['standby_name']) ?> is standby for this week <?= dashboardEscape(date('d/m/Y', strtotime($standby['start_date']))) ?> - <?= dashboardEscape(date('d/m/Y', strtotime($standby['end_date']))) ?>
+            <?php endforeach; ?>
+            <?php foreach($standaloneBulletinMessages as $messageIndex => $standaloneMessage): ?>
+                <?php if(!empty($activeStandbyBulletins) || $messageIndex > 0): ?> &nbsp;&bull;&nbsp; <?php endif; ?>
+                <?= dashboardEscape($standaloneMessage) ?>
+            <?php endforeach; ?>
+            </span>
+            <?php endfor; ?>
+        </div>
+    </div>
+</div>
+<script>document.body.classList.add('dashboard-has-standby');</script>
+<script>
+(function(){
+    const track = document.querySelector('.standby-bulletin-track');
+    const runner = document.querySelector('.standby-bulletin-runner');
+    if(!track || !runner){ return; }
+
+    function setTickerWidth(){
+        runner.style.setProperty('--standby-ticker-width', track.clientWidth + 'px');
+    }
+
+    setTickerWidth();
+    if(window.ResizeObserver){
+        new ResizeObserver(setTickerWidth).observe(track);
+    }else{
+        window.addEventListener('resize', setTickerWidth);
+    }
+})();
+</script>
 <?php endif; ?>
 
 <?php include "layout/footer.php"; ?>

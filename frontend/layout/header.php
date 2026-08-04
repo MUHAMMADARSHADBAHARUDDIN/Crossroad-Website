@@ -270,6 +270,7 @@ $nickname = getNickname($username);
     }
 })();
 </script>
+<?php include_once __DIR__ . "/realtime.php"; ?>
 
 <script>
 (function(){

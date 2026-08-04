@@ -106,6 +106,28 @@ if(!function_exists('ensurePlannerSchema')){
             ");
         }
 
+        if(!plannerTableExists($mysqli, "planner_telegram_reminders")){
+            $mysqli->query("
+                CREATE TABLE `planner_telegram_reminders` (
+                    `id` bigint(20) NOT NULL AUTO_INCREMENT,
+                    `task_id` int(11) NOT NULL,
+                    `planner_name` varchar(100) NOT NULL,
+                    `recipient_chat_id` varchar(100) NOT NULL,
+                    `reminder_type` varchar(30) NOT NULL,
+                    `scheduled_for` datetime NOT NULL,
+                    `status` varchar(20) NOT NULL DEFAULT 'pending',
+                    `attempts` int(11) NOT NULL DEFAULT 0,
+                    `provider_response` text DEFAULT NULL,
+                    `sent_at` datetime DEFAULT NULL,
+                    `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+                    `updated_at` datetime DEFAULT NULL,
+                    PRIMARY KEY (`id`),
+                    UNIQUE KEY `uq_planner_telegram_reminder` (`task_id`, `recipient_chat_id`, `reminder_type`),
+                    KEY `idx_planner_telegram_status` (`status`, `scheduled_for`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+            ");
+        }
+
         $done = true;
     }
 }

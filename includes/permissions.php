@@ -25,11 +25,17 @@ if(session_status() === PHP_SESSION_NONE){
 if(!function_exists('getCurrentAccountType')){
     function getCurrentAccountType($mysqli){
 
+        static $accountTypeCache = [];
+
         if(!isset($_SESSION['username'])){
             return "";
         }
 
         $username = $_SESSION['username'];
+
+        if(array_key_exists($username, $accountTypeCache)){
+            return $accountTypeCache[$username];
+        }
 
         /* Check administrator table first */
         $stmt = $mysqli->prepare("
@@ -45,7 +51,7 @@ if(!function_exists('getCurrentAccountType')){
             $result = $stmt->get_result();
 
             if($result && $result->num_rows > 0){
-                return "administrator";
+                return $accountTypeCache[$username] = "administrator";
             }
         }
 
@@ -63,11 +69,11 @@ if(!function_exists('getCurrentAccountType')){
             $result = $stmt->get_result();
 
             if($result && $result->num_rows > 0){
-                return "user";
+                return $accountTypeCache[$username] = "user";
             }
         }
 
-        return "";
+        return $accountTypeCache[$username] = "";
     }
 }
 
@@ -113,12 +119,19 @@ if(!function_exists('getPermissionsForAccount')){
 if(!function_exists('hasPermission')){
     function hasPermission($mysqli, $permissionName){
 
+        static $permissionCache = [];
+
         if(!isset($_SESSION['username'])){
             return false;
         }
 
         $username = $_SESSION['username'];
         $accountType = getCurrentAccountType($mysqli);
+        $cacheKey = $username . "\0" . $accountType . "\0" . $permissionName;
+
+        if(array_key_exists($cacheKey, $permissionCache)){
+            return $permissionCache[$cacheKey];
+        }
 
         /*
         |--------------------------------------------------------------------------
@@ -129,11 +142,11 @@ if(!function_exists('hasPermission')){
         |--------------------------------------------------------------------------
         */
         if($accountType === "administrator"){
-            return true;
+            return $permissionCache[$cacheKey] = true;
         }
 
         if($accountType === ""){
-            return false;
+            return $permissionCache[$cacheKey] = false;
         }
 
         $stmt = $mysqli->prepare("
@@ -146,7 +159,7 @@ if(!function_exists('hasPermission')){
         ");
 
         if(!$stmt){
-            return false;
+            return $permissionCache[$cacheKey] = false;
         }
 
         $stmt->bind_param("sss", $username, $accountType, $permissionName);
@@ -155,7 +168,7 @@ if(!function_exists('hasPermission')){
         $result = $stmt->get_result();
 
         if($result && $result->num_rows > 0){
-            return true;
+            return $permissionCache[$cacheKey] = true;
         }
 
         /*
@@ -180,6 +193,12 @@ if(!function_exists('hasPermission')){
         elseif(strpos($permissionName, "planner_") === 0){
             $module = "planner_full";
         }
+        elseif(strpos($permissionName, "visitor_") === 0){
+            $module = "visitor_full";
+        }
+        elseif(strpos($permissionName, "bulletin_") === 0){
+            $module = "bulletin_full";
+        }
 
         if($module !== ""){
             $stmt = $mysqli->prepare("
@@ -192,7 +211,7 @@ if(!function_exists('hasPermission')){
             ");
 
             if(!$stmt){
-                return false;
+                return $permissionCache[$cacheKey] = false;
             }
 
             $stmt->bind_param("sss", $username, $accountType, $module);
@@ -201,11 +220,11 @@ if(!function_exists('hasPermission')){
             $result = $stmt->get_result();
 
             if($result && $result->num_rows > 0){
-                return true;
+                return $permissionCache[$cacheKey] = true;
             }
         }
 
-        return false;
+        return $permissionCache[$cacheKey] = false;
     }
 }
 

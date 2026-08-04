@@ -1104,8 +1104,52 @@ if(!function_exists('ensureContractProjectSchema')){
             ");
         }
 
+        $contractColumns = [
+            "payment_term" => "varchar(100) DEFAULT NULL AFTER `amount`",
+            "no_of_pm" => "decimal(8,2) DEFAULT NULL AFTER `payment_term`",
+            "pm_y1_q1" => "varchar(50) DEFAULT NULL AFTER `no_of_pm`",
+            "pm_y1_q2" => "varchar(50) DEFAULT NULL AFTER `pm_y1_q1`",
+            "pm_y1_q3" => "varchar(50) DEFAULT NULL AFTER `pm_y1_q2`",
+            "pm_y1_q4" => "varchar(50) DEFAULT NULL AFTER `pm_y1_q3`",
+            "pm_y2_q1" => "varchar(50) DEFAULT NULL AFTER `pm_y1_q4`",
+            "pm_y2_q2" => "varchar(50) DEFAULT NULL AFTER `pm_y2_q1`",
+            "pm_y2_q3" => "varchar(50) DEFAULT NULL AFTER `pm_y2_q2`",
+            "pm_y2_q4" => "varchar(50) DEFAULT NULL AFTER `pm_y2_q3`",
+            "pm_y3_q1" => "varchar(50) DEFAULT NULL AFTER `pm_y2_q4`",
+            "pm_y3_q2" => "varchar(50) DEFAULT NULL AFTER `pm_y3_q1`",
+            "pm_y3_q3" => "varchar(50) DEFAULT NULL AFTER `pm_y3_q2`",
+            "pm_y3_q4" => "varchar(50) DEFAULT NULL AFTER `pm_y3_q3`",
+            "pm_y4_q1" => "varchar(50) DEFAULT NULL AFTER `pm_y3_q4`",
+            "pm_y4_q2" => "varchar(50) DEFAULT NULL AFTER `pm_y4_q1`",
+            "pm_y4_q3" => "varchar(50) DEFAULT NULL AFTER `pm_y4_q2`",
+            "pm_y4_q4" => "varchar(50) DEFAULT NULL AFTER `pm_y4_q3`"
+        ];
+
+        foreach($contractColumns as $columnName => $definition){
+            if(!contractSchemaColumnExists($mysqli, "project_inventory", $columnName)){
+                $mysqli->query("ALTER TABLE `project_inventory` ADD COLUMN `$columnName` $definition");
+            }
+        }
+
         contractSchemaResetExistingProjectCodes($mysqli);
-        contractSchemaBackfillProjectCodes($mysqli);
+
+        $needsProjectCodeBackfill = false;
+        $backfillCheck = $mysqli->query("
+            SELECT 1
+            FROM project_inventory
+            WHERE project_code IS NULL
+               OR project_code = ''
+               OR project_code NOT LIKE 'PRO/%'
+            LIMIT 1
+        ");
+
+        if($backfillCheck && $backfillCheck->num_rows > 0){
+            $needsProjectCodeBackfill = true;
+        }
+
+        if($needsProjectCodeBackfill){
+            contractSchemaBackfillProjectCodes($mysqli);
+        }
 
         if(
             contractSchemaColumnExists($mysqli, "project_inventory", "project_code") &&

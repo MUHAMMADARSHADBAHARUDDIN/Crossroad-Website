@@ -23,11 +23,7 @@ ensureInventoryReportSchema($mysqli);
 $username = $_SESSION['username'];
 $role = $_SESSION['role'] ?? "UNKNOWN";
 $error = "";
-$ownerOptions = officeInventoryFetchFamilyOptions($mysqli);
-
-if(isset($_POST['owner']) && trim((string)$_POST['owner']) !== "" && !in_array(trim((string)$_POST['owner']), $ownerOptions, true)){
-    $ownerOptions[] = trim((string)$_POST['owner']);
-}
+$ownerOptions = officeInventoryOwnerOptions($mysqli);
 
 function officeAddEscape($value){
     return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
@@ -57,10 +53,13 @@ function officeLicenseTypeText($office365License, $antivirusLicense){
 
 if(isset($_POST['add'])){
     $deliveryDate = appNormalizeDateInput($_POST['delivery_date'] ?? "");
-    $owner = trim($_POST['owner'] ?? "");
+    $ownerChoice = trim($_POST['owner_choice'] ?? "");
+    $customOwner = trim($_POST['custom_owner'] ?? "");
+    $owner = $ownerChoice === "__other__" ? $customOwner : $ownerChoice;
     $serialNumber = trim($_POST['serial_number'] ?? "");
     $brand = trim($_POST['brand'] ?? "");
     $model = trim($_POST['model'] ?? "");
+    $remark = trim($_POST['remark'] ?? "");
     $office365License = trim($_POST['office365_license'] ?? "");
     $antivirusLicense = trim($_POST['antivirus_license'] ?? "");
     $licenseType = officeLicenseTypeText($office365License, $antivirusLicense);
@@ -85,6 +84,9 @@ if(isset($_POST['add'])){
     if($error === "" && ($owner === "" || $serialNumber === "")){
         $error = "Owner and Serial Number are required.";
     }
+    elseif($error === "" && strlen($owner) > 150){
+        $error = "Owner must not exceed 150 characters.";
+    }
     elseif($error === ""){
         $checkStmt = $mysqli->prepare("
             SELECT id
@@ -108,8 +110,8 @@ if(isset($_POST['add'])){
 
             $stmt = $mysqli->prepare("
                 INSERT INTO laptop_inventory
-                (delivery_date, owner, serial_number, brand, model, office365_license, antivirus_license, license_type, license_ownership, license_family, license_family_details, license_expired_date, document_file_name, document_original_name, document_uploaded_by, document_uploaded_at, created_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (delivery_date, owner, serial_number, brand, model, remark, office365_license, antivirus_license, license_type, license_ownership, license_family, license_family_details, license_expired_date, document_file_name, document_original_name, document_uploaded_by, document_uploaded_at, created_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
 
             if(!$stmt){
@@ -131,12 +133,13 @@ if(isset($_POST['add'])){
 
             if($error === ""){
                 $stmt->bind_param(
-                    "sssssssssssssssss",
+                    "ssssssssssssssssss",
                     $deliveryDate,
                     $owner,
                     $serialNumber,
                     $brand,
                     $model,
+                    $remark,
                     $office365License,
                     $antivirusLicense,
                     $licenseType,
@@ -160,6 +163,7 @@ Owner: $owner
 Serial Number: $serialNumber
 Brand: $brand
 Model: $model
+Remark: $remark
 Office License For Owner: $office365License
 Antivirus For Owner: $antivirusLicense
 Document: " . ($documentOriginalName ?? "-") . "
@@ -220,14 +224,20 @@ Time: $time";
 
 <div class="col-md-6 mb-3">
     <label>Owner *</label>
-    <select name="owner" class="form-select" required>
+    <select name="owner_choice" id="officeOwnerChoice" class="form-select" required>
         <option value="">Select Owner</option>
         <?php foreach($ownerOptions as $option): ?>
-            <option value="<?= officeAddEscape($option) ?>" <?= officeAddSelected('owner', $option) ?>>
+            <option value="<?= officeAddEscape($option) ?>" <?= officeAddSelected('owner_choice', $option) ?>>
                 <?= officeAddEscape($option) ?>
             </option>
         <?php endforeach; ?>
+        <option value="__other__" <?= officeAddSelected('owner_choice', '__other__') ?>>Other</option>
     </select>
+</div>
+
+<div class="col-md-6 mb-3 <?= (($_POST['owner_choice'] ?? '') === '__other__') ? '' : 'd-none' ?>" id="officeCustomOwnerWrap">
+    <label>Other Owner *</label>
+    <input type="text" name="custom_owner" id="officeCustomOwner" maxlength="150" class="form-control" value="<?= officeAddOld('custom_owner') ?>" placeholder="Enter owner name">
 </div>
 
 <div class="col-md-6 mb-3">
@@ -243,6 +253,11 @@ Time: $time";
 <div class="col-md-6 mb-3">
     <label>Model</label>
     <input type="text" name="model" class="form-control" value="<?= officeAddOld('model') ?>">
+</div>
+
+<div class="col-12 mb-3">
+    <label>Remark</label>
+    <textarea name="remark" class="form-control" rows="3" placeholder="Add notes about this device"><?= officeAddOld('remark') ?></textarea>
 </div>
 
 <div class="col-md-6 mb-3">
@@ -285,6 +300,21 @@ Time: $time";
 <button class="btn btn-warning" name="add">Add</button>
 <a href="office_inventory.php" class="btn btn-secondary">Cancel</a>
 </form>
+
+<script>
+(function(){
+    const select = document.getElementById("officeOwnerChoice");
+    const wrap = document.getElementById("officeCustomOwnerWrap");
+    const input = document.getElementById("officeCustomOwner");
+    function syncOwnerInput(){
+        const isOther = select && select.value === "__other__";
+        wrap?.classList.toggle("d-none", !isOther);
+        if(input){ input.required = !!isOther; }
+    }
+    select?.addEventListener("change", syncOwnerInput);
+    syncOwnerInput();
+})();
+</script>
 
 </div>
 

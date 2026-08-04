@@ -169,7 +169,7 @@ body{
 <?php include "layout/header.php"; ?>
 <?php include "layout/sidebar.php"; ?>
 
-<div class="main p-4">
+<div class="main" id="main">
 
 <h2 class="mb-4"><i class="fa fa-chart-line"></i> Project Tracker Dashboard</h2>
 

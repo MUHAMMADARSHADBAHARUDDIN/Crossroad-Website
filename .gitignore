@@ -1,4 +1,6 @@
 .env
+node_modules/
+Crossroad-Website-deployment-*.zip
 .env.*
 !.env.example
 

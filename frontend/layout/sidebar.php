@@ -27,6 +27,8 @@ $canViewMasterBudget = hasContractMasterBudgetAccess($mysqli);
 $canViewInventory = hasPermission($mysqli, "inventory_view");
 $canViewOfficeInventory = hasPermission($mysqli, "office_inventory_view");
 $canViewPlanner = hasPermission($mysqli, "planner_view");
+$canViewVisitors = hasPermission($mysqli, "visitor_view");
+$canViewBulletin = hasPermission($mysqli, "bulletin_view");
 
 $menu = [
 
@@ -36,6 +38,12 @@ $menu = [
             "icon" => "fa-dashboard",
             "link" => "dashboard.php",
             "show" => true
+        ],
+        [
+            "name" => "Bulletin",
+            "icon" => "fa-bullhorn",
+            "link" => "bulletin.php",
+            "show" => $canViewBulletin
         ],
         [
             "name" => "CSSB Planner",
@@ -54,6 +62,13 @@ $menu = [
             "name" => "Technical Planner",
             "icon" => "fa-angle-right",
             "link" => "technical_planner.php",
+            "submenu" => true,
+            "show" => $canViewPlanner
+        ],
+        [
+            "name" => "Telegram Notifications",
+            "icon" => "fa-telegram",
+            "link" => "telegram_notifications.php",
             "submenu" => true,
             "show" => $canViewPlanner
         ],
@@ -136,6 +151,12 @@ $menu = [
     ],
 
     "ADMIN" => [
+        [
+            "name" => "Visitors",
+            "icon" => "fa-address-book",
+            "link" => "visitors.php",
+            "show" => $canViewVisitors
+        ],
         [
             "name" => "Manage Users",
             "icon" => "fa-user-cog",

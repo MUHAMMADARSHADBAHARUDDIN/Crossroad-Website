@@ -87,6 +87,7 @@ if(!function_exists('ensureInventoryReportSchema')){
                     `serial_number` varchar(150) NOT NULL,
                     `brand` varchar(100) DEFAULT NULL,
                     `model` varchar(150) DEFAULT NULL,
+                    `remark` text DEFAULT NULL,
                     `office365_license` varchar(100) DEFAULT NULL,
                     `antivirus_license` varchar(100) DEFAULT NULL,
                     `license_type` varchar(255) DEFAULT NULL,
@@ -110,6 +111,7 @@ if(!function_exists('ensureInventoryReportSchema')){
         }
 
         if(inventoryReportTableExists($mysqli, "laptop_inventory")){
+            inventoryReportEnsureColumn($mysqli, "laptop_inventory", "remark", "text DEFAULT NULL AFTER `model`");
             inventoryReportEnsureColumn($mysqli, "laptop_inventory", "license_family", "text NULL AFTER `license_ownership`");
             inventoryReportEnsureColumn($mysqli, "laptop_inventory", "license_family_details", "longtext DEFAULT NULL AFTER `license_family`");
             inventoryReportEnsureColumn($mysqli, "laptop_inventory", "document_file_name", "varchar(255) DEFAULT NULL AFTER `license_expired_date`");

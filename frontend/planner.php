@@ -83,33 +83,9 @@ function plannerDefaultTaskOptions(){
 }
 
 function plannerTaskOptions($mysqli = null){
-    $options = plannerDefaultTaskOptions();
-
-    if(!$mysqli){
-        return $options;
-    }
-
-    $result = $mysqli->query("
-        SELECT title, color
-        FROM planner_tasks
-        WHERE title IS NOT NULL
-          AND title <> ''
-        ORDER BY id ASC
-    ");
-
-    if($result){
-        while($row = $result->fetch_assoc()){
-            $title = plannerNormalizeTaskTitle($row['title'] ?? "");
-
-            if($title === "" || strcasecmp($title, "Other") === 0 || isset(plannerDefaultTaskOptions()[$title])){
-                continue;
-            }
-
-            $options[$title] = plannerColor($row['color'] ?? "");
-        }
-    }
-
-    return $options;
+    // Keep the dropdown limited to the approved defaults. Custom "Other"
+    // titles are saved on their task only and do not become permanent options.
+    return plannerDefaultTaskOptions();
 }
 
 function plannerNormalizeTaskTitle($title){
@@ -559,7 +535,7 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
     $id = (int)($_POST['task_id'] ?? 0);
     $selectedTitle = plannerNormalizeTaskTitle($_POST['title'] ?? "");
     $customTitle = plannerNormalizeTaskTitle($_POST['custom_title'] ?? "");
-    $customColor = plannerColor($_POST['custom_color'] ?? "");
+    $customColor = "#ffc107";
     $isOtherTitle = strcasecmp($selectedTitle, "Other") === 0;
     $title = $isOtherTitle ? $customTitle : $selectedTitle;
     $personInCharge = plannerPersonsText($_POST['person_in_charge'] ?? []);
@@ -680,6 +656,11 @@ Time: $time";
                         $clearReminderStmt->bind_param("i", $id);
                         $clearReminderStmt->execute();
                     }
+                    $clearTelegramStmt = $mysqli->prepare("DELETE FROM planner_telegram_reminders WHERE task_id = ?");
+                    if($clearTelegramStmt){
+                        $clearTelegramStmt->bind_param("i", $id);
+                        $clearTelegramStmt->execute();
+                    }
 
                     $ip = $_SERVER['REMOTE_ADDR'] ?? "Unknown";
                     $time = date("Y-m-d H:i:s");
@@ -746,6 +727,11 @@ Time: $time";
                     if($clearReminderStmt){
                         $clearReminderStmt->bind_param("i", $id);
                         $clearReminderStmt->execute();
+                    }
+                    $clearTelegramStmt = $mysqli->prepare("DELETE FROM planner_telegram_reminders WHERE task_id = ?");
+                    if($clearTelegramStmt){
+                        $clearTelegramStmt->bind_param("i", $id);
+                        $clearTelegramStmt->execute();
                     }
 
                     $ip = $_SERVER['REMOTE_ADDR'] ?? "Unknown";
@@ -1379,7 +1365,7 @@ body{
                             <?= plannerEscape($taskTitle) ?>
                         </option>
                     <?php endforeach; ?>
-                    <option value="Other" data-color="#0d6efd">Other</option>
+                    <option value="Other" data-color="#ffc107">Other</option>
                 </select>
             </div>
 
@@ -1388,10 +1374,7 @@ body{
                 <input type="text" name="custom_title" id="plannerCustomTitle" class="form-control">
             </div>
 
-            <div class="col-md-6 mb-3 d-none" id="plannerCustomColorWrap">
-                <label class="form-label">Other Task Color</label>
-                <input type="color" name="custom_color" id="plannerCustomColor" class="form-control form-control-color" value="#0d6efd">
-            </div>
+            <input type="hidden" name="custom_color" id="plannerCustomColor" value="#ffc107">
 
             <div class="col-md-6 mb-3">
                 <label class="form-label">Person In Charge</label>
@@ -1621,7 +1604,7 @@ function plannerSyncCustomTaskFields(){
     }
 
     if(customColor && isOther){
-        document.getElementById("plannerColor").value = customColor.value || "#0d6efd";
+        document.getElementById("plannerColor").value = "#ffc107";
     }
 }
 
@@ -1637,7 +1620,7 @@ function setPlannerTitleValue(value){
     if(value !== "" && plannerTaskColors[value] === undefined){
         titleSelect.value = "Other";
         document.getElementById("plannerCustomTitle").value = value;
-        document.getElementById("plannerCustomColor").value = "#0d6efd";
+        document.getElementById("plannerCustomColor").value = "#ffc107";
     }
     else{
         titleSelect.value = value;
@@ -2124,14 +2107,14 @@ document.getElementById("plannerViewDeleteButton")?.addEventListener("click", de
 
 document.getElementById("plannerTitle")?.addEventListener("change", function(){
     document.getElementById("plannerColor").value = this.value === "Other"
-        ? (document.getElementById("plannerCustomColor")?.value || "#0d6efd")
+        ? "#ffc107"
         : (plannerTaskColors[this.value] || "#0d6efd");
     plannerSyncCustomTaskFields();
 });
 
 document.getElementById("plannerCustomColor")?.addEventListener("input", function(){
     if(document.getElementById("plannerTitle")?.value === "Other"){
-        document.getElementById("plannerColor").value = this.value || "#0d6efd";
+        document.getElementById("plannerColor").value = "#ffc107";
     }
 });
 

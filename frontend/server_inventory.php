@@ -448,7 +448,7 @@ html, body{
 
 <?php if($canAdd): ?>
 <a href="server_add.php" class="btn btn-warning mb-3">
-    <i class="fa fa-plus"></i> Add Server
+    <i class="fa fa-plus"></i> Add Equipment
 </a>
 <?php endif; ?>
 

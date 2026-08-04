@@ -1,0 +1,13 @@
+{
+  "name": "crossroad-realtime",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Realtime update service for Crossroad System",
+  "main": "realtime/server.js",
+  "scripts": {
+    "start": "node realtime/server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.3"
+  }
+}

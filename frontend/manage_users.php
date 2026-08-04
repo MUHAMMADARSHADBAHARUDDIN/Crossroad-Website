@@ -101,6 +101,24 @@ $permissionGroups = [
             "planner_edit" => "Edit",
             "planner_delete" => "Delete"
         ]
+    ],
+    "visitor" => [
+        "title" => "Visitor",
+        "full" => "visitor_full",
+        "items" => [
+            "visitor_view" => "View visitor records",
+            "visitor_delete" => "Delete visitor records",
+            "visitor_report" => "Generate reports"
+        ]
+    ],
+    "bulletin" => [
+        "title" => "Bulletin",
+        "full" => "bulletin_full",
+        "items" => [
+            "bulletin_view" => "View",
+            "bulletin_add" => "Add standby",
+            "bulletin_delete" => "Delete standby"
+        ]
     ]
 ];
 
@@ -191,6 +209,7 @@ if($userResult){
         $row['display_role'] = $row['role'];
         $profile = plannerGetUserProfile($mysqli, $row['username'], "user");
         $row['planner_role'] = $profile['operational_role'] ?? "";
+        $row['telegram_chat_id'] = $profile['telegram_chat_id'] ?? "";
         $accounts[] = $row;
     }
 }
@@ -225,6 +244,7 @@ if($administratorResult){
         $row['display_role'] = $row['role'];
         $profile = plannerGetUserProfile($mysqli, $row['username'], "administrator");
         $row['planner_role'] = $profile['operational_role'] ?? "";
+        $row['telegram_chat_id'] = $profile['telegram_chat_id'] ?? "";
         $accounts[] = $row;
     }
 }
@@ -769,6 +789,28 @@ if(in_array("planner_full", $permissions, true)){
 
 $permissionText[] = "Planner Role: " . plannerOperationalRoleLabel($row['planner_role'] ?? "");
 
+if(in_array("visitor_full", $permissions, true) || in_array("visitor_view", $permissions, true) || in_array("visitor_delete", $permissions, true) || in_array("visitor_report", $permissions, true)){
+    $visitorLabels = [];
+    if(in_array("visitor_full", $permissions, true)){ $visitorLabels[] = "Full"; }
+    else {
+        if(in_array("visitor_view", $permissions, true)){ $visitorLabels[] = "View"; }
+        if(in_array("visitor_delete", $permissions, true)){ $visitorLabels[] = "Delete"; }
+        if(in_array("visitor_report", $permissions, true)){ $visitorLabels[] = "Report"; }
+    }
+    $permissionText[] = "Visitor: " . implode(", ", $visitorLabels);
+}
+
+if(in_array("bulletin_full", $permissions, true) || in_array("bulletin_view", $permissions, true) || in_array("bulletin_add", $permissions, true) || in_array("bulletin_delete", $permissions, true)){
+    $bulletinLabels = [];
+    if(in_array("bulletin_full", $permissions, true)){ $bulletinLabels[] = "Full"; }
+    else {
+        if(in_array("bulletin_view", $permissions, true)){ $bulletinLabels[] = "View"; }
+        if(in_array("bulletin_add", $permissions, true)){ $bulletinLabels[] = "Add"; }
+        if(in_array("bulletin_delete", $permissions, true)){ $bulletinLabels[] = "Delete"; }
+    }
+    $permissionText[] = "Bulletin: " . implode(", ", $bulletinLabels);
+}
+
 $permissionDetailJson = htmlspecialchars(json_encode($permissionText), ENT_QUOTES, 'UTF-8');
 ?>
 
@@ -777,6 +819,7 @@ data-username="<?= htmlspecialchars($row['username'], ENT_QUOTES, 'UTF-8') ?>"
 data-email="<?= htmlspecialchars($row['email'], ENT_QUOTES, 'UTF-8') ?>"
 data-role="<?= htmlspecialchars($row['display_role'], ENT_QUOTES, 'UTF-8') ?>"
 data-planner-role="<?= htmlspecialchars($row['planner_role'] ?? "", ENT_QUOTES, 'UTF-8') ?>"
+data-telegram-chat-id="<?= htmlspecialchars($row['telegram_chat_id'] ?? "", ENT_QUOTES, 'UTF-8') ?>"
 data-account-type="<?= htmlspecialchars($row['account_type'], ENT_QUOTES, 'UTF-8') ?>"
 data-permission-detail="<?= $permissionDetailJson ?>"
 >
@@ -814,6 +857,7 @@ data-username="<?= htmlspecialchars($row['username'], ENT_QUOTES, 'UTF-8') ?>"
 data-account-type="<?= htmlspecialchars($row['account_type'], ENT_QUOTES, 'UTF-8') ?>"
 data-display-role="<?= htmlspecialchars($row['display_role'], ENT_QUOTES, 'UTF-8') ?>"
 data-planner-role="<?= htmlspecialchars($row['planner_role'] ?? "", ENT_QUOTES, 'UTF-8') ?>"
+data-telegram-chat-id="<?= htmlspecialchars($row['telegram_chat_id'] ?? "", ENT_QUOTES, 'UTF-8') ?>"
 data-email="<?= htmlspecialchars($row['email'], ENT_QUOTES, 'UTF-8') ?>"
 data-permissions="<?= $permissionsJson ?>"
 data-bs-toggle="modal"
@@ -987,6 +1031,12 @@ Password must contain at least 8 characters, 1 uppercase letter, and 1 symbol.
 </select>
 </div>
 
+<div class="col-md-6 mb-3">
+<label>Telegram Chat ID</label>
+<input type="text" name="telegram_chat_id" class="form-control" placeholder="Example: 123456789">
+<div class="form-text">Optional. The user must start a chat with the Telegram bot first.</div>
+</div>
+
 </div>
 
 <hr>
@@ -1077,11 +1127,18 @@ If all modules are Full Access, this account becomes Administrator automatically
 <input
 type="password"
 name="password"
+id="edit_temporary_password"
 class="form-control"
-pattern="^(?=.*[A-Z])(?=.*[\W]).{8,}$"
+pattern="^(?=.*[A-Za-z])(?=.*[^A-Za-z0-9\s]).{8,}$"
+aria-describedby="temporary_password_help temporary_password_requirements"
 >
-<div class="form-text">
-Leave empty if you do not want to change password.
+<div class="form-text" id="temporary_password_help">
+Leave empty to keep the current password. If entered, this becomes a temporary password and the user must change it after login.
+</div>
+<div id="temporary_password_requirements" class="mt-2 small" aria-live="polite">
+    <div id="temp_req_length" class="text-muted"><i class="fa fa-circle-xmark me-1"></i> At least 8 characters</div>
+    <div id="temp_req_letter" class="text-muted"><i class="fa fa-circle-xmark me-1"></i> Contains an alphabetical letter</div>
+    <div id="temp_req_symbol" class="text-muted"><i class="fa fa-circle-xmark me-1"></i> Contains a symbol</div>
 </div>
 </div>
 
@@ -1096,6 +1153,12 @@ Leave empty if you do not want to change password.
         <option value="<?= htmlspecialchars($plannerRoleValue) ?>"><?= htmlspecialchars($plannerRoleLabel) ?></option>
     <?php endforeach; ?>
 </select>
+</div>
+
+<div class="col-md-6 mb-3">
+<label>Telegram Chat ID</label>
+<input type="text" name="telegram_chat_id" id="edit_telegram_chat_id" class="form-control" placeholder="Example: 123456789">
+<div class="form-text">Optional. Used for CSSB Planner Telegram reminders.</div>
 </div>
 
 </div>
@@ -1167,6 +1230,32 @@ function setupPermissionForm(form){
 setupPermissionForm(document.getElementById("addUserForm"));
 setupPermissionForm(document.getElementById("editUserForm"));
 
+const temporaryPasswordInput = document.getElementById("edit_temporary_password");
+
+function setTemporaryPasswordRequirement(id, passed){
+    const item = document.getElementById(id);
+    if(!item){ return; }
+    item.classList.toggle("text-success", passed);
+    item.classList.toggle("text-muted", !passed);
+    const icon = item.querySelector("i");
+    if(icon){
+        icon.classList.toggle("fa-circle-check", passed);
+        icon.classList.toggle("fa-circle-xmark", !passed);
+    }
+}
+
+function updateTemporaryPasswordRequirements(){
+    const value = temporaryPasswordInput ? temporaryPasswordInput.value : "";
+    setTemporaryPasswordRequirement("temp_req_length", value.length >= 8);
+    setTemporaryPasswordRequirement("temp_req_letter", /[A-Za-z]/.test(value));
+    setTemporaryPasswordRequirement("temp_req_symbol", /[^A-Za-z0-9\s]/.test(value));
+}
+
+if(temporaryPasswordInput){
+    temporaryPasswordInput.addEventListener("input", updateTemporaryPasswordRequirements);
+    updateTemporaryPasswordRequirements();
+}
+
 document.querySelectorAll(".editUserBtn").forEach(button => {
     button.addEventListener("click", function(event){
         event.stopPropagation();
@@ -1175,6 +1264,7 @@ document.querySelectorAll(".editUserBtn").forEach(button => {
         const accountType = this.dataset.accountType;
         const displayRole = this.dataset.displayRole;
         const plannerRole = this.dataset.plannerRole || "";
+        const telegramChatId = this.dataset.telegramChatId || "";
         const email = this.dataset.email || "";
 
         let permissions = [];
@@ -1209,14 +1299,16 @@ document.querySelectorAll(".editUserBtn").forEach(button => {
 
         roleSelect.value = displayRole;
         document.getElementById("edit_planner_role").value = plannerRole;
+        document.getElementById("edit_telegram_chat_id").value = telegramChatId;
 
         form.querySelector('input[name="password"]').value = "";
+        updateTemporaryPasswordRequirements();
 
         form.querySelectorAll(".perm-check").forEach(checkbox => {
             checkbox.checked = permissions.includes(checkbox.value);
         });
 
-        ["users", "contracts", "inventory", "office_inventory", "planner"].forEach(module => {
+        ["users", "contracts", "inventory", "office_inventory", "planner", "visitor", "bulletin"].forEach(module => {
             syncFullCheckbox(form, module);
         });
     });

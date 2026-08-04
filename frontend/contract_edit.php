@@ -215,7 +215,16 @@ if(isset($_POST['submit'])){
     $contract_start = appNormalizeDateInput($_POST['contract_start'] ?? "");
     $contract_end = appNormalizeDateInput($_POST['contract_end'] ?? "");
     $amount = floatval($_POST['amount']);
-    $year_awarded = $contract_start !== null ? (int)date("Y", strtotime($contract_start)) : null;
+    $year_awarded = ($_POST['year_awarded'] ?? '') !== '' ? (int)$_POST['year_awarded'] : null;
+    $payment_term = trim($_POST['payment_term'] ?? '');
+    $no_of_pm = ($_POST['no_of_pm'] ?? '') !== '' ? (float)$_POST['no_of_pm'] : null;
+    $pmFields = [];
+    foreach(range(1, 4) as $pmYear){
+        foreach(range(1, 4) as $pmQuarter){
+            $pmKey = "pm_y{$pmYear}_q{$pmQuarter}";
+            $pmFields[$pmKey] = trim($_POST[$pmKey] ?? '');
+        }
+    }
 
     if($endUserIsOther){
         $project_code_middle = $_POST['project_code_middle'] ?? "";
@@ -273,6 +282,8 @@ if(isset($_POST['submit'])){
     else {
         $status = "Active";
     }
+    $submittedStatus = trim($_POST['status'] ?? '');
+    if(in_array($submittedStatus, ['In Progress', 'Awarded', 'Closed', 'Drop'], true)) $status = $submittedStatus;
 
     $updateStmt = $mysqli->prepare("
         UPDATE project_inventory SET
@@ -289,7 +300,13 @@ if(isset($_POST['submit'])){
             contract_start = ?,
             contract_end = ?,
             status = ?,
-            amount = ?
+            amount = ?,
+            payment_term = ?,
+            no_of_pm = ?,
+            pm_y1_q1 = ?, pm_y1_q2 = ?, pm_y1_q3 = ?, pm_y1_q4 = ?,
+            pm_y2_q1 = ?, pm_y2_q2 = ?, pm_y2_q3 = ?, pm_y2_q4 = ?,
+            pm_y3_q1 = ?, pm_y3_q2 = ?, pm_y3_q3 = ?, pm_y3_q4 = ?,
+            pm_y4_q1 = ?, pm_y4_q2 = ?, pm_y4_q3 = ?, pm_y4_q4 = ?
         WHERE no = ?
     ");
 
@@ -298,7 +315,7 @@ if(isset($_POST['submit'])){
     }
 
     $updateStmt->bind_param(
-        "sisssssssssssdi",
+        "sisssssssssssdsdssssssssssssssssi",
         $project_code,
         $year_awarded,
         $project_name,
@@ -313,6 +330,12 @@ if(isset($_POST['submit'])){
         $contract_end,
         $status,
         $amount,
+        $payment_term,
+        $no_of_pm,
+        $pmFields['pm_y1_q1'], $pmFields['pm_y1_q2'], $pmFields['pm_y1_q3'], $pmFields['pm_y1_q4'],
+        $pmFields['pm_y2_q1'], $pmFields['pm_y2_q2'], $pmFields['pm_y2_q3'], $pmFields['pm_y2_q4'],
+        $pmFields['pm_y3_q1'], $pmFields['pm_y3_q2'], $pmFields['pm_y3_q3'], $pmFields['pm_y3_q4'],
+        $pmFields['pm_y4_q1'], $pmFields['pm_y4_q2'], $pmFields['pm_y4_q3'], $pmFields['pm_y4_q4'],
         $id
     );
 
@@ -448,7 +471,24 @@ Time: $time";
 
 <div class="row g-3 mb-3">
 
-<div class="col-md-4">
+<div class="col-md-3">
+    <div class="form-floating">
+        <input type="number" min="1900" max="2200" name="year_awarded" class="form-control" value="<?= htmlspecialchars($row['year_awarded'] ?? '') ?>" <?= $canEdit ? '' : 'readonly' ?>>
+        <label>Year Awarded</label>
+    </div>
+</div>
+
+<div class="col-md-3">
+    <div class="form-floating">
+        <select name="status" class="form-select" <?= $canEdit ? '' : 'disabled' ?>>
+        <?php foreach(['In Progress', 'Awarded', 'Closed', 'Drop'] as $statusOption): ?>
+            <option value="<?= $statusOption ?>" <?= strcasecmp((string)($row['status'] ?? ''), $statusOption) === 0 ? 'selected' : '' ?>><?= $statusOption ?></option>
+        <?php endforeach; ?>
+        </select><label>Status</label>
+    </div>
+</div>
+
+<div class="col-md-3">
     <div class="form-floating">
         <input
             type="date"
@@ -461,7 +501,7 @@ Time: $time";
     </div>
 </div>
 
-<div class="col-md-4">
+<div class="col-md-3">
     <div class="form-floating">
         <input
             type="date"
@@ -474,7 +514,7 @@ Time: $time";
     </div>
 </div>
 
-<div class="col-md-4">
+<div class="col-md-3">
     <div class="form-floating">
         <input
             type="date"
@@ -638,8 +678,37 @@ Time: $time";
 <label>Amount (RM)</label>
 </div>
 
+<div class="form-floating mt-3">
+<input type="text" name="payment_term" class="form-control" value="<?= htmlspecialchars($row['payment_term'] ?? '') ?>" <?= $canEdit ? '' : 'readonly' ?>>
+<label>Payment Term</label>
 </div>
 
+<div class="form-floating mt-3">
+<input type="number" step="0.01" min="0" name="no_of_pm" class="form-control" value="<?= htmlspecialchars($row['no_of_pm'] ?? '') ?>" <?= $canEdit ? '' : 'readonly' ?>>
+<label>No. of PM</label>
+</div>
+
+</div>
+
+</div>
+
+<div class="form-section-title mt-4">Preventive Maintenance Schedule</div>
+<div class="row g-3">
+<?php for($pmYear = 1; $pmYear <= 4; $pmYear++): ?>
+<div class="col-xl-3 col-md-6">
+    <div class="border rounded p-3 h-100">
+        <div class="fw-semibold mb-2">Year <?= $pmYear ?></div>
+        <div class="row g-2">
+        <?php for($pmQuarter = 1; $pmQuarter <= 4; $pmQuarter++): $pmKey = "pm_y{$pmYear}_q{$pmQuarter}"; ?>
+            <div class="col-6">
+                <label class="form-label small">Q<?= $pmQuarter ?></label>
+                <input type="text" name="<?= $pmKey ?>" class="form-control" value="<?= htmlspecialchars($row[$pmKey] ?? '') ?>" <?= $canEdit ? '' : 'readonly' ?>>
+            </div>
+        <?php endfor; ?>
+        </div>
+    </div>
+</div>
+<?php endfor; ?>
 </div>
 
 <div class="d-flex justify-content-end gap-2 mt-4">

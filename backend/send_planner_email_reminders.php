@@ -4,6 +4,7 @@ require_once __DIR__ . "/../includes/db_connect.php";
 require_once __DIR__ . "/../includes/planner_schema.php";
 require_once __DIR__ . "/../includes/planner_profiles.php";
 require_once __DIR__ . "/../includes/mailer.php";
+require_once __DIR__ . "/../includes/telegram.php";
 
 date_default_timezone_set("Asia/Kuala_Lumpur");
 ensurePlannerSchema($mysqli);
@@ -38,10 +39,12 @@ if(PHP_SAPI !== "cli"){
 }
 
 $missingMailSettings = crossroadMailMissingSettings();
+$emailEnabled = empty($missingMailSettings);
+$telegramEnabled = crossroadTelegramBotToken() !== "";
 
-if($missingMailSettings){
+if(!$emailEnabled && !$telegramEnabled){
     plannerEmailReminderFail(
-        "Email is not configured. Missing: " . implode(", ", $missingMailSettings),
+        "No reminder channel is configured. Email is missing: " . implode(", ", $missingMailSettings) . "; Telegram bot token is missing.",
         503,
         2
     );
@@ -73,7 +76,9 @@ function plannerReminderEmailContent($recipientName, $task, $taskStartsAt, $lead
     $dateText = $taskStartsAt->format("d/m/Y");
     $timeText = strtolower($taskStartsAt->format("g:i A"));
     $subject = "CSSB Planner reminder: " . $title;
-    $escape = static fn($value) => htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+    $escape = static function($value){
+        return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+    };
 
     $html = '<div style="font-family:Arial,sans-serif;line-height:1.55;color:#202124;max-width:620px">'
         . '<p>Dear ' . $escape($recipientName) . ',</p>'
@@ -102,6 +107,35 @@ function plannerReminderEmailContent($recipientName, $task, $taskStartsAt, $lead
         "html" => $html,
         "text" => $text
     ];
+}
+
+function plannerReminderTelegramContent($recipientName, $task, $taskStartsAt, $leadText){
+    $escape = static function($value){
+        return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, "UTF-8");
+    };
+    $recipientName = trim((string)$recipientName);
+    $recipientName = $recipientName !== "" ? $recipientName : "Team Member";
+    $title = trim((string)($task["title"] ?? "Planner Task"));
+    $description = trim((string)($task["description"] ?? ""));
+    $dateText = $taskStartsAt->format("D, d M Y");
+    $timeText = $taskStartsAt->format("g:i A");
+
+    $message = "🔔 <b>CSSB PLANNER REMINDER</b>\n"
+        . "━━━━━━━━━━━━━━━━━━\n\n"
+        . "This is an automated reminder for your CSSB Planner task.\n\n"
+        . "📌 <b>Task:</b> " . $escape($title) . "\n";
+
+    if($description !== ""){
+        $message .= "📝 <b>Description:</b> " . $escape($description) . "\n";
+    }
+
+    $message .= "📅 <b>Date:</b> " . $escape($dateText) . "\n"
+        . "🕒 <b>Time:</b> " . $escape($timeText) . "\n"
+        . "⏰ <b>Reminder:</b> " . $escape($leadText) . " before the task\n\n"
+        . "━━━━━━━━━━━━━━━━━━\n\n"
+        . "Thank you.";
+
+    return $message;
 }
 
 $now = new DateTimeImmutable("now", new DateTimeZone("Asia/Kuala_Lumpur"));
@@ -133,6 +167,11 @@ $sent = 0;
 $failed = 0;
 $skipped = 0;
 $missingEmail = 0;
+$telegramEligible = 0;
+$telegramSent = 0;
+$telegramFailed = 0;
+$telegramSkipped = 0;
+$missingTelegram = 0;
 
 while($task = $taskResult->fetch_assoc()){
     $taskStartsAt = DateTimeImmutable::createFromFormat(
@@ -154,11 +193,10 @@ while($task = $taskResult->fetch_assoc()){
     $taskId = (int)$task['id'];
 
     foreach(plannerReminderPersonValues($task['person_in_charge'] ?? "") as $plannerName){
-        $recipients = plannerGetEmailRecipientsByPlannerName($mysqli, $plannerName);
+        $recipients = $emailEnabled ? plannerGetEmailRecipientsByPlannerName($mysqli, $plannerName) : [];
 
-        if(!$recipients){
+        if($emailEnabled && !$recipients){
             $missingEmail++;
-            continue;
         }
 
         foreach($recipients as $recipient){
@@ -170,9 +208,16 @@ while($task = $taskResult->fetch_assoc()){
                 WHERE task_id = ? AND recipient_email = ? AND reminder_type = ?
                 LIMIT 1
             ");
-            $logStmt?->bind_param("iss", $taskId, $recipientEmail, $reminderType);
-            $logStmt?->execute();
-            $log = $logStmt?->get_result()->fetch_assoc();
+
+            if(!$logStmt){
+                $failed++;
+                continue;
+            }
+
+            $logStmt->bind_param("iss", $taskId, $recipientEmail, $reminderType);
+            $logStmt->execute();
+            $logResult = $logStmt->get_result();
+            $log = $logResult ? $logResult->fetch_assoc() : null;
 
             if($log && ($log['status'] === "sent" || (int)$log['attempts'] >= 5)){
                 $skipped++;
@@ -206,9 +251,16 @@ while($task = $taskResult->fetch_assoc()){
                     WHERE task_id = ? AND recipient_email = ? AND reminder_type = ?
                     LIMIT 1
                 ");
-                $logStmt?->bind_param("iss", $taskId, $recipientEmail, $reminderType);
-                $logStmt?->execute();
-                $log = $logStmt?->get_result()->fetch_assoc();
+
+                if(!$logStmt){
+                    $failed++;
+                    continue;
+                }
+
+                $logStmt->bind_param("iss", $taskId, $recipientEmail, $reminderType);
+                $logStmt->execute();
+                $logResult = $logStmt->get_result();
+                $log = $logResult ? $logResult->fetch_assoc() : null;
             }
 
             if(!$log){
@@ -236,8 +288,11 @@ while($task = $taskResult->fetch_assoc()){
                     updated_at = NOW()
                 WHERE id = ?
             ");
-            $updateStmt?->bind_param("sssi", $status, $providerResponse, $status, $reminderId);
-            $updateStmt?->execute();
+
+            if($updateStmt){
+                $updateStmt->bind_param("sssi", $status, $providerResponse, $status, $reminderId);
+                $updateStmt->execute();
+            }
 
             if($sendResult['success']){
                 $sent++;
@@ -246,25 +301,126 @@ while($task = $taskResult->fetch_assoc()){
                 $failed++;
             }
         }
+
+        $telegramRecipients = plannerGetTelegramRecipientsByPlannerName($mysqli, $plannerName);
+        if(!$telegramRecipients){
+            $missingTelegram++;
+        }
+
+        if($telegramEnabled){
+            foreach($telegramRecipients as $telegramRecipient){
+                $chatId = trim((string)($telegramRecipient['telegram_chat_id'] ?? ""));
+                $recipientName = trim((string)($telegramRecipient['planner_name'] ?? $plannerName));
+                $logStmt = $mysqli->prepare("
+                    SELECT id, status, attempts
+                    FROM planner_telegram_reminders
+                    WHERE task_id = ? AND recipient_chat_id = ? AND reminder_type = ?
+                    LIMIT 1
+                ");
+
+                if(!$logStmt){
+                    $telegramFailed++;
+                    continue;
+                }
+
+                $logStmt->bind_param("iss", $taskId, $chatId, $reminderType);
+                $logStmt->execute();
+                $logResult = $logStmt->get_result();
+                $log = $logResult ? $logResult->fetch_assoc() : null;
+
+                if($log && ($log['status'] === "sent" || (int)$log['attempts'] >= 5)){
+                    $telegramSkipped++;
+                    continue;
+                }
+
+                $telegramEligible++;
+                if($dryRun){ continue; }
+
+                if(!$log){
+                    $insertStmt = $mysqli->prepare("
+                        INSERT IGNORE INTO planner_telegram_reminders
+                            (task_id, planner_name, recipient_chat_id, reminder_type, scheduled_for)
+                        VALUES (?, ?, ?, ?, ?)
+                    ");
+                    if(!$insertStmt){
+                        $telegramFailed++;
+                        continue;
+                    }
+                    $insertStmt->bind_param("issss", $taskId, $plannerName, $chatId, $reminderType, $scheduledForSql);
+                    $insertStmt->execute();
+
+                    $logStmt = $mysqli->prepare("
+                        SELECT id, status, attempts
+                        FROM planner_telegram_reminders
+                        WHERE task_id = ? AND recipient_chat_id = ? AND reminder_type = ?
+                        LIMIT 1
+                    ");
+                    $logStmt->bind_param("iss", $taskId, $chatId, $reminderType);
+                    $logStmt->execute();
+                    $logResult = $logStmt->get_result();
+                    $log = $logResult ? $logResult->fetch_assoc() : null;
+                }
+
+                if(!$log){
+                    $telegramFailed++;
+                    continue;
+                }
+
+                $telegramText = plannerReminderTelegramContent($recipientName, $task, $taskStartsAt, $leadText);
+                $sendResult = crossroadSendTelegramMessage($chatId, $telegramText, ["parse_mode" => "HTML"]);
+                if($sendResult["success"]){
+                    crossroadSendTelegramMessage(
+                        $chatId,
+                        "💡 Send /status anytime to check your connection."
+                    );
+                }
+                $status = $sendResult['success'] ? "sent" : "failed";
+                $providerResponse = substr((string)$sendResult['response'], 0, 60000);
+                $reminderId = (int)$log['id'];
+                $updateStmt = $mysqli->prepare("
+                    UPDATE planner_telegram_reminders
+                    SET status = ?,
+                        attempts = attempts + 1,
+                        provider_response = ?,
+                        sent_at = IF(? = 'sent', NOW(), sent_at),
+                        updated_at = NOW()
+                    WHERE id = ?
+                ");
+                if($updateStmt){
+                    $updateStmt->bind_param("sssi", $status, $providerResponse, $status, $reminderId);
+                    $updateStmt->execute();
+                }
+
+                if($sendResult['success']){ $telegramSent++; }
+                else{ $telegramFailed++; }
+            }
+        }
     }
 }
 
 header("Content-Type: application/json");
 echo json_encode([
-    "success" => $failed === 0,
+    "success" => $failed === 0 && $telegramFailed === 0,
     "dry_run" => $dryRun,
     "eligible" => $eligible,
     "sent" => $sent,
     "failed" => $failed,
     "skipped" => $skipped,
     "missing_email" => $missingEmail,
+    "email_enabled" => $emailEnabled,
+    "telegram_enabled" => $telegramEnabled,
+    "telegram_eligible" => $telegramEligible,
+    "telegram_sent" => $telegramSent,
+    "telegram_failed" => $telegramFailed,
+    "telegram_skipped" => $telegramSkipped,
+    "missing_telegram_chat_id" => $missingTelegram,
     "checked_at" => $now->format(DATE_ATOM)
 ], JSON_UNESCAPED_SLASHES);
 
 if(PHP_SAPI === "cli"){
     echo PHP_EOL;
 
-    if($failed > 0){
+    if($failed > 0 || $telegramFailed > 0){
         exit(4);
     }
 }

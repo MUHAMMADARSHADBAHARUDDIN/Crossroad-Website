@@ -23,7 +23,7 @@ $username = $_SESSION['username'];
 $role = $_SESSION['role'] ?? "UNKNOWN";
 $canEdit = hasPermission($mysqli, "office_inventory_edit");
 $error = "";
-$ownerOptions = officeInventoryFetchFamilyOptions($mysqli);
+$ownerOptions = officeInventoryOwnerOptions($mysqli);
 
 function officeEditEscape($value){
     return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
@@ -74,10 +74,13 @@ if(!$row){
 
 if(isset($_POST['update']) && $canEdit){
     $deliveryDate = appNormalizeDateInput($_POST['delivery_date'] ?? "");
-    $owner = trim($_POST['owner'] ?? "");
+    $ownerChoice = trim($_POST['owner_choice'] ?? "");
+    $customOwner = trim($_POST['custom_owner'] ?? "");
+    $owner = $ownerChoice === "__other__" ? $customOwner : $ownerChoice;
     $serialNumber = trim($_POST['serial_number'] ?? "");
     $brand = trim($_POST['brand'] ?? "");
     $model = trim($_POST['model'] ?? "");
+    $remark = trim($_POST['remark'] ?? "");
     $office365License = trim($_POST['office365_license'] ?? "");
     $antivirusLicense = trim($_POST['antivirus_license'] ?? "");
     $licenseType = officeEditLicenseTypeText($office365License, $antivirusLicense);
@@ -103,6 +106,9 @@ if(isset($_POST['update']) && $canEdit){
 
     if($error === "" && ($owner === "" || $serialNumber === "")){
         $error = "Owner and Serial Number are required.";
+    }
+    elseif($error === "" && strlen($owner) > 150){
+        $error = "Owner must not exceed 150 characters.";
     }
     elseif($error === ""){
         $checkStmt = $mysqli->prepare("
@@ -131,6 +137,7 @@ if(isset($_POST['update']) && $canEdit){
                     serial_number = ?,
                     brand = ?,
                     model = ?,
+                    remark = ?,
                     office365_license = ?,
                     antivirus_license = ?,
                     license_type = ?,
@@ -165,12 +172,13 @@ if(isset($_POST['update']) && $canEdit){
 
             if($error === ""){
                 $updateStmt->bind_param(
-                    "ssssssssssssssssi",
+                    "sssssssssssssssssi",
                     $deliveryDate,
                     $owner,
                     $serialNumber,
                     $brand,
                     $model,
+                    $remark,
                     $office365License,
                     $antivirusLicense,
                     $licenseType,
@@ -205,6 +213,7 @@ OLD DATA:
 - Serial Number: {$row['serial_number']}
 - Brand: {$row['brand']}
 - Model: {$row['model']}
+- Remark: {$row['remark']}
 - Office License For Owner: {$row['office365_license']}
 - Antivirus For Owner: {$row['antivirus_license']}
 - Delivery Date: {$row['delivery_date']}
@@ -214,6 +223,7 @@ NEW DATA:
 - Serial Number: $serialNumber
 - Brand: $brand
 - Model: $model
+- Remark: $remark
 - Office License For Owner: $office365License
 - Antivirus For Owner: $antivirusLicense
 - Delivery Date: $deliveryDate
@@ -240,12 +250,20 @@ Time: $time";
 
 $formValues = array_merge($row, $_POST);
 
-$currentOwner = trim((string)($formValues['owner'] ?? ""));
-$currentOwner = officeInventoryNicknameFromName($currentOwner);
+$currentOwner = trim((string)($row['owner'] ?? ""));
+if(strcasecmp($currentOwner, "In Storage") === 0){
+    $currentOwner = "Available";
+}
 $formValues['owner'] = $currentOwner;
-
-if($currentOwner !== "" && !in_array($currentOwner, $ownerOptions, true)){
-    $ownerOptions[] = $currentOwner;
+if(isset($_POST['owner_choice'])){
+    $formValues['owner_choice'] = $_POST['owner_choice'];
+}
+elseif($currentOwner !== "" && !in_array($currentOwner, $ownerOptions, true)){
+    $formValues['owner_choice'] = "__other__";
+    $formValues['custom_owner'] = $currentOwner;
+}
+else{
+    $formValues['owner_choice'] = $currentOwner;
 }
 ?>
 
@@ -285,14 +303,20 @@ if($currentOwner !== "" && !in_array($currentOwner, $ownerOptions, true)){
 
 <div class="col-md-6 mb-3">
     <label>Owner *</label>
-    <select name="owner" class="form-select" <?= $canEdit ? '' : 'disabled' ?> required>
+    <select name="owner_choice" id="officeOwnerChoice" class="form-select" <?= $canEdit ? '' : 'disabled' ?> required>
         <option value="">Select Owner</option>
         <?php foreach($ownerOptions as $option): ?>
-            <option value="<?= officeEditEscape($option) ?>" <?= officeEditSelected($formValues['owner'] ?? "", $option) ?>>
+            <option value="<?= officeEditEscape($option) ?>" <?= officeEditSelected($formValues['owner_choice'] ?? "", $option) ?>>
                 <?= officeEditEscape($option) ?>
             </option>
         <?php endforeach; ?>
+        <option value="__other__" <?= officeEditSelected($formValues['owner_choice'] ?? "", '__other__') ?>>Other</option>
     </select>
+</div>
+
+<div class="col-md-6 mb-3 <?= (($formValues['owner_choice'] ?? '') === '__other__') ? '' : 'd-none' ?>" id="officeCustomOwnerWrap">
+    <label>Other Owner *</label>
+    <input type="text" name="custom_owner" id="officeCustomOwner" maxlength="150" class="form-control" value="<?= officeEditEscape($formValues['custom_owner'] ?? '') ?>" placeholder="Enter owner name" <?= $canEdit ? '' : 'readonly' ?>>
 </div>
 
 <div class="col-md-6 mb-3">
@@ -308,6 +332,11 @@ if($currentOwner !== "" && !in_array($currentOwner, $ownerOptions, true)){
 <div class="col-md-6 mb-3">
     <label>Model</label>
     <input type="text" name="model" class="form-control" value="<?= officeEditEscape($formValues['model'] ?? '') ?>" <?= $canEdit ? '' : 'readonly' ?>>
+</div>
+
+<div class="col-12 mb-3">
+    <label>Remark</label>
+    <textarea name="remark" class="form-control" rows="3" placeholder="Add notes about this device" <?= $canEdit ? '' : 'readonly' ?>><?= officeEditEscape($formValues['remark'] ?? '') ?></textarea>
 </div>
 
 <div class="col-md-6 mb-3">
@@ -363,6 +392,21 @@ if($currentOwner !== "" && !in_array($currentOwner, $ownerOptions, true)){
 
 <a href="office_inventory.php" class="btn btn-secondary">Cancel</a>
 </form>
+
+<script>
+(function(){
+    const select = document.getElementById("officeOwnerChoice");
+    const wrap = document.getElementById("officeCustomOwnerWrap");
+    const input = document.getElementById("officeCustomOwner");
+    function syncOwnerInput(){
+        const isOther = select && select.value === "__other__";
+        wrap?.classList.toggle("d-none", !isOther);
+        if(input && !input.readOnly){ input.required = !!isOther; }
+    }
+    select?.addEventListener("change", syncOwnerInput);
+    syncOwnerInput();
+})();
+</script>
 
 </div>
 

@@ -5,6 +5,7 @@ include("../includes/db_connect.php");
 require_once "../includes/activity_log.php";
 require_once "../includes/permissions.php";
 require_once "../includes/planner_profiles.php";
+require_once "../includes/auth_schema.php";
 
 if(!isset($_SESSION['username']) || !isset($_SESSION['role'])){
     die("No session");
@@ -15,6 +16,7 @@ if(!hasPermission($mysqli, "users_edit")){
 }
 
 ensurePlannerProfileSchema($mysqli);
+ensureFirstLoginPasswordSchema($mysqli);
 
 /* =========================
    SELECTED PERMISSIONS
@@ -38,7 +40,9 @@ function isFullAdministratorAccess($permissions)
         in_array("contracts_full", $permissions, true) &&
         in_array("inventory_full", $permissions, true) &&
         in_array("office_inventory_full", $permissions, true) &&
-        in_array("planner_full", $permissions, true)
+        in_array("planner_full", $permissions, true) &&
+        in_array("visitor_full", $permissions, true) &&
+        in_array("bulletin_full", $permissions, true)
     );
 }
 
@@ -102,6 +106,14 @@ function allowedPermissionsList()
         "planner_add",
         "planner_edit",
         "planner_delete"
+        ,"visitor_full"
+        ,"visitor_view"
+        ,"visitor_delete"
+        ,"visitor_report"
+        ,"bulletin_full"
+        ,"bulletin_view"
+        ,"bulletin_add"
+        ,"bulletin_delete"
     ];
 }
 
@@ -259,7 +271,7 @@ function getAccountData($mysqli, $username, $accountType)
     if($accountType === "administrator"){
 
         $stmt = $mysqli->prepare("
-            SELECT username, email, password, role
+            SELECT username, email, password, role, must_change_password
             FROM administrator
             WHERE username = ?
             LIMIT 1
@@ -268,7 +280,7 @@ function getAccountData($mysqli, $username, $accountType)
     } else {
 
         $stmt = $mysqli->prepare("
-            SELECT username, email, password, role
+            SELECT username, email, password, role, must_change_password
             FROM user
             WHERE username = ?
             LIMIT 1
@@ -299,6 +311,7 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
     $newRole = trim($_POST['role'] ?? "");
     $password = trim($_POST['password'] ?? "");
     $plannerRole = plannerNormalizeOperationalRole($_POST['planner_role'] ?? "");
+    $telegramChatId = trim($_POST['telegram_chat_id'] ?? "");
 
     $permissions = selectedPermissions();
 
@@ -308,6 +321,10 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
 
     if(!in_array($oldAccountType, ["user", "administrator"], true)){
         die("Invalid account type.");
+    }
+
+    if($telegramChatId !== "" && !preg_match('/^(?:-?\d{5,20}|@[A-Za-z0-9_]{5,32})$/', $telegramChatId)){
+        die("Telegram Chat ID must be a numeric chat ID or a valid @channel username.");
     }
 
     $oldData = getAccountData($mysqli, $oldUsername, $oldAccountType);
@@ -331,18 +348,20 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
             die("Password must be at least 8 characters long.");
         }
 
-        if(!preg_match('/[A-Z]/', $password)){
-            die("Password must include at least one uppercase letter.");
+        if(!preg_match('/[A-Za-z]/', $password)){
+            die("Password must include at least one alphabetical letter.");
         }
 
-        if(!preg_match('/[\W]/', $password)){
+        if(!preg_match('/[^A-Za-z0-9\s]/', $password)){
             die("Password must include at least one symbol.");
         }
 
         $finalPassword = password_hash($password, PASSWORD_DEFAULT);
-        $passwordNote = "Password changed.";
+        $mustChangePassword = 1;
+        $passwordNote = "Temporary password assigned; password change required at next login.";
     } else {
         $finalPassword = $oldData['password'];
+        $mustChangePassword = (int)($oldData['must_change_password'] ?? 0);
         $passwordNote = "Password unchanged.";
     }
 
@@ -367,7 +386,8 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
                 SET username = ?,
                     email = ?,
                     password = ?,
-                    role = ?
+                    role = ?,
+                    must_change_password = ?
                 WHERE username = ?
             ");
 
@@ -376,11 +396,12 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
             }
 
             $stmt->bind_param(
-                "sssss",
+                "ssssis",
                 $newUsername,
                 $newEmail,
                 $finalPassword,
                 $newRole,
+                $mustChangePassword,
                 $oldUsername
             );
 
@@ -397,8 +418,8 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
         } else {
 
             $insertAdmin = $mysqli->prepare("
-                INSERT INTO administrator (username, email, password, role)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO administrator (username, email, password, role, must_change_password)
+                VALUES (?, ?, ?, ?, ?)
             ");
 
             if(!$insertAdmin){
@@ -406,11 +427,12 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
             }
 
             $insertAdmin->bind_param(
-                "ssss",
+                "ssssi",
                 $newUsername,
                 $newEmail,
                 $finalPassword,
-                $newRole
+                $newRole,
+                $mustChangePassword
             );
 
             if(!$insertAdmin->execute()){
@@ -448,7 +470,8 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
                 SET username = ?,
                     email = ?,
                     password = ?,
-                    role = ?
+                    role = ?,
+                    must_change_password = ?
                 WHERE username = ?
             ");
 
@@ -457,11 +480,12 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
             }
 
             $stmt->bind_param(
-                "sssss",
+                "ssssis",
                 $newUsername,
                 $newEmail,
                 $finalPassword,
                 $newRole,
+                $mustChangePassword,
                 $oldUsername
             );
 
@@ -478,8 +502,8 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
         } else {
 
             $insertUser = $mysqli->prepare("
-                INSERT INTO user (username, email, password, role)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO user (username, email, password, role, must_change_password)
+                VALUES (?, ?, ?, ?, ?)
             ");
 
             if(!$insertUser){
@@ -487,11 +511,12 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
             }
 
             $insertUser->bind_param(
-                "ssss",
+                "ssssi",
                 $newUsername,
                 $newEmail,
                 $finalPassword,
-                $newRole
+                $newRole,
+                $mustChangePassword
             );
 
             if(!$insertUser->execute()){
@@ -516,7 +541,7 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
         }
     }
 
-    if(!plannerSaveUserProfile($mysqli, $newUsername, $finalAccountType, $plannerRole)){
+    if(!plannerSaveUserProfile($mysqli, $newUsername, $finalAccountType, $plannerRole, $telegramChatId)){
         die("Unable to save the planner role.");
     }
 

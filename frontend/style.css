@@ -113,6 +113,7 @@ body{
     padding-top:70px;
     color:white;
     transition:width 0.3s ease;
+    z-index:1050;
 
     /* ✅ ADD THIS */
     overflow-y:auto;

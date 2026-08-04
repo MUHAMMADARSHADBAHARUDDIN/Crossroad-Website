@@ -1,9 +1,11 @@
 <?php
-$host = "127.0.0.1";
-$user = "crossroad_app";
-$password = "StrongPassword123!";
-$database = "crossroad_solutions_inventory_management";
-$port = 3306;
+require_once __DIR__ . "/env.php";
+
+$host = trim((string)(getenv("CROSSROAD_DB_HOST") ?: "127.0.0.1"));
+$user = trim((string)(getenv("CROSSROAD_DB_USER") ?: "crossroad_app"));
+$password = (string)(getenv("CROSSROAD_DB_PASS") ?: "StrongPassword123!");
+$database = trim((string)(getenv("CROSSROAD_DB_NAME") ?: "crossroad_solutions_inventory_management"));
+$port = (int)(getenv("CROSSROAD_DB_PORT") ?: 3306);
 
 $mysqli = new mysqli($host, $user, $password, $database, $port);
 

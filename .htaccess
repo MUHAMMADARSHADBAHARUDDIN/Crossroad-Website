@@ -27,9 +27,10 @@ php_value upload_max_filesize 100M
 php_value post_max_size 105M
 </IfModule>
 
-<FilesMatch "(^\.env|composer\.(json|lock)|package(-lock)?\.json|.*\.(sql|bak|ini|log|sh)|README\.md)$">
+<FilesMatch "(^\.env|composer\.(json|lock)|package(-lock)?\.json|pnpm-lock\.yaml|server\.js|.*\.(sql|bak|ini|log|sh)|README\.md)$">
     Require all denied
 </FilesMatch>
 
 RedirectMatch 403 /\.git(/|$)
 RedirectMatch 403 /\.idea(/|$)
+RedirectMatch 403 /node_modules(/|$)

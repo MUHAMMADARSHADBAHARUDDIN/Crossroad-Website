@@ -38,7 +38,9 @@ function isFullAdministratorAccess($permissions)
         in_array("contracts_full", $permissions, true) &&
         in_array("inventory_full", $permissions, true) &&
         in_array("office_inventory_full", $permissions, true) &&
-        in_array("planner_full", $permissions, true)
+        in_array("planner_full", $permissions, true) &&
+        in_array("visitor_full", $permissions, true) &&
+        in_array("bulletin_full", $permissions, true)
     );
 }
 
@@ -102,6 +104,14 @@ function allowedPermissionsList()
         "planner_add",
         "planner_edit",
         "planner_delete"
+        ,"visitor_full"
+        ,"visitor_view"
+        ,"visitor_delete"
+        ,"visitor_report"
+        ,"bulletin_full"
+        ,"bulletin_view"
+        ,"bulletin_add"
+        ,"bulletin_delete"
     ];
 }
 
@@ -201,11 +211,16 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
     $password = trim($_POST['password'] ?? "");
     $role = trim($_POST['role'] ?? "");
     $plannerRole = plannerNormalizeOperationalRole($_POST['planner_role'] ?? "");
+    $telegramChatId = trim($_POST['telegram_chat_id'] ?? "");
 
     $permissions = selectedPermissions();
 
     if($username === "" || $email === "" || $password === "" || $role === "" || $plannerRole === ""){
         die("Please fill in all required fields.");
+    }
+
+    if($telegramChatId !== "" && !preg_match('/^(?:-?\d{5,20}|@[A-Za-z0-9_]{5,32})$/', $telegramChatId)){
+        die("Telegram Chat ID must be a numeric chat ID or a valid @channel username.");
     }
 
     if(strlen($password) < 8){
@@ -300,7 +315,7 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
         $actionNote = "Created normal user account with selected permissions.";
     }
 
-    if(!plannerSaveUserProfile($mysqli, $username, $accountType, $plannerRole)){
+    if(!plannerSaveUserProfile($mysqli, $username, $accountType, $plannerRole, $telegramChatId)){
         die("Unable to save the planner role.");
     }
 

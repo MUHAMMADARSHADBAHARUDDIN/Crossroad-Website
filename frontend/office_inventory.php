@@ -68,6 +68,29 @@ function officeInventoryPackOwnerRows($items){
     return empty($items) ? [] : [$items];
 }
 
+function officeInventoryGroupOwnerRows($items){
+    $groups = [];
+
+    foreach($items as $item){
+        $owner = trim((string)($item['owner'] ?? ''));
+        $owner = $owner !== '' ? $owner : 'Unassigned';
+        $key = function_exists('mb_strtolower') ? mb_strtolower($owner, 'UTF-8') : strtolower($owner);
+
+        if(!isset($groups[$key])){
+            $groups[$key] = [
+                'owner' => $owner,
+                'search' => '',
+                'items' => []
+            ];
+        }
+
+        $groups[$key]['items'][] = $item;
+        $groups[$key]['search'] = trim($groups[$key]['search'] . ' ' . ($item['search'] ?? ''));
+    }
+
+    return array_values($groups);
+}
+
 if(isset($_POST['delete_office_id']) && $canDelete){
     $deleteId = (int)$_POST['delete_office_id'];
 
@@ -226,6 +249,52 @@ html, body{
     min-width:0;
     overflow-wrap:anywhere;
     word-break:break-word;
+}
+
+.office-owner-count{
+    position:relative;
+    top:-.35em;
+    margin-left:2px;
+    color:#856404;
+    font-size:.7em;
+    font-weight:800;
+}
+
+.office-serial-list{
+    display:grid;
+    gap:10px;
+}
+
+.office-serial-choice{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:14px;
+    width:100%;
+    padding:13px 15px;
+    border:1px solid #dee2e6;
+    border-radius:10px;
+    background:#fff;
+    color:#212529;
+    text-align:left;
+    transition:border-color .15s ease, background-color .15s ease, transform .15s ease;
+}
+
+.office-serial-choice:hover,
+.office-serial-choice:focus{
+    border-color:#ffc107;
+    background:#fff9e6;
+    transform:translateY(-1px);
+}
+
+.office-serial-choice-number{
+    font-weight:700;
+    overflow-wrap:anywhere;
+}
+
+.office-serial-choice-meta{
+    color:#6c757d;
+    font-size:12px;
 }
 
 .office-detail-actions{
@@ -445,6 +514,7 @@ while($row = $result->fetch_assoc()):
         ($row['owner'] ?? '') . ' ' .
         ($row['brand'] ?? '') . ' ' .
         ($row['model'] ?? '') . ' ' .
+        ($row['remark'] ?? '') . ' ' .
         ($row['serial_number'] ?? '') . ' ' .
         ($office365 !== '' ? $office365 : '') . ' ' .
         ($antivirus !== '' ? $antivirus : '') . ' ' .
@@ -480,6 +550,10 @@ while($row = $result->fetch_assoc()):
         <div class="office-detail-box">
             <span>Model</span>
             <strong><?= officeInventoryEscape(($row['model'] ?? '') !== '' ? $row['model'] : '-') ?></strong>
+        </div>
+        <div class="office-detail-box">
+            <span>Remark</span>
+            <strong><?= nl2br(officeInventoryEscape(trim((string)($row['remark'] ?? '')) !== '' ? $row['remark'] : '-')) ?></strong>
         </div>
         <div class="office-detail-box">
             <span>Created By</span>
@@ -551,26 +625,18 @@ while($row = $result->fetch_assoc()):
     <?php
     $officeInventoryDetailTemplates[$id] = ob_get_clean();
 
-    ob_start();
-    ?>
-    <div
-        class="office-owner-entry"
-        data-detail-id="office-inventory-detail-<?= $id ?>"
-        data-search="<?= officeInventoryEscape($searchText) ?>"
-        onclick="openOfficeInventoryDetail(this)"
-    >
-        <span class="fw-semibold office-owner-name"><?= officeInventoryEscape($row['owner'] ?? '') ?></span>
-        <div class="office-hover-card">
-            <div class="office-hover-line"><?= officeInventoryEscape($hoverText) ?></div>
-        </div>
-    </div>
-    <?php
     $officeInventoryRows[] = [
+        'id' => $id,
+        'owner' => trim((string)($row['owner'] ?? '')),
+        'serial' => trim((string)($row['serial_number'] ?? '')),
+        'brand' => trim((string)($row['brand'] ?? '')),
+        'model' => trim((string)($row['model'] ?? '')),
+        'hover' => $hoverText,
         'search' => $searchText,
-        'html' => ob_get_clean()
+        'detail_id' => 'office-inventory-detail-' . $id
     ];
 endwhile;
-$officeInventoryPackedRows = officeInventoryPackOwnerRows($officeInventoryRows);
+$officeInventoryPackedRows = officeInventoryPackOwnerRows(officeInventoryGroupOwnerRows($officeInventoryRows));
 ?>
 <table class="table align-middle" id="officeInventoryTable">
 <thead>
@@ -588,9 +654,54 @@ $officeInventoryPackedRows = officeInventoryPackOwnerRows($officeInventoryRows);
     <tr data-search="<?= officeInventoryEscape($packedSearchText) ?>">
         <td class="office-inventory-data-cell">
             <div class="office-owner-pack">
-                <?php foreach($officeInventoryPack as $officeInventoryItem): ?>
+                <?php foreach($officeInventoryPack as $officeInventoryGroup): ?>
+                    <?php
+                    $ownerItems = $officeInventoryGroup['items'] ?? [];
+                    $ownerCount = count($ownerItems);
+                    ?>
                     <div class="office-owner-slot">
-                        <?= $officeInventoryItem['html'] ?>
+                        <div
+                            class="office-owner-entry"
+                            data-search="<?= officeInventoryEscape($officeInventoryGroup['search'] ?? '') ?>"
+                            data-owner="<?= officeInventoryEscape($officeInventoryGroup['owner'] ?? 'Unassigned') ?>"
+                            data-device-count="<?= $ownerCount ?>"
+                            onclick="openOfficeSerialPicker(this)"
+                        >
+                            <span class="fw-semibold office-owner-name">
+                                <?= officeInventoryEscape($officeInventoryGroup['owner'] ?? 'Unassigned') ?>
+                            </span>
+                            <?php if($ownerCount > 1): ?>
+                                <sup class="office-owner-count"><?= $ownerCount ?></sup>
+                            <?php endif; ?>
+                            <div class="office-hover-card">
+                                <div class="office-hover-line">
+                                    <?php if($ownerCount === 1): ?>
+                                        1 device · Click to view details
+                                    <?php else: ?>
+                                        <?= $ownerCount ?> devices · Click to choose a serial number
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                            <div class="d-none office-owner-serial-data">
+                                <?php foreach($ownerItems as $ownerItem): ?>
+                                    <button
+                                        type="button"
+                                        class="office-serial-choice"
+                                        data-detail-id="<?= officeInventoryEscape($ownerItem['detail_id'] ?? '') ?>"
+                                    >
+                                        <span>
+                                            <span class="office-serial-choice-number">
+                                                <?= officeInventoryEscape(($ownerItem['serial'] ?? '') !== '' ? $ownerItem['serial'] : 'No serial number') ?>
+                                            </span>
+                                            <span class="office-serial-choice-meta d-block">
+                                                <?= officeInventoryEscape(trim(($ownerItem['brand'] ?? '') . ' ' . ($ownerItem['model'] ?? '')) ?: 'Device details') ?>
+                                            </span>
+                                        </span>
+                                        <i class="fa fa-chevron-right text-warning" aria-hidden="true"></i>
+                                    </button>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
                     </div>
                 <?php endforeach; ?>
             </div>
@@ -607,6 +718,24 @@ $officeInventoryPackedRows = officeInventoryPackOwnerRows($officeInventoryRows);
     <?php endforeach; ?>
 </div>
 
+</div>
+
+<div class="modal fade" id="officeInventorySerialModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow">
+      <div class="modal-header bg-dark text-white">
+        <div>
+          <div class="small text-warning text-uppercase fw-bold">Choose device</div>
+          <h5 class="modal-title mb-0" id="officeInventorySerialTitle">Serial Numbers</h5>
+        </div>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted mb-3">Select a serial number to view its inventory details.</p>
+        <div class="office-serial-list" id="officeInventorySerialContent"></div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="modal fade" id="officeInventoryDetailModal" tabindex="-1" aria-hidden="true">
@@ -640,7 +769,7 @@ function hideOfficeHoverCards(){
 function openOfficeInventoryDetail(entry){
     hideOfficeHoverCards();
 
-    const detailId = entry.getAttribute("data-detail-id");
+    const detailId = typeof entry === "string" ? entry : entry.getAttribute("data-detail-id");
     const template = detailId ? document.getElementById(detailId) : null;
 
     if(!template){
@@ -650,6 +779,47 @@ function openOfficeInventoryDetail(entry){
     document.getElementById("officeInventoryDetailContent").innerHTML = template.innerHTML;
     bootstrap.Modal.getOrCreateInstance(document.getElementById("officeInventoryDetailModal")).show();
 }
+
+function openOfficeSerialPicker(entry){
+    hideOfficeHoverCards();
+
+    const owner = entry.getAttribute("data-owner") || "Owner";
+    const source = entry.querySelector(".office-owner-serial-data");
+    const content = document.getElementById("officeInventorySerialContent");
+
+    if(!source || !content){
+        return;
+    }
+
+    const choices = source.querySelectorAll(".office-serial-choice");
+
+    if(choices.length === 1){
+        openOfficeInventoryDetail(choices[0].getAttribute("data-detail-id"));
+        return;
+    }
+
+    document.getElementById("officeInventorySerialTitle").textContent = owner;
+    content.innerHTML = source.innerHTML;
+    bootstrap.Modal.getOrCreateInstance(document.getElementById("officeInventorySerialModal")).show();
+}
+
+document.getElementById("officeInventorySerialContent").addEventListener("click", function(event){
+    const choice = event.target.closest(".office-serial-choice");
+
+    if(!choice){
+        return;
+    }
+
+    const detailId = choice.getAttribute("data-detail-id");
+    const serialModalElement = document.getElementById("officeInventorySerialModal");
+    const serialModal = bootstrap.Modal.getOrCreateInstance(serialModalElement);
+
+    serialModalElement.addEventListener("hidden.bs.modal", function showSelectedDetail(){
+        serialModalElement.removeEventListener("hidden.bs.modal", showSelectedDetail);
+        openOfficeInventoryDetail(detailId);
+    });
+    serialModal.hide();
+});
 
 function deleteOfficeInventoryDocument(id){
     if(!confirm("Delete this office inventory document?")){

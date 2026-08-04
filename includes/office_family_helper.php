@@ -1,10 +1,20 @@
 <?php
+require_once __DIR__ . "/planner_profiles.php";
+
 if(!function_exists('officeInventoryNicknameFromName')){
     function officeInventoryNicknameFromName($fullName){
         $fullName = trim((string)($fullName ?? ""));
 
         if($fullName === ""){
             return "";
+        }
+
+        if(strcasecmp($fullName, "Available") === 0 || strcasecmp($fullName, "In Storage") === 0){
+            return "Available";
+        }
+
+        if(function_exists('plannerAccountNickname')){
+            return plannerAccountNickname($fullName);
         }
 
         $parts = preg_split('/\s+/', $fullName);
@@ -44,6 +54,19 @@ if(!function_exists('officeInventoryNicknameFromName')){
         }
 
         return $parts[0];
+    }
+}
+
+if(!function_exists('officeInventoryOwnerOptions')){
+    function officeInventoryOwnerOptions($mysqli){
+        $options = officeInventoryFetchFamilyOptions($mysqli);
+        $options = array_values(array_filter($options, function($option){
+            $option = trim((string)$option);
+            return strcasecmp($option, "Available") !== 0
+                && strcasecmp($option, "In Storage") !== 0;
+        }));
+        array_unshift($options, "Available");
+        return $options;
     }
 }
 

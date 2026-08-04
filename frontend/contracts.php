@@ -95,11 +95,8 @@ function contractSearchValuesForTerm($term){
             $values[] = $canonicalEndUsers[$prefix];
         }
 
-        $knownPatterns = contractProjectCodeKnownPatterns();
-
-        foreach(($knownPatterns[$prefix] ?? []) as $alias){
-            $values[] = $alias;
-        }
+        // Keep known-code expansion small. Expanding every alias creates a very
+        // large OR query and makes each server-side key search noticeably slow.
     }
 
     $uniqueValues = [];
@@ -254,16 +251,11 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
 
     $orderColumnMap = [
         0 => "pi.project_code",
-        1 => "pi.contract_no",
-        2 => "pi.project_name",
-        3 => "pi.project_owner",
-        4 => $projectManagerOrder,
-        5 => $accountManagerOrder,
-        6 => "pi.contract_start",
-        7 => "pi.contract_end",
-        8 => "auto_status",
-        9 => "progress_percent",
-        10 => "pi.amount"
+        1 => "pi.year_awarded", 2 => "pi.status", 3 => "pi.project_name",
+        4 => $projectManagerOrder, 5 => $accountManagerOrder, 6 => "pi.project_owner",
+        7 => "pi.end_user", 8 => "pi.contract_no", 9 => "pi.service", 10 => "pi.po_date",
+        11 => "pi.contract_start", 12 => "pi.contract_end", 13 => "progress_percent",
+        14 => "pi.amount", 15 => "pi.payment_term", 16 => "pi.no_of_pm"
     ];
 
     $orderBy = "pi.no DESC";
@@ -338,7 +330,6 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
             $conditionParts[] = "COALESCE(pi.created_by, '') LIKE ?";
             $conditionParts[] = "COALESCE(pi.status, '') LIKE ?";
             $conditionParts[] = "$statusCase LIKE ?";
-            $conditionParts[] = "$progressSearchSql LIKE ?";
 
             $termConditionParts[] = "(" . implode(" OR ", $conditionParts) . ")";
 
@@ -354,7 +345,7 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
     }
 
     if($statusFilter !== ""){
-        $whereParts[] = "$statusCase = ?";
+        $whereParts[] = "COALESCE(NULLIF(pi.status, ''), $statusCase) = ?";
         $params[] = $statusFilter;
         $types .= "s";
     }
@@ -369,7 +360,6 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
         $countStmt = $mysqli->prepare("
             SELECT COUNT(*) AS total
             FROM project_inventory pi
-            $taskJoinSql
             $whereSql
         ");
 
@@ -397,6 +387,8 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
         SELECT
             pi.no,
             pi.project_code,
+            pi.year_awarded,
+            pi.status,
             pi.project_name,
             pi.project_owner,
             $projectManagerSelect,
@@ -408,6 +400,12 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
             pi.contract_start,
             pi.contract_end,
             pi.amount,
+            pi.payment_term,
+            pi.no_of_pm,
+            pi.pm_y1_q1, pi.pm_y1_q2, pi.pm_y1_q3, pi.pm_y1_q4,
+            pi.pm_y2_q1, pi.pm_y2_q2, pi.pm_y2_q3, pi.pm_y2_q4,
+            pi.pm_y3_q1, pi.pm_y3_q2, pi.pm_y3_q3, pi.pm_y3_q4,
+            pi.pm_y4_q1, pi.pm_y4_q2, pi.pm_y4_q3, pi.pm_y4_q4,
             pi.created_by,
             $statusCase AS auto_status,
             $taskTotalSelect,
@@ -453,12 +451,12 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
         $canDeleteThisContract = hasContractDeleteAccess($mysqli, $created_by);
         $canUploadThisContract = hasContractUploadAccess($mysqli, $created_by);
 
-        $auto_status = $row['auto_status'] ?? "Active";
+        $auto_status = trim((string)($row['status'] ?? '')) ?: ($row['auto_status'] ?? "Active");
 
-        if($auto_status === "Closed"){
+        if(strcasecmp($auto_status, "Closed") === 0 || strcasecmp($auto_status, "Drop") === 0){
             $statusHtml = '<span class="badge bg-danger">Closed</span>';
         }
-        elseif($auto_status === "Expiring Soon"){
+        elseif(strcasecmp($auto_status, "Expiring Soon") === 0 || strcasecmp($auto_status, "Awarded") === 0){
             $statusHtml = '<span class="badge bg-warning text-dark">Expiring Soon</span>';
         }
         else{
@@ -533,6 +531,15 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
         $formattedEnd = contractFormatDate($row['contract_end']);
         $formattedPoDate = contractFormatDate($row['po_date']);
         $displayProjectCode = contractProjectCodeDisplay($row['project_code'] ?? "");
+        $pmYearDisplay = [];
+        for($pmYear = 1; $pmYear <= 4; $pmYear++){
+            $parts = [];
+            for($pmQuarter = 1; $pmQuarter <= 4; $pmQuarter++){
+                $value = trim((string)($row["pm_y{$pmYear}_q{$pmQuarter}"] ?? ''));
+                if($value !== '') $parts[] = "Q{$pmQuarter}: " . contractEscape($value);
+            }
+            $pmYearDisplay[$pmYear] = $parts ? implode('<br>', $parts) : '<span class="text-muted">—</span>';
+        }
 
         $meta = [
             "id" => $row['no'],
@@ -564,16 +571,25 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
         $data[] = [
             "no" => contractEscape($row['no']),
             "project_code" => contractEscape($displayProjectCode),
+            "year_awarded" => contractEscape($row['year_awarded'] ?? ''),
             "contract_no" => contractEscape($row['contract_no']),
             "project_name" => contractEscape($row['project_name']),
             "owner" => contractEscape($row['project_owner']),
             "project_manager" => contractEscape($row['project_manager'] ?? ''),
             "account_manager" => contractEscape($row['account_manager'] ?? ''),
+            "end_user" => contractEscape($row['end_user'] ?? ''),
+            "po_number" => contractEscape($row['contract_no'] ?? ''),
+            "service" => contractEscape($row['service'] ?? ''),
+            "po_date" => contractEscape($formattedPoDate),
             "progress" => $progressHtml,
             "status" => $statusHtml,
             "start" => contractEscape($formattedStart),
             "end" => contractEscape($formattedEnd),
             "amount" => "RM " . number_format((float)$row['amount'], 2),
+            "payment_term" => contractEscape($row['payment_term'] ?? ''),
+            "no_of_pm" => contractEscape($row['no_of_pm'] ?? ''),
+            "pm_year_1" => $pmYearDisplay[1], "pm_year_2" => $pmYearDisplay[2],
+            "pm_year_3" => $pmYearDisplay[3], "pm_year_4" => $pmYearDisplay[4],
             "actions" => $actionsHtml,
             "meta" => $meta
         ];
@@ -646,8 +662,10 @@ body{
     width:100%;
     max-width:100%;
     min-width:0;
-    overflow-x:hidden !important;
+    overflow-x:auto !important;
     overflow-y:hidden;
+    -webkit-overflow-scrolling:touch;
+    overscroll-behavior-x:contain;
 }
 
 .contract-table-scroll{
@@ -662,15 +680,32 @@ body{
 }
 
 #contractsTable{
-    width:100% !important;
-    min-width:0 !important;
-    max-width:100% !important;
-    table-layout:fixed !important;
+    width:max-content !important;
+    min-width:3300px !important;
+    max-width:none !important;
+    table-layout:auto !important;
     margin-bottom:0 !important;
 }
 
 .contract-search-form{
     width:100%;
+}
+
+.contract-dt-footer .dataTables_length label{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin:0;
+    white-space:nowrap;
+}
+
+.contract-dt-footer .dataTables_length select{
+    width:auto;
+    min-width:72px;
+    padding:5px 28px 5px 10px;
+    border:1px solid #ced4da;
+    border-radius:7px;
+    background-color:#fff;
 }
 
 #contractsTable thead{
@@ -681,34 +716,66 @@ body{
 #contractsTable th,
 #contractsTable td{
     vertical-align:middle;
-    white-space:normal !important;
-    overflow-wrap:anywhere;
-    word-break:break-word;
+    min-width:120px;
+    white-space:normal;
+    overflow-wrap:break-word;
+    word-break:normal;
     font-size:12px;
     padding:8px 6px;
 }
 
+#contractsTable th{
+    white-space:nowrap !important;
+    word-break:normal !important;
+    overflow-wrap:normal !important;
+}
+
+#contractsTable .contract-col-project{
+    min-width:360px;
+    max-width:460px;
+}
+
+#contractsTable .contract-col-project-manager,
+#contractsTable .contract-col-account-manager,
+#contractsTable .contract-col-owner,
+#contractsTable td:nth-child(8){
+    min-width:180px;
+    max-width:240px;
+}
+
+#contractsTable th:nth-child(n+18):nth-child(-n+21),
+#contractsTable td:nth-child(n+18):nth-child(-n+21){
+    min-width:210px;
+    max-width:240px;
+}
+
 /* ✅ SMALLER CODE + CONTRACT NO, BIGGER PROJECT NAME */
 #contractsTable .contract-col-project-code,
-#contractsTable .contract-col-contract-no{
+#contractsTable .contract-col-contract-no,
+#contractsTable .contract-col-year-awarded,
+#contractsTable .contract-col-project-manager,
+#contractsTable .contract-col-account-manager{
     text-align:center;
 }
 
 #contractsTable th:nth-child(1),
 #contractsTable td:nth-child(1){
-    width:8% !important;
-    max-width:105px !important;
+    width:120px !important;
+    min-width:120px !important;
+    max-width:120px !important;
 }
 
 #contractsTable th:nth-child(2),
 #contractsTable td:nth-child(2){
-    width:9% !important;
+    width:110px !important;
+    min-width:110px !important;
     max-width:110px !important;
 }
 
 #contractsTable th:nth-child(3),
 #contractsTable td:nth-child(3){
-    width:20% !important;
+    width:120px !important;
+    min-width:120px !important;
 }
 
 #contractsTable tbody tr{
@@ -1080,6 +1147,15 @@ body{
         padding-right:14px !important;
     }
 
+    /* Keep this wide table page beside the open navigation instead of
+       allowing its controls and table to sit underneath the sidebar. */
+    body.sidebar-open .main,
+    body.sidebar-mobile-open .main{
+        margin-left:230px !important;
+        width:calc(100% - 230px) !important;
+        max-width:calc(100% - 230px) !important;
+    }
+
     .contract-search-form .input-group{
         flex-direction:column;
         gap:8px;
@@ -1186,7 +1262,7 @@ body{
     #contractsTable{
         display:table !important;
         width:max-content !important;
-        min-width:1360px !important;
+        min-width:3300px !important;
         max-width:none !important;
         table-layout:auto !important;
         border-collapse:collapse !important;
@@ -1409,9 +1485,30 @@ body{
 <div id="activeFilterBox" class="active-filter-box"></div>
 
 <?php if($canAddContract): ?>
-<a href="contract_add.php" class="btn btn-warning mb-3">
-    <i class="fa fa-plus"></i> Add Contract
-</a>
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <a href="contract_add.php" class="btn btn-warning">
+        <i class="fa fa-plus"></i> Add Contract
+    </a>
+    <label class="d-flex align-items-center gap-2 mb-0">
+        <span>Show</span>
+        <select id="contractPageLength" class="form-select form-select-sm" style="width:82px">
+            <option value="10">10</option><option value="25">25</option>
+            <option value="50">50</option><option value="100">100</option>
+        </select>
+        <span>rows</span>
+    </label>
+</div>
+<?php else: ?>
+<div class="d-flex justify-content-end align-items-center mb-3">
+    <label class="d-flex align-items-center gap-2 mb-0">
+        <span>Show</span>
+        <select id="contractPageLength" class="form-select form-select-sm" style="width:82px">
+            <option value="10">10</option><option value="25">25</option>
+            <option value="50">50</option><option value="100">100</option>
+        </select>
+        <span>rows</span>
+    </label>
+</div>
 <?php endif; ?>
 
 <div class="contract-table-card">
@@ -1422,22 +1519,26 @@ body{
 <thead>
 <tr>
     <th>Project Code</th>
-    <th>Contract No</th>
+    <th>Year Awarded</th>
+    <th><span class="header-filter" id="statusHeaderFilter">Status <i class="fa fa-filter"></i></span></th>
     <th>Project Name</th>
-    <th>Owner</th>
     <th>Project Manager</th>
     <th>Account Manager</th>
+    <th>Owner</th>
+    <th>End User</th>
+    <th>PO Number</th>
+    <th>Service</th>
+    <th>PO / SST Date</th>
     <th>Start</th>
     <th>End</th>
-
-    <th>
-        <span class="header-filter" id="statusHeaderFilter">
-            Status <i class="fa fa-filter"></i>
-        </span>
-    </th>
-
     <th>Progress</th>
     <th>Amount</th>
+    <th>Payment Term</th>
+    <th>No. of PM</th>
+    <th>Preventive Maintenance Year 1</th>
+    <th>Preventive Maintenance Year 2</th>
+    <th>Preventive Maintenance Year 3</th>
+    <th>Preventive Maintenance Year 4</th>
     <th>Actions</th>
 </tr>
 </thead>
@@ -1455,9 +1556,10 @@ body{
 
 <div id="statusFilterMenu" class="status-filter-menu">
     <button type="button" data-status="">All Status</button>
-    <button type="button" data-status="Active">Active</button>
-    <button type="button" data-status="Expiring Soon">Expiring Soon</button>
+    <button type="button" data-status="In Progress">In Progress</button>
+    <button type="button" data-status="Awarded">Awarded</button>
     <button type="button" data-status="Closed">Closed</button>
+    <button type="button" data-status="Drop">Drop</button>
 </div>
 
 <!-- CONTRACT MODAL -->
@@ -1473,26 +1575,9 @@ body{
 </div>
 
 <div class="modal-body p-4">
-
-<h4 id="m_project"></h4>
-<small id="m_owner"></small>
-
-<hr>
-
 <div class="row g-3">
-
-<div class="col-md-6"><b>Project Code</b><div id="m_projectcode"></div></div>
-<div class="col-md-6"><b>End User</b><div id="m_enduser"></div></div>
-<div class="col-md-6"><b>Contract No</b><div id="m_contractno"></div></div>
-<div class="col-md-6"><b>Service</b><div id="m_service"></div></div>
-<div class="col-md-6"><b>Project Manager</b><div id="m_projectmanager"></div></div>
-<div class="col-md-6"><b>Account Manager</b><div id="m_accountmanager"></div></div>
-<div class="col-md-6"><b>PO Date</b><div id="m_podate"></div></div>
-<div class="col-md-6"><b>Start</b><div id="m_start"></div></div>
-<div class="col-md-6"><b>End</b><div id="m_end"></div></div>
-<div class="col-md-6"><b>Status</b><div id="m_status"></div></div>
 <div class="col-md-6">
-    <b>Amount</b>
+    <b>Contract Amount</b>
     <div id="m_amount"></div>
     <?php if($canViewClaim): ?>
     <div id="m_claimSummary" class="mt-2 small d-none">
@@ -2234,11 +2319,14 @@ $(document).ready(function(){
     let statusFilter = "";
     let focusHandled = false;
     let focusSearchRetried = false;
+    let activeTableRequest = null;
+    let lastSubmittedSearch = initialSearch;
 
     contractsTable = $('#contractsTable').DataTable({
         processing: true,
         serverSide: true,
         pageLength: 10,
+        lengthMenu: [[10, 25, 50, 100], [10, 25, 50, 100]],
         autoWidth: false,
         scrollX: false,
         searching: true,
@@ -2248,7 +2336,7 @@ $(document).ready(function(){
         order: [],
         dom:
             "<'contract-table-scroll't>" +
-            "<'contract-dt-footer d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3'ip>",
+            "<'contract-dt-footer d-flex justify-content-between align-items-center flex-wrap gap-3 mt-3'ip>",
         language: {
             processing: "<span class='processing-text'><i class='fa fa-spinner fa-spin'></i> Loading contracts...</span>"
         },
@@ -2256,28 +2344,51 @@ $(document).ready(function(){
             url: "contracts.php",
             type: "GET",
             cache: false,
+            beforeSend: function(xhr){
+                if(activeTableRequest && activeTableRequest.readyState !== 4){
+                    activeTableRequest.abort();
+                }
+                activeTableRequest = xhr;
+            },
+            complete: function(xhr){
+                if(activeTableRequest === xhr){
+                    activeTableRequest = null;
+                }
+            },
             data: function(d){
                 d.ajax = 1;
                 d.status_filter = statusFilter;
             }
         },
         columnDefs: [
-            { targets: 0, width: "8%" },
-            { targets: 1, width: "9%" },
-            { targets: 2, width: "20%" }
+            { targets: 0, width: "120px" },
+            { targets: 1, width: "110px" },
+            { targets: 2, width: "120px" },
+            { targets: 3, width: "360px" },
+            { targets: [17, 18, 19, 20], width: "210px" }
         ],
         columns: [
             { data: "project_code", className: "contract-col-project-code" },
-            { data: "contract_no", className: "contract-col-contract-no" },
+            { data: "year_awarded", className: "contract-col-year-awarded" },
+            { data: "status", className: "contract-col-status" },
             { data: "project_name", className: "contract-col-project" },
-            { data: "owner", className: "contract-col-owner" },
             { data: "project_manager", className: "contract-col-project-manager" },
             { data: "account_manager", className: "contract-col-account-manager" },
+            { data: "owner", className: "contract-col-owner" },
+            { data: "end_user" },
+            { data: "po_number", className: "contract-col-contract-no" },
+            { data: "service" },
+            { data: "po_date" },
             { data: "start", className: "contract-col-start" },
             { data: "end", className: "contract-col-end" },
-            { data: "status", className: "contract-col-status" },
             { data: "progress", className: "contract-col-progress" },
             { data: "amount", className: "contract-col-amount" },
+            { data: "payment_term" },
+            { data: "no_of_pm" },
+            { data: "pm_year_1", orderable: false },
+            { data: "pm_year_2", orderable: false },
+            { data: "pm_year_3", orderable: false },
+            { data: "pm_year_4", orderable: false },
             {
                 data: "actions",
                 orderable: false,
@@ -2316,6 +2427,10 @@ $(document).ready(function(){
             $("td:eq(10)", row).attr("data-label", "Amount");
             $("td:eq(11)", row).attr("data-label", "Actions");
         }
+    });
+
+    $("#contractPageLength").on("change", function(){
+        contractsTable.page.len(parseInt(this.value, 10) || 10).draw();
     });
 
     function adjustContractTable(){
@@ -2370,6 +2485,13 @@ $(document).ready(function(){
     }
 
     function runContractSearch(value){
+        value = String(value || "").trim();
+
+        if(value === lastSubmittedSearch){
+            return;
+        }
+
+        lastSubmittedSearch = value;
         contractsTable.search(value).draw();
 
         let newUrl = "contracts.php";
@@ -2389,11 +2511,17 @@ $(document).ready(function(){
 
         typingTimer = setTimeout(function(){
             runContractSearch(value);
-        }, 250);
+        }, 450);
+    });
+
+    $(".contract-search-form .btn-warning").on("click", function(){
+        clearTimeout(typingTimer);
+        runContractSearch($("#liveContractSearch").val());
     });
 
     $("#clearContractSearch").on("click", function(){
         $("#liveContractSearch").val("");
+        lastSubmittedSearch = "";
 
         statusFilter = "";
 
@@ -2477,31 +2605,7 @@ $(document).ready(function(){
         let meta = data.meta;
 
         $('#m_id').val(meta.id);
-
-        $('#m_project').text(meta.project || '');
-        $('#m_owner').text(meta.owner || '');
-        $('#m_projectcode').text(meta.projectcode || '');
-        $('#m_projectmanager').text(meta.projectmanager || '-');
-        $('#m_accountmanager').text(meta.accountmanager || '-');
         $('#m_createdby').text(meta.createdby || '-');
-        $('#m_enduser').text(meta.enduser || '');
-        $('#m_contractno').text(meta.contractno || '');
-        $('#m_service').text(meta.service || '');
-        $('#m_podate').text(meta.podate || '');
-        $('#m_start').text(meta.start || '');
-        $('#m_end').text(meta.end || '');
-
-        let status = meta.status || "Active";
-
-        if(status === "Closed"){
-            $('#m_status').html('<span class="badge bg-danger">Closed</span>');
-        }
-        else if(status === "Expiring Soon"){
-            $('#m_status').html('<span class="badge bg-warning text-dark">Expiring Soon</span>');
-        }
-        else{
-            $('#m_status').html('<span class="badge bg-success">Active</span>');
-        }
 
         applyContractFinancialSummary(meta);
 
@@ -2598,18 +2702,6 @@ $(document).ready(function(){
     openFocusedContractFromAlert();
 
 });
-</script>
-
-<script>
-function toggleSidebar(){
-    const sidebar = document.getElementById("sidebar");
-    const main = document.querySelector(".main");
-    const btn = document.getElementById("menuBtn");
-
-    sidebar.classList.toggle("collapsed");
-    main.classList.toggle("expanded");
-    btn.classList.toggle("active");
-}
 </script>
 
 </body>
