@@ -38,6 +38,54 @@ if(!function_exists('ensureContractTaskCompletionSchema')){
             ");
         }
 
+        if(!contractTaskSchemaColumnExists($mysqli, "contract_tasks", "claim_amount")){
+            $mysqli->query("
+                ALTER TABLE `contract_tasks`
+                ADD COLUMN `claim_amount` decimal(15,2) DEFAULT NULL
+            ");
+        }
+
+        if(!contractTaskSchemaColumnExists($mysqli, "contract_tasks", "invoice")){
+            $mysqli->query("
+                ALTER TABLE `contract_tasks`
+                ADD COLUMN `invoice` varchar(150) DEFAULT NULL
+            ");
+        }
+
+        $done = true;
+    }
+}
+
+if(!function_exists('ensureContractTaskDocumentSchema')){
+    function ensureContractTaskDocumentSchema($mysqli){
+        static $done = false;
+
+        if($done || !$mysqli){
+            return;
+        }
+
+        $mysqli->query("
+            CREATE TABLE IF NOT EXISTS `contract_task_documents` (
+                `id` int(11) NOT NULL AUTO_INCREMENT,
+                `contract_id` int(11) NOT NULL,
+                `task_id` int(11) NOT NULL,
+                `file_name` varchar(255) NOT NULL,
+                `original_file_name` varchar(255) DEFAULT NULL,
+                `uploaded_by` varchar(100) DEFAULT NULL,
+                `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+                PRIMARY KEY (`id`),
+                KEY `idx_contract_task_documents_contract` (`contract_id`),
+                KEY `idx_contract_task_documents_task` (`task_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+        ");
+
+        if(!contractTaskSchemaColumnExists($mysqli, "contract_task_documents", "original_file_name")){
+            $mysqli->query("
+                ALTER TABLE `contract_task_documents`
+                ADD COLUMN `original_file_name` varchar(255) DEFAULT NULL AFTER `file_name`
+            ");
+        }
+
         $done = true;
     }
 }

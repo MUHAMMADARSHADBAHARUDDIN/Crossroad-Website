@@ -23,7 +23,12 @@ $isRealAdmin = ($role === "Administrator");
 */
 $canViewUsers = hasPermission($mysqli, "users_view");
 $canViewContracts = hasPermission($mysqli, "contracts_view");
+$canViewMasterBudget = hasContractMasterBudgetAccess($mysqli);
 $canViewInventory = hasPermission($mysqli, "inventory_view");
+$canViewOfficeInventory = hasPermission($mysqli, "office_inventory_view");
+$canViewPlanner = hasPermission($mysqli, "planner_view");
+$canViewVisitors = hasPermission($mysqli, "visitor_view");
+$canViewBulletin = hasPermission($mysqli, "bulletin_view");
 
 $menu = [
 
@@ -33,6 +38,39 @@ $menu = [
             "icon" => "fa-dashboard",
             "link" => "dashboard.php",
             "show" => true
+        ],
+        [
+            "name" => "Bulletin",
+            "icon" => "fa-bullhorn",
+            "link" => "bulletin.php",
+            "show" => $canViewBulletin
+        ],
+        [
+            "name" => "CSSB Planner",
+            "icon" => "fa-calendar-days",
+            "link" => "planner.php",
+            "show" => $canViewPlanner
+        ],
+        [
+            "name" => "Personal Planner",
+            "icon" => "fa-angle-right",
+            "link" => "personal_planner.php",
+            "submenu" => true,
+            "show" => $canViewPlanner
+        ],
+        [
+            "name" => "Technical Planner",
+            "icon" => "fa-angle-right",
+            "link" => "technical_planner.php",
+            "submenu" => true,
+            "show" => $canViewPlanner
+        ],
+        [
+            "name" => "Telegram Notifications",
+            "icon" => "fa-telegram",
+            "link" => "telegram_notifications.php",
+            "submenu" => true,
+            "show" => $canViewPlanner
         ],
     ],
 
@@ -48,6 +86,12 @@ $menu = [
             "icon" => "fa-chart-line",
             "link" => "project_tracker.php",
             "show" => $canViewContracts
+        ],
+        [
+            "name" => "Master Budget",
+            "icon" => "fa-wallet",
+            "link" => "master_budget.php",
+            "show" => $canViewMasterBudget
         ],
     ],
 
@@ -81,9 +125,38 @@ $menu = [
             "submenu" => true,
             "show" => $canViewInventory
         ],
+
+        [
+            "name" => "Office Inventory",
+            "icon" => "fa-laptop",
+            "link" => "office_inventory.php",
+            "show" => $canViewOfficeInventory
+        ],
+
+        [
+            "name" => "License Office 365",
+            "icon" => "fa-angle-right",
+            "link" => "office_license.php",
+            "submenu" => true,
+            "show" => $canViewOfficeInventory
+        ],
+
+        [
+            "name" => "License Antivirus",
+            "icon" => "fa-angle-right",
+            "link" => "office_license_antivirus.php",
+            "submenu" => true,
+            "show" => $canViewOfficeInventory
+        ],
     ],
 
     "ADMIN" => [
+        [
+            "name" => "Visitors",
+            "icon" => "fa-address-book",
+            "link" => "visitors.php",
+            "show" => $canViewVisitors
+        ],
         [
             "name" => "Manage Users",
             "icon" => "fa-user-cog",
@@ -133,3 +206,5 @@ $menu = [
 <?php endforeach; ?>
 
 </div>
+
+<button type="button" class="sidebar-scrim" id="sidebarScrim" aria-label="Close navigation menu"></button>

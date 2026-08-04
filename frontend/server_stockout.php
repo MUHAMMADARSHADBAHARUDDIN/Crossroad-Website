@@ -3,6 +3,7 @@ session_start();
 require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
 require_once "../includes/search_helper.php";
+require_once "../includes/inventory_report_schema.php";
 
 if(!isset($_SESSION['username'])){
     exit("No session");
@@ -11,6 +12,8 @@ if(!isset($_SESSION['username'])){
 if(!hasPermission($mysqli, "inventory_view")){
     die("Access denied");
 }
+
+ensureInventoryReportSchema($mysqli);
 
 function serverStockoutEscape($value){
     return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
@@ -29,6 +32,49 @@ function serverStockoutDateTimeLocal($value){
     return date("Y-m-d\TH:i", strtotime($value));
 }
 
+function serverStockoutComponents($value){
+    $value = trim((string)($value ?? ""));
+
+    if($value === ""){
+        return [];
+    }
+
+    $decoded = json_decode($value, true);
+
+    if(!is_array($decoded)){
+        return [];
+    }
+
+    $components = [];
+
+    foreach($decoded as $component){
+        if(!is_array($component)){
+            continue;
+        }
+
+        $components[] = [
+            "component_type" => trim((string)($component['component_type'] ?? "")),
+            "part_number" => trim((string)($component['part_number'] ?? "")),
+            "serial_number" => trim((string)($component['serial_number'] ?? ""))
+        ];
+    }
+
+    return $components;
+}
+
+function serverStockoutComponentsSearchText($components){
+    $searchText = "";
+
+    foreach($components as $component){
+        $searchText .= " "
+            . ($component['component_type'] ?? "") . " "
+            . ($component['part_number'] ?? "") . " "
+            . ($component['serial_number'] ?? "");
+    }
+
+    return $searchText;
+}
+
 $faviconVersion = file_exists("../image/logo.png") ? filemtime("../image/logo.png") : time();
 $canDelete = hasPermission($mysqli, "inventory_delete");
 $canAddInformation = hasStockOutAdditionalInfoAccess($mysqli);
@@ -39,7 +85,7 @@ $search = trim($_GET['search'] ?? "");
 $stmt = $mysqli->prepare("
     SELECT *
     FROM server_stockout_history
-    ORDER BY stock_out_date DESC
+    ORDER BY id DESC
 ");
 
 if(!$stmt){
@@ -83,11 +129,12 @@ if(serverAdditionalInfoTableExists($mysqli)){
 <style>
 html, body{ overflow-x:hidden !important; }
 .main{ overflow-x:hidden !important; max-width:100%; }
-.table-responsive{ overflow-x:hidden !important; width:100%; }
+.table-responsive{ overflow-x:auto !important; overflow-y:hidden; width:100%; -webkit-overflow-scrolling:touch; overscroll-behavior-x:contain; }
 
 #serverStockOutTable{
     width:100% !important;
-    table-layout:fixed;
+    min-width:900px;
+    table-layout:auto;
 }
 
 #serverStockOutTable th,
@@ -105,7 +152,7 @@ html, body{ overflow-x:hidden !important; }
 
 #serverStockOutTable_wrapper{
     width:100%;
-    overflow-x:hidden !important;
+    overflow-x:visible !important;
 }
 
 #serverStockOutTable_wrapper .row{
@@ -281,7 +328,50 @@ html, body{ overflow-x:hidden !important; }
     background:#dc3545;
 }
 
-@media(max-width:768px){
+@media(max-width:992px){
+    .table-responsive{
+        overflow-x:auto !important;
+        -webkit-overflow-scrolling:touch;
+    }
+
+    #serverStockOutTable{
+        min-width:940px !important;
+        max-width:none !important;
+    }
+
+    #serverStockOutTable th{
+        white-space:nowrap !important;
+        min-width:140px;
+        max-width:none !important;
+        word-break:normal !important;
+        overflow-wrap:normal !important;
+    }
+
+    #serverStockOutTable td{
+        white-space:normal !important;
+        min-width:140px;
+        max-width:360px !important;
+        word-break:break-word !important;
+        overflow-wrap:anywhere !important;
+    }
+
+    #serverStockOutTable th:nth-child(3),
+    #serverStockOutTable td:nth-child(3){
+        min-width:320px;
+    }
+
+    #serverStockOutTable th:nth-child(4),
+    #serverStockOutTable td:nth-child(4){
+        min-width:170px;
+    }
+
+    #serverStockOutTable td:nth-child(4){
+        white-space:nowrap !important;
+        max-width:none !important;
+        word-break:normal !important;
+        overflow-wrap:normal !important;
+    }
+
     #serverStockOutTable_wrapper .server-stockout-bottom-row{
         gap:10px;
     }
@@ -312,7 +402,7 @@ html, body{ overflow-x:hidden !important; }
                    id="liveServerStockOutSearch"
                    name="search"
                    class="form-control"
-                   placeholder="Search by Server Name / Serial / Remark / Additional Information..."
+                   placeholder="Search by Server Name / Serial / Ticket / Remark / Additional Information..."
                    value="<?= serverStockoutEscape($search) ?>"
                    autocomplete="off">
             <button type="button" class="btn btn-warning">
@@ -329,7 +419,7 @@ html, body{ overflow-x:hidden !important; }
                 <tr>
                     <th>Server Name</th>
                     <th>Serial Number</th>
-                    <th>Original Remark</th>
+                    <th>Ticket</th>
                     <th>Action</th>
                 </tr>
             </thead>
@@ -344,24 +434,40 @@ html, body{ overflow-x:hidden !important; }
                 $statusText = trim((string)($row['status'] ?? ''));
                 $statusIndicatorClass = (strcasecmp($statusText, 'Okay') === 0) ? 'okay' : 'faulty';
                 $statusDisplayText = $statusText !== '' ? $statusText : '-';
+                $ticketNumber = trim((string)($row['ticket_number'] ?? ''));
+                $stockoutComponents = serverStockoutComponents($row['stockout_components'] ?? '');
+                $componentSearch = serverStockoutComponentsSearchText($stockoutComponents);
                 $notesSearch = "";
 
                 foreach($notes as $note){
-                    $notesSearch .= " " . ($note['additional_information'] ?? '') . " " . ($note['added_by'] ?? '');
+                    $noteDate = !empty($note['added_at']) && strtotime($note['added_at'])
+                        ? date("d/m/y H:i", strtotime($note['added_at']))
+                        : "";
+
+                    $notesSearch .= " "
+                        . ($note['id'] ?? '') . " "
+                        . ($note['additional_information'] ?? '') . " "
+                        . ($note['added_by'] ?? '') . " "
+                        . ($note['added_at'] ?? '') . " "
+                        . $noteDate;
                 }
 
                 $searchText = strtolower(
+                    $id . ' ' .
                     ($row['server_name'] ?? '') . ' ' .
                     ($row['machine_type'] ?? '') . ' ' .
                     ($row['serial_number'] ?? '') . ' ' .
+                    $ticketNumber . ' ' .
                     ($row['location'] ?? '') . ' ' .
                     ($row['status'] ?? '') . ' ' .
                     ($row['remark'] ?? '') . ' ' .
                     ($row['tester'] ?? '') . ' ' .
+                    ($row['quantity'] ?? '') . ' ' .
                     ($row['stock_out_by'] ?? '') . ' ' .
                     ($row['stock_out_date'] ?? '') . ' ' .
                     $date . ' ' .
                     $time . ' ' .
+                    $componentSearch . ' ' .
                     $notesSearch
                 );
 
@@ -400,7 +506,41 @@ html, body{ overflow-x:hidden !important; }
                         <span>Date</span>
                         <strong><?= serverStockoutEscape(trim($date . ' ' . $time)) ?></strong>
                     </div>
+
+                    <div class="stockout-detail-box">
+                        <span>Original Remark</span>
+                        <strong><?= nl2br(serverStockoutEscape(($row['remark'] ?? '') !== '' ? $row['remark'] : '-')) ?></strong>
+                    </div>
                 </div>
+
+                <h6 class="mb-2">Components With Server Stock Out</h6>
+
+                <?php if(empty($stockoutComponents)): ?>
+                    <div class="alert alert-light border mb-3 text-muted">
+                        No components left with this stock out.
+                    </div>
+                <?php else: ?>
+                    <div class="table-responsive mb-3">
+                        <table class="table table-sm table-bordered align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Component</th>
+                                    <th>Part Number</th>
+                                    <th>Serial Number</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach($stockoutComponents as $component): ?>
+                                    <tr>
+                                        <td><?= serverStockoutEscape(($component['component_type'] ?? '') !== '' ? $component['component_type'] : '-') ?></td>
+                                        <td><?= serverStockoutEscape(($component['part_number'] ?? '') !== '' ? $component['part_number'] : '-') ?></td>
+                                        <td><?= serverStockoutEscape(($component['serial_number'] ?? '') !== '' ? $component['serial_number'] : '-') ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endif; ?>
 
                 <h6 class="mb-2">Additional Information</h6>
 
@@ -453,7 +593,7 @@ html, body{ overflow-x:hidden !important; }
                     data-detail-id="server-stockout-detail-<?= $id ?>">
                     <td><?= serverStockoutEscape($row['server_name'] ?? '') ?></td>
                     <td><?= serverStockoutEscape($row['serial_number'] ?? '') ?></td>
-                    <td><?= serverStockoutEscape(($row['remark'] ?? '') !== '' ? $row['remark'] : '-') ?></td>
+                    <td><?= serverStockoutEscape($ticketNumber !== '' ? $ticketNumber : '-') ?></td>
 
                     <td>
                         <div class="action-buttons">

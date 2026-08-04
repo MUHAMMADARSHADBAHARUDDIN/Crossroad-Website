@@ -25,11 +25,17 @@ if(session_status() === PHP_SESSION_NONE){
 if(!function_exists('getCurrentAccountType')){
     function getCurrentAccountType($mysqli){
 
+        static $accountTypeCache = [];
+
         if(!isset($_SESSION['username'])){
             return "";
         }
 
         $username = $_SESSION['username'];
+
+        if(array_key_exists($username, $accountTypeCache)){
+            return $accountTypeCache[$username];
+        }
 
         /* Check administrator table first */
         $stmt = $mysqli->prepare("
@@ -45,7 +51,7 @@ if(!function_exists('getCurrentAccountType')){
             $result = $stmt->get_result();
 
             if($result && $result->num_rows > 0){
-                return "administrator";
+                return $accountTypeCache[$username] = "administrator";
             }
         }
 
@@ -63,11 +69,11 @@ if(!function_exists('getCurrentAccountType')){
             $result = $stmt->get_result();
 
             if($result && $result->num_rows > 0){
-                return "user";
+                return $accountTypeCache[$username] = "user";
             }
         }
 
-        return "";
+        return $accountTypeCache[$username] = "";
     }
 }
 
@@ -113,12 +119,19 @@ if(!function_exists('getPermissionsForAccount')){
 if(!function_exists('hasPermission')){
     function hasPermission($mysqli, $permissionName){
 
+        static $permissionCache = [];
+
         if(!isset($_SESSION['username'])){
             return false;
         }
 
         $username = $_SESSION['username'];
         $accountType = getCurrentAccountType($mysqli);
+        $cacheKey = $username . "\0" . $accountType . "\0" . $permissionName;
+
+        if(array_key_exists($cacheKey, $permissionCache)){
+            return $permissionCache[$cacheKey];
+        }
 
         /*
         |--------------------------------------------------------------------------
@@ -129,11 +142,11 @@ if(!function_exists('hasPermission')){
         |--------------------------------------------------------------------------
         */
         if($accountType === "administrator"){
-            return true;
+            return $permissionCache[$cacheKey] = true;
         }
 
         if($accountType === ""){
-            return false;
+            return $permissionCache[$cacheKey] = false;
         }
 
         $stmt = $mysqli->prepare("
@@ -146,7 +159,7 @@ if(!function_exists('hasPermission')){
         ");
 
         if(!$stmt){
-            return false;
+            return $permissionCache[$cacheKey] = false;
         }
 
         $stmt->bind_param("sss", $username, $accountType, $permissionName);
@@ -155,7 +168,7 @@ if(!function_exists('hasPermission')){
         $result = $stmt->get_result();
 
         if($result && $result->num_rows > 0){
-            return true;
+            return $permissionCache[$cacheKey] = true;
         }
 
         /*
@@ -174,6 +187,18 @@ if(!function_exists('hasPermission')){
         elseif(strpos($permissionName, "inventory_") === 0){
             $module = "inventory_full";
         }
+        elseif(strpos($permissionName, "office_inventory_") === 0){
+            $module = "office_inventory_full";
+        }
+        elseif(strpos($permissionName, "planner_") === 0){
+            $module = "planner_full";
+        }
+        elseif(strpos($permissionName, "visitor_") === 0){
+            $module = "visitor_full";
+        }
+        elseif(strpos($permissionName, "bulletin_") === 0){
+            $module = "bulletin_full";
+        }
 
         if($module !== ""){
             $stmt = $mysqli->prepare("
@@ -186,7 +211,7 @@ if(!function_exists('hasPermission')){
             ");
 
             if(!$stmt){
-                return false;
+                return $permissionCache[$cacheKey] = false;
             }
 
             $stmt->bind_param("sss", $username, $accountType, $module);
@@ -195,11 +220,11 @@ if(!function_exists('hasPermission')){
             $result = $stmt->get_result();
 
             if($result && $result->num_rows > 0){
-                return true;
+                return $permissionCache[$cacheKey] = true;
             }
         }
 
-        return false;
+        return $permissionCache[$cacheKey] = false;
     }
 }
 
@@ -343,6 +368,33 @@ if(!function_exists('hasContractDownloadAccess')){
 }
 
 /* =========================================================
+   CONTRACT CLAIM AMOUNT VIEW ACCESS
+   Controls visibility of checklist claim amounts.
+========================================================= */
+if(!function_exists('hasContractClaimViewAccess')){
+    function hasContractClaimViewAccess($mysqli){
+
+        return (
+            hasPermission($mysqli, "contracts_full") ||
+            hasPermission($mysqli, "contracts_claim_view")
+        );
+    }
+}
+
+/* =========================================================
+   CONTRACT MASTER BUDGET ACCESS
+========================================================= */
+if(!function_exists('hasContractMasterBudgetAccess')){
+    function hasContractMasterBudgetAccess($mysqli){
+
+        return (
+            hasPermission($mysqli, "contracts_full") ||
+            hasPermission($mysqli, "contracts_master_budget")
+        );
+    }
+}
+
+/* =========================================================
    CONTRACT TASK ADD ACCESS
    ✅ contracts_task is kept for existing function compatibility
    ✅ contracts_task_add also supported if you use it later
@@ -439,6 +491,108 @@ if(!function_exists('hasContractTaskAccess')){
     function hasContractTaskAccess($mysqli, $created_by = ""){
 
         return hasContractTaskAddAccess($mysqli, $created_by);
+    }
+}
+
+/* =========================================================
+   CONTRACT TASK DOCUMENT ACCESS
+========================================================= */
+if(!function_exists('hasContractTaskDocumentViewAccess')){
+    function hasContractTaskDocumentViewAccess($mysqli, $created_by = ""){
+        $username = $_SESSION['username'] ?? "";
+
+        if(
+            hasPermission($mysqli, "contracts_full") ||
+            hasPermission($mysqli, "contracts_task_document_view")
+        ){
+            return true;
+        }
+
+        if(
+            hasPermission($mysqli, "contracts_personal") &&
+            $created_by !== "" &&
+            $username === $created_by
+        ){
+            return true;
+        }
+
+        return false;
+    }
+}
+
+if(!function_exists('hasContractTaskDocumentDownloadAccess')){
+    function hasContractTaskDocumentDownloadAccess($mysqli, $created_by = ""){
+        $username = $_SESSION['username'] ?? "";
+
+        if(
+            hasPermission($mysqli, "contracts_full") ||
+            hasPermission($mysqli, "contracts_task_document_download")
+        ){
+            return true;
+        }
+
+        if(
+            hasPermission($mysqli, "contracts_personal") &&
+            $created_by !== "" &&
+            $username === $created_by
+        ){
+            return true;
+        }
+
+        return false;
+    }
+}
+
+if(!function_exists('hasContractTaskDocumentUploadAccess')){
+    function hasContractTaskDocumentUploadAccess($mysqli, $created_by = ""){
+        $username = $_SESSION['username'] ?? "";
+
+        if(
+            hasPermission($mysqli, "contracts_full") ||
+            hasPermission($mysqli, "contracts_task_document_add") ||
+            hasPermission($mysqli, "contracts_task_document_upload")
+        ){
+            return true;
+        }
+
+        if(
+            hasPermission($mysqli, "contracts_personal") &&
+            $created_by !== "" &&
+            $username === $created_by
+        ){
+            return true;
+        }
+
+        return false;
+    }
+}
+
+if(!function_exists('hasContractTaskDocumentAddAccess')){
+    function hasContractTaskDocumentAddAccess($mysqli, $created_by = ""){
+        return hasContractTaskDocumentUploadAccess($mysqli, $created_by);
+    }
+}
+
+if(!function_exists('hasContractTaskDocumentDeleteAccess')){
+    function hasContractTaskDocumentDeleteAccess($mysqli, $created_by = ""){
+        $username = $_SESSION['username'] ?? "";
+
+        if(
+            hasPermission($mysqli, "contracts_full") ||
+            hasPermission($mysqli, "contracts_task_document_delete")
+        ){
+            return true;
+        }
+
+        if(
+            hasPermission($mysqli, "contracts_personal") &&
+            $created_by !== "" &&
+            $username === $created_by
+        ){
+            return true;
+        }
+
+        return false;
     }
 }
 

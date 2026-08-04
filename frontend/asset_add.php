@@ -30,7 +30,7 @@ if(isset($_POST['add'])){
     $desc = trim($_POST['desc']);
     $location = trim($_POST['location']);
     $date = appNormalizeDateInput($_POST['date_received'] ?? "");
-    $receivedBy = trim($_POST['received_by'] ?? "");
+    $receivedBy = $username;
 
     if($part == "" || $serial == ""){
         $error = "Part Number and Serial Number are required!";
@@ -192,11 +192,6 @@ Time: $time";
                 <div class="col-12 mb-3">
                     <label>Date Received</label>
                     <input type="date" name="date_received" class="form-control">
-                </div>
-
-                <div class="col-12 mb-3">
-                    <label>Received By</label>
-                    <input type="text" name="received_by" class="form-control">
                 </div>
 
             </div>

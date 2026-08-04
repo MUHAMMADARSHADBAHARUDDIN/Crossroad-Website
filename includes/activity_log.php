@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . "/realtime.php";
+
 function logActivity($mysqli, $username, $role, $action, $description){
 
     if (!$mysqli) return;
@@ -12,6 +14,11 @@ function logActivity($mysqli, $username, $role, $action, $description){
         $stmt->bind_param("ssss", $username, $role, $action, $description);
         $stmt->execute();
         $stmt->close();
+
+        $realtimeChannel = crossroadRealtimeChannelForAction($action);
+        if($realtimeChannel !== ""){
+            crossroadRealtimePublish($realtimeChannel, $action);
+        }
     }
 }
 ?>

@@ -155,22 +155,27 @@ header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
         function closeMobileMenu(){
             sidebar.classList.remove('mobile-open');
             document.body.classList.remove('sidebar-open');
+            document.body.classList.remove('sidebar-mobile-open');
             btn.classList.remove('active');
         }
 
         function applyLayout(){
             if(isMobile()){
-                sidebar.classList.add('collapsed');
+                sidebar.classList.remove('collapsed');
                 main.classList.add('expanded');
                 closeMobileMenu();
+                return;
             }
+
+            closeMobileMenu();
         }
 
         window.toggleSidebar = function(){
             if(isMobile()){
-                sidebar.classList.toggle('mobile-open');
-                document.body.classList.toggle('sidebar-open', sidebar.classList.contains('mobile-open'));
-                btn.classList.toggle('active', sidebar.classList.contains('mobile-open'));
+                var isOpen = sidebar.classList.toggle('mobile-open');
+                document.body.classList.toggle('sidebar-open', isOpen);
+                document.body.classList.toggle('sidebar-mobile-open', isOpen);
+                btn.classList.toggle('active', isOpen);
                 return;
             }
 

@@ -3,10 +3,27 @@ session_start();
 require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
 require_once "../includes/date_helpers.php";
+require_once "../includes/project_dashboard_data.php";
+require_once "../includes/bulletin_schema.php";
 
 if(!isset($_SESSION['username'])){
     header("Location: ../frontend/index.html");
     exit();
+}
+
+$activeStandbyBulletins = [];
+$standaloneBulletinMessages = [];
+if(ensureBulletinSchema($mysqli)){
+    $today = date('Y-m-d');
+    $standbyStmt = $mysqli->prepare('SELECT standby_name, start_date, end_date FROM standby_bulletins WHERE start_date <= ? AND end_date >= ? ORDER BY start_date ASC, id ASC');
+    if($standbyStmt){
+        $standbyStmt->bind_param('ss', $today, $today);
+        $standbyStmt->execute();
+        $standbyResult = $standbyStmt->get_result();
+        while($standbyResult && $standbyRow = $standbyResult->fetch_assoc()){ $activeStandbyBulletins[] = $standbyRow; }
+    }
+    $messageResult = $mysqli->query('SELECT message FROM bulletin_messages ORDER BY created_at ASC, id ASC');
+    while($messageResult && $messageRow = $messageResult->fetch_assoc()){ $standaloneBulletinMessages[] = $messageRow['message']; }
 }
 
 function dashboardEscape($value){
@@ -85,10 +102,10 @@ function dashboardTaskUrgency($startDate, $endDate){
     }
 
     return [
-        "label" => "This Month",
+        "label" => "Scheduled",
         "class" => "info",
         "icon" => "fa-calendar-check",
-        "caption" => "Scheduled this month"
+        "caption" => "Future schedule"
     ];
 }
 
@@ -133,6 +150,10 @@ $totalDevices = 0;
 $servers = 0;
 $storage = 0;
 $contractReportProjects = [];
+$contractReportSuggestions = [
+    "project_codes" => [],
+    "owners" => []
+];
 
 if($canViewContracts){
     $contractStartSql = appSqlDateValue("contract_start");
@@ -154,6 +175,8 @@ if($canViewContracts){
             $contractReportProjects[] = $projectRow;
         }
     }
+
+    $contractReportSuggestions = projectDashboardFetchSuggestions($mysqli);
 }
 
 if($canViewInventory){
@@ -186,8 +209,6 @@ if($pmFeatureReady){
         INNER JOIN project_inventory pi ON pi.no = ct.contract_id
         WHERE ct.is_completed = 0
           AND $taskStartSql IS NOT NULL
-          AND $taskStartSql <= LAST_DAY(CURDATE())
-          AND COALESCE($taskEndSql, $taskStartSql) >= DATE_FORMAT(CURDATE(), '%Y-%m-01')
         ORDER BY $taskStartSql ASC, ct.id ASC
     ");
 
@@ -201,7 +222,6 @@ if($pmFeatureReady){
     }
 }
 
-$currentMonthName = date("F Y");
 $pmTaskCount = count($pmTasks);
 ?>
 <!DOCTYPE html>
@@ -634,6 +654,60 @@ $pmTaskCount = count($pmTasks);
     left:auto !important;
 }
 
+.standby-bulletin{
+    position:fixed;
+    left:230px;
+    right:0;
+    bottom:0;
+    z-index:1040;
+    min-height:44px;
+    padding:10px 18px;
+    background:#d60000;
+    color:#fff;
+    border-top:3px solid #ffda00;
+    box-shadow:0 -5px 18px rgba(0,0,0,.2);
+    display:flex;
+    align-items:center;
+    justify-content:flex-start;
+    gap:10px;
+    font-size:15px;
+    font-weight:700;
+    line-height:1.35;
+    transition:left .3s ease;
+    overflow:hidden;
+}
+.standby-bulletin i{color:#ffda00;flex:0 0 auto;z-index:1}
+.standby-bulletin-track{flex:1;min-width:0;overflow:hidden}
+.standby-bulletin-runner{
+    display:flex;
+    width:max-content;
+    animation:standbyTicker 22s linear infinite;
+    will-change:transform;
+}
+.standby-bulletin-message{
+    display:block;
+    flex:0 0 var(--standby-ticker-width, 100vw);
+    width:var(--standby-ticker-width, 100vw);
+    white-space:nowrap;
+}
+.standby-bulletin:hover .standby-bulletin-runner{animation-play-state:paused}
+@keyframes standbyTicker{
+    from{transform:translateX(0)}
+    to{transform:translateX(calc(-1 * var(--standby-ticker-width, 100vw)))}
+}
+.sidebar.collapsed ~ .standby-bulletin{left:70px}
+body.dashboard-has-standby{padding-bottom:58px}
+@media(max-width:768px){
+    .standby-bulletin,.sidebar.collapsed ~ .standby-bulletin{left:0;padding:9px 12px;font-size:13px}
+    .standby-bulletin-message{overflow:hidden;text-overflow:ellipsis}
+}
+@media(prefers-reduced-motion:reduce){
+    .standby-bulletin-track{overflow-x:auto;text-align:center}
+    .standby-bulletin-runner{display:block;width:100%;animation:none}
+    .standby-bulletin-message{white-space:normal;padding-right:0}
+    .standby-bulletin-message[aria-hidden="true"]{display:none}
+}
+
 .pm-nav-bubble i{
     font-size:18px;
     filter:drop-shadow(0 2px 4px rgba(0,0,0,.35));
@@ -773,7 +847,7 @@ $pmTaskCount = count($pmTasks);
 
 <div class="main" id="main">
     <div class="banner mb-4">
-        <h2><strong>Crossroad Solutions Inventory Management</strong></h2>
+        <h2><strong>Crossroad Solutions Operation Management</strong></h2>
         <p>Manage contracts, assets, and tenders in one centralized system.</p>
     </div>
 
@@ -793,14 +867,14 @@ $pmTaskCount = count($pmTasks);
                         <h3 class="pm-alert-title">Task Bulletin</h3>
 
                         <p class="pm-alert-subtitle">
-                            Pending monthly PM tasks stay here until the checklist is completed.
+                            Pending dated PM tasks stay here until the checklist is completed.
                         </p>
                     </div>
                 </div>
 
                 <div class="pm-alert-summary">
                     <span class="pm-month-pill">
-                        <i class="fa fa-calendar-days"></i> <?= dashboardEscape($currentMonthName) ?>
+                        <i class="fa fa-calendar-days"></i> All Dated Tasks
                     </span>
 
                     <span class="pm-count-pill">
@@ -960,8 +1034,8 @@ $pmTaskCount = count($pmTasks);
                     </div>
 
                     <div>
-                        <strong>No pending Preventive Management task for <?= dashboardEscape($currentMonthName) ?>.</strong>
-                        <span>Dated checklist tasks will appear here automatically when they are scheduled for the current month.</span>
+                        <strong>No pending dated Preventive Management task.</strong>
+                        <span>Dated checklist tasks will appear here automatically until they are completed.</span>
                     </div>
                 </div>
             <?php endif; ?>
@@ -1005,13 +1079,13 @@ $pmTaskCount = count($pmTasks);
     <div class="section-divider"></div>
 
     <?php if($canViewInventory): ?>
-        <h4>Asset Inventory Overview</h4>
+        <h4>Inventory Overview</h4>
 
         <div class="row text-center mb-4">
             <div class="col-lg-3 col-md-6 col-12 mb-3">
                 <div class="stat-card <?= $isInventoryOutputAllowed ? 'clickable' : 'disabled-card' ?>"
                     <?php if($isInventoryOutputAllowed): ?>onclick="openExportModal('asset')"<?php endif; ?>>
-                    <h6>Totol Parts</h6>
+                    <h6>Total Parts</h6>
                     <h2><?= $totalDevices ?></h2>
                 </div>
             </div>
@@ -1046,24 +1120,51 @@ $pmTaskCount = count($pmTasks);
                 <p id="exportText" class="mb-3"></p>
 
                 <?php if($isExportAllowed): ?>
-                    <button class="btn btn-success w-100 mb-2" onclick="exportData('excel')">
+                    <button class="btn btn-success w-100 mb-2" onclick="chooseOutputFormat('excel')">
                         <i class="fa fa-file-excel"></i> Excel
                     </button>
 
-                    <button class="btn btn-danger w-100 mb-2" onclick="exportData('pdf')">
+                    <button class="btn btn-danger w-100 mb-2" onclick="chooseOutputFormat('pdf')">
                         <i class="fa fa-file-pdf"></i> PDF
                     </button>
 
-                    <button class="btn btn-primary w-100 mb-2" onclick="exportData('print')">
+                    <button class="btn btn-primary w-100 mb-2" onclick="chooseOutputFormat('print')">
                         <i class="fa fa-print"></i> Print
                     </button>
                 <?php endif; ?>
 
                 <?php if($isReportAllowed): ?>
-                    <button class="btn btn-dark w-100" onclick="generateReport()">
+                    <button class="btn btn-dark w-100" onclick="chooseOutputFormat('report')">
                         <i class="fa fa-file-lines"></i> Report
                     </button>
                 <?php endif; ?>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="stockMovementModal">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title">Choose Stock Movement</h5>
+                <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body text-center">
+                <p id="stockMovementText" class="mb-3"></p>
+
+                <button class="btn btn-outline-success w-100 mb-2" onclick="chooseStockMovement('stock_in')">
+                    <i class="fa fa-arrow-down"></i> Stock In
+                </button>
+
+                <button class="btn btn-outline-danger w-100 mb-2" onclick="chooseStockMovement('stock_out')">
+                    <i class="fa fa-arrow-up"></i> Stock Out
+                </button>
+
+                <button class="btn btn-outline-dark w-100" onclick="chooseStockMovement('all')">
+                    <i class="fa fa-arrows-up-down"></i> Both Stock In & Stock Out
+                </button>
             </div>
         </div>
     </div>
@@ -1168,28 +1269,34 @@ $pmTaskCount = count($pmTasks);
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header bg-dark text-white">
-                <h5 class="modal-title">Choose Project</h5>
+                <h5 class="modal-title">Choose Project Code or Owner</h5>
                 <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
 
             <div class="modal-body">
-                <label for="contractReportProject" class="form-label">Project</label>
-                <select id="contractReportProject" class="form-select">
-                    <option value="">Select project</option>
-                    <?php foreach($contractReportProjects as $project): ?>
-                        <?php
-                            $projectLabel = trim((string)($project['project_name'] ?? ''));
-                            $contractNo = trim((string)($project['contract_no'] ?? ''));
-
-                            if($contractNo !== ""){
-                                $projectLabel .= " (" . $contractNo . ")";
-                            }
-                        ?>
-                        <option value="<?= (int)$project['no'] ?>">
-                            <?= dashboardEscape($projectLabel) ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
+                <div class="row g-2">
+                    <div class="col-md-4">
+                        <label for="contractReportProjectFilterType" class="form-label">View By</label>
+                        <select id="contractReportProjectFilterType" class="form-select">
+                            <option value="project_code">Project Code</option>
+                            <option value="owner">Owner</option>
+                        </select>
+                    </div>
+                    <div class="col-md-8">
+                        <label for="contractReportProjectFilterValue" class="form-label">Value</label>
+                        <input type="text" id="contractReportProjectFilterValue" class="form-control" list="contractReportProjectCodeOptions" autocomplete="off">
+                        <datalist id="contractReportProjectCodeOptions">
+                            <?php foreach($contractReportSuggestions['project_codes'] as $code): ?>
+                                <option value="<?= dashboardEscape($code) ?>"></option>
+                            <?php endforeach; ?>
+                        </datalist>
+                        <datalist id="contractReportOwnerOptions">
+                            <?php foreach($contractReportSuggestions['owners'] as $owner): ?>
+                                <option value="<?= dashboardEscape($owner) ?>"></option>
+                            <?php endforeach; ?>
+                        </datalist>
+                    </div>
+                </div>
 
                 <button class="btn btn-dark w-100 mt-3" onclick="continueContractProjectReport()">
                     Continue
@@ -1272,6 +1379,47 @@ $pmTaskCount = count($pmTasks);
 </div>
 <?php endif; ?>
 
+<?php if(!empty($activeStandbyBulletins) || !empty($standaloneBulletinMessages)): ?>
+<div class="standby-bulletin" role="status" aria-label="Current standby bulletin">
+    <i class="fa fa-bullhorn" aria-hidden="true"></i>
+    <div class="standby-bulletin-track">
+        <div class="standby-bulletin-runner">
+            <?php for($tickerCopy = 0; $tickerCopy < 2; $tickerCopy++): ?>
+            <span class="standby-bulletin-message"<?= $tickerCopy === 1 ? ' aria-hidden="true"' : '' ?>>
+            <?php foreach($activeStandbyBulletins as $index => $standby): ?>
+                <?php if($index > 0): ?> &nbsp;&bull;&nbsp; <?php endif; ?>
+                <?= dashboardEscape($standby['standby_name']) ?> is standby for this week <?= dashboardEscape(date('d/m/Y', strtotime($standby['start_date']))) ?> - <?= dashboardEscape(date('d/m/Y', strtotime($standby['end_date']))) ?>
+            <?php endforeach; ?>
+            <?php foreach($standaloneBulletinMessages as $messageIndex => $standaloneMessage): ?>
+                <?php if(!empty($activeStandbyBulletins) || $messageIndex > 0): ?> &nbsp;&bull;&nbsp; <?php endif; ?>
+                <?= dashboardEscape($standaloneMessage) ?>
+            <?php endforeach; ?>
+            </span>
+            <?php endfor; ?>
+        </div>
+    </div>
+</div>
+<script>document.body.classList.add('dashboard-has-standby');</script>
+<script>
+(function(){
+    const track = document.querySelector('.standby-bulletin-track');
+    const runner = document.querySelector('.standby-bulletin-runner');
+    if(!track || !runner){ return; }
+
+    function setTickerWidth(){
+        runner.style.setProperty('--standby-ticker-width', track.clientWidth + 'px');
+    }
+
+    setTickerWidth();
+    if(window.ResizeObserver){
+        new ResizeObserver(setTickerWidth).observe(track);
+    }else{
+        window.addEventListener('resize', setTickerWidth);
+    }
+})();
+</script>
+<?php endif; ?>
+
 <?php include "layout/footer.php"; ?>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
@@ -1303,12 +1451,14 @@ function handlePmTaskKey(event, url){
 let isContractReportAllowed = <?= json_encode($canViewContracts) ?>;
 let contractReportType = "";
 let contractReportProjectId = "";
+let contractReportProjectFilterType = "project_code";
+let contractReportProjectFilterValue = "";
 
 const contractReportLabels = {
     all: "All Total Contract",
     active: "Active Contract",
     pm: "PM Only Based on Contract",
-    project: "Specific Project",
+    project: "Specific Project / Owner",
     custom_range: "Custom Range Date"
 };
 
@@ -1350,6 +1500,8 @@ function openContractReportModal(){
 
     contractReportType = "";
     contractReportProjectId = "";
+    contractReportProjectFilterType = "project_code";
+    contractReportProjectFilterValue = "";
     showDashboardModal("contractReportTypeModal");
 }
 
@@ -1362,6 +1514,8 @@ function openContractReportPeriod(type){
 
     if(type !== "project"){
         contractReportProjectId = "";
+        contractReportProjectFilterType = "project_code";
+        contractReportProjectFilterValue = "";
     }
 
     let label = contractReportLabels[type] || "Contract";
@@ -1383,19 +1537,38 @@ function openContractProjectPicker(){
 
     contractReportType = "project";
     contractReportProjectId = "";
+    contractReportProjectFilterType = "project_code";
+    contractReportProjectFilterValue = "";
+
+    let typeSelect = document.getElementById("contractReportProjectFilterType");
+    let valueInput = document.getElementById("contractReportProjectFilterValue");
+
+    if(typeSelect){
+        typeSelect.value = "project_code";
+    }
+
+    if(valueInput){
+        valueInput.value = "";
+    }
+
+    syncContractReportProjectDatalist();
     hideDashboardModal("contractReportTypeModal");
     showDashboardModal("contractReportProjectModal");
 }
 
 function continueContractProjectReport(){
-    let select = document.getElementById("contractReportProject");
+    let typeSelect = document.getElementById("contractReportProjectFilterType");
+    let valueInput = document.getElementById("contractReportProjectFilterValue");
+    let filterValue = valueInput ? valueInput.value.trim() : "";
 
-    if(!select || select.value === ""){
-        alert("Please choose a project.");
+    if(filterValue === ""){
+        alert("Please enter a project code or owner.");
         return;
     }
 
-    contractReportProjectId = select.value;
+    contractReportProjectId = "";
+    contractReportProjectFilterType = typeSelect && typeSelect.value === "owner" ? "owner" : "project_code";
+    contractReportProjectFilterValue = filterValue;
     openContractReportPeriod("project");
 }
 
@@ -1408,6 +1581,8 @@ function openContractReportCustomRange(type){
 
     if(contractReportType !== "project"){
         contractReportProjectId = "";
+        contractReportProjectFilterType = "project_code";
+        contractReportProjectFilterValue = "";
     }
 
     let label = contractReportLabels[contractReportType] || "Contract";
@@ -1449,12 +1624,42 @@ function buildContractReportUrl(period, startDate = "", endDate = ""){
         params.set("project_id", contractReportProjectId);
     }
 
+    if(contractReportType === "project" && contractReportProjectFilterValue !== ""){
+        params.set("project_filter_type", contractReportProjectFilterType);
+        params.set("project_filter_value", contractReportProjectFilterValue);
+    }
+
     if(period === "custom"){
         params.set("start_date", startDate);
         params.set("end_date", endDate);
     }
 
     return "../backend/generate_contract_report.php?" + params.toString();
+}
+
+function syncContractReportProjectDatalist(){
+    let typeSelect = document.getElementById("contractReportProjectFilterType");
+    let valueInput = document.getElementById("contractReportProjectFilterValue");
+
+    if(!typeSelect || !valueInput){
+        return;
+    }
+
+    valueInput.setAttribute("list", typeSelect.value === "owner" ? "contractReportOwnerOptions" : "contractReportProjectCodeOptions");
+}
+
+let contractReportProjectTypeSelect = document.getElementById("contractReportProjectFilterType");
+if(contractReportProjectTypeSelect){
+    contractReportProjectTypeSelect.addEventListener("change", function(){
+        let valueInput = document.getElementById("contractReportProjectFilterValue");
+
+        if(valueInput){
+            valueInput.value = "";
+        }
+
+        syncContractReportProjectDatalist();
+    });
+    syncContractReportProjectDatalist();
 }
 
 function generateContractReportByPeriod(period){
@@ -1485,6 +1690,8 @@ function generateContractCustomReport(){
 }
 
 let exportType = "";
+let exportFormat = "";
+let exportMovement = "";
 let isExportAllowed = <?= json_encode($isExportAllowed) ?>;
 let isReportAllowed = <?= json_encode($isReportAllowed) ?>;
 
@@ -1494,20 +1701,76 @@ function openExportModal(type){
     }
 
     exportType = type;
+    exportFormat = "";
+    exportMovement = "";
 
     document.getElementById("exportText").innerText = type === "asset"
-        ? "Export TOTAL ASSETS (Inventory + Stock Out)"
-        : "Export SERVERS (Inventory + Stock Out)";
+        ? "Choose output for asset stock movement"
+        : "Choose output for server stock movement";
 
     new bootstrap.Modal(document.getElementById('exportModal')).show();
 }
 
-function exportData(format){
-    let url = exportType === "asset"
-        ? "../backend/export_assets.php?format=" + format
-        : "../backend/export_servers.php?format=" + format;
+function chooseOutputFormat(format){
+    if(format === "report"){
+        if(!isReportAllowed){
+            return;
+        }
+    }else if(!isExportAllowed){
+        return;
+    }
 
-    if(format === "pdf" || format === "print"){
+    exportFormat = format;
+    exportMovement = "";
+
+    document.getElementById("stockMovementText").innerText = (exportType === "asset" ? "Asset" : "Server")
+        + " " + format.toUpperCase()
+        + ": choose Stock In, Stock Out, or Both.";
+
+    let exportModalElement = document.getElementById("exportModal");
+    let movementModalElement = document.getElementById("stockMovementModal");
+    let exportModal = bootstrap.Modal.getInstance(exportModalElement);
+    let showMovementModal = function(){
+        bootstrap.Modal.getOrCreateInstance(movementModalElement).show();
+    };
+
+    if(exportModal){
+        exportModalElement.addEventListener("hidden.bs.modal", showMovementModal, { once: true });
+        exportModal.hide();
+    }else{
+        showMovementModal();
+    }
+}
+
+function chooseStockMovement(movement){
+    exportMovement = movement;
+
+    if(exportFormat === "report"){
+        generateReport();
+        return;
+    }
+
+    exportData();
+}
+
+function exportData(){
+    if(exportType === "" || exportFormat === "" || exportMovement === ""){
+        return;
+    }
+
+    let url = exportType === "asset"
+        ? "../backend/export_assets.php?format=" + encodeURIComponent(exportFormat)
+        : "../backend/export_servers.php?format=" + encodeURIComponent(exportFormat);
+
+    url += "&movement=" + encodeURIComponent(exportMovement);
+
+    let movementModal = bootstrap.Modal.getInstance(document.getElementById("stockMovementModal"));
+
+    if(movementModal){
+        movementModal.hide();
+    }
+
+    if(exportFormat === "pdf" || exportFormat === "print"){
         window.open(url, "_blank");
     }else{
         window.location.href = url;
@@ -1515,26 +1778,34 @@ function exportData(format){
 }
 
 function generateReport(){
-    if(!isReportAllowed || exportType === ""){
+    if(!isReportAllowed || exportType === "" || exportMovement === ""){
         return;
     }
 
-    document.getElementById("reportRangeText").innerText = exportType === "asset"
-        ? "Generate ASSET INVENTORY report"
-        : "Generate SERVER INVENTORY report";
+    let typeLabel = exportType === "asset" ? "ASSET" : "SERVER";
+    let movementLabel = "STOCK IN & STOCK OUT";
+
+    if(exportMovement === "stock_in"){
+        movementLabel = "STOCK IN";
+    }
+    else if(exportMovement === "stock_out"){
+        movementLabel = "STOCK OUT";
+    }
+
+    document.getElementById("reportRangeText").innerText = "Generate " + typeLabel + " " + movementLabel + " report";
 
     resetCustomReportRange();
 
-    let exportModalElement = document.getElementById("exportModal");
+    let movementModalElement = document.getElementById("stockMovementModal");
     let reportRangeModalElement = document.getElementById("reportRangeModal");
-    let exportModal = bootstrap.Modal.getInstance(exportModalElement);
+    let movementModal = bootstrap.Modal.getInstance(movementModalElement);
     let showReportRangeModal = function(){
         bootstrap.Modal.getOrCreateInstance(reportRangeModalElement).show();
     };
 
-    if(exportModal){
-        exportModalElement.addEventListener("hidden.bs.modal", showReportRangeModal, { once: true });
-        exportModal.hide();
+    if(movementModal){
+        movementModalElement.addEventListener("hidden.bs.modal", showReportRangeModal, { once: true });
+        movementModal.hide();
     }else{
         showReportRangeModal();
     }
@@ -1544,7 +1815,9 @@ function buildReportUrl(period, startDate = "", endDate = ""){
     let url = "../backend/generate_inventory_report.php?type="
         + encodeURIComponent(exportType)
         + "&period="
-        + encodeURIComponent(period);
+        + encodeURIComponent(period)
+        + "&movement="
+        + encodeURIComponent(exportMovement);
 
     if(period === "custom"){
         url += "&start_date=" + encodeURIComponent(startDate)

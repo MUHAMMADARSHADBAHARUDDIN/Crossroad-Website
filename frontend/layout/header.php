@@ -16,6 +16,18 @@ if(!isset($mysqli)){
 }
 
 require_once __DIR__ . "/../../includes/permissions.php";
+require_once __DIR__ . "/../../includes/auth_schema.php";
+require_once __DIR__ . "/../../includes/planner_profiles.php";
+
+$currentScript = basename($_SERVER['SCRIPT_NAME'] ?? "");
+if($currentScript !== "change_password.php" && authCurrentAccountMustChangePassword($mysqli)){
+    if(!headers_sent()){
+        header("Location: change_password.php");
+    } else {
+        echo "<script>window.location.href='change_password.php';</script>";
+    }
+    exit();
+}
 
 /* =========================================================
    NICKNAME DISPLAY
@@ -27,62 +39,8 @@ require_once __DIR__ . "/../../includes/permissions.php";
      Wan Nur Azlin Binti Mohd Ghazali => Azlin
 ========================================================= */
 function getNickname($fullName){
-    $fullName = trim($fullName);
-
-    if($fullName === ""){
-        return "User";
-    }
-
-    $parts = preg_split('/\s+/', $fullName);
-
-    if(count($parts) === 1){
-        return $parts[0];
-    }
-
-    /*
-        ✅ IMPORTANT:
-        Keep all words lowercase because we compare using strtolower().
-        Add more names here if you want to skip them.
-    */
-    $skipFirstNames = [
-        "muhammad",
-        "muhamad",
-        "mohammad",
-        "mohamad",
-        "mohd",
-        "ahmad",
-        "nur",
-        "wan",
-        "siti",
-        "syed",
-        "sharifah",
-        "tengku",
-        "nik"
-    ];
-
-    /*
-        ✅ This will skip multiple front names.
-        Example:
-        Wan Nur Azlin Binti Mohd Ghazali
-        - skip Wan
-        - skip Nur
-        - show Azlin
-    */
-    foreach($parts as $part){
-        $cleanPart = strtolower(trim($part));
-
-        if($cleanPart === ""){
-            continue;
-        }
-
-        if(in_array($cleanPart, $skipFirstNames, true)){
-            continue;
-        }
-
-        return $part;
-    }
-
-    return $parts[0];
+    $nickname = plannerAccountNickname($fullName);
+    return $nickname !== "" ? $nickname : "User";
 }
 
 $nickname = getNickname($username);
@@ -117,11 +75,11 @@ $nickname = getNickname($username);
 
     <div class="header-left">
 
-        <div class="menu-btn" id="menuBtn" onclick="toggleSidebar()">
+        <button type="button" class="menu-btn" id="menuBtn" aria-label="Toggle navigation menu" aria-controls="sidebar" aria-expanded="false">
             <span></span>
             <span></span>
             <span></span>
-        </div>
+        </button>
 
         <img src="../image/logo.png" class="header-logo">
 
@@ -142,3 +100,254 @@ $nickname = getNickname($username);
     </div>
 
 </div>
+
+<script>
+(function(){
+    if(window.CrossroadSidebarShell){
+        return;
+    }
+
+    function getShellElements(){
+        return {
+            sidebar: document.getElementById("sidebar"),
+            main: document.getElementById("main") || document.querySelector(".main"),
+            btn: document.getElementById("menuBtn")
+        };
+    }
+
+    function isMobile(){
+        return window.matchMedia && window.matchMedia("(max-width: 768px)").matches;
+    }
+
+    let wasMobile = null;
+
+    function setButtonState(btn, isOpen, iconActive){
+        if(!btn){
+            return;
+        }
+
+        const visualActive = typeof iconActive === "boolean" ? iconActive : isOpen;
+
+        btn.classList.toggle("active", visualActive);
+        btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    }
+
+    function closeMobileMenu(){
+        const shell = getShellElements();
+
+        if(!shell.sidebar){
+            return;
+        }
+
+        shell.sidebar.classList.remove("mobile-open");
+        document.body.classList.remove("sidebar-open", "sidebar-mobile-open");
+        setButtonState(shell.btn, false, true);
+    }
+
+    function syncShell(forceClose){
+        const shell = getShellElements();
+
+        if(!shell.sidebar){
+            return;
+        }
+
+        const mobile = isMobile();
+
+        if(mobile){
+            shell.sidebar.classList.remove("collapsed");
+
+            if(shell.main){
+                shell.main.classList.add("expanded");
+            }
+
+            if(forceClose || wasMobile !== true){
+                closeMobileMenu();
+            }
+
+            wasMobile = true;
+            return;
+        }
+
+        shell.sidebar.classList.remove("mobile-open");
+        document.body.classList.remove("sidebar-open", "sidebar-mobile-open");
+
+        if(shell.main){
+            shell.main.classList.toggle("expanded", shell.sidebar.classList.contains("collapsed"));
+        }
+
+        setButtonState(shell.btn, shell.sidebar.classList.contains("collapsed"));
+        wasMobile = false;
+    }
+
+    function toggleShell(event){
+        if(event){
+            event.preventDefault();
+        }
+
+        const shell = getShellElements();
+
+        if(!shell.sidebar || !shell.btn){
+            return false;
+        }
+
+        if(isMobile()){
+            const isOpen = !shell.sidebar.classList.contains("mobile-open");
+
+            shell.sidebar.classList.remove("collapsed");
+            shell.sidebar.classList.toggle("mobile-open", isOpen);
+            document.body.classList.toggle("sidebar-open", isOpen);
+            document.body.classList.toggle("sidebar-mobile-open", isOpen);
+
+            if(shell.main){
+                shell.main.classList.add("expanded");
+            }
+
+            setButtonState(shell.btn, isOpen, !isOpen);
+            return false;
+        }
+
+        shell.sidebar.classList.toggle("collapsed");
+
+        if(shell.main){
+            shell.main.classList.toggle("expanded", shell.sidebar.classList.contains("collapsed"));
+        }
+
+        setButtonState(shell.btn, shell.sidebar.classList.contains("collapsed"));
+        return false;
+    }
+
+    function handleMenuButtonClick(event){
+        const btn = document.getElementById("menuBtn");
+
+        if(!btn || (event.target !== btn && !btn.contains(event.target))){
+            return;
+        }
+
+        event.stopImmediatePropagation();
+        toggleShell(event);
+    }
+
+    function handleDocumentClick(event){
+        const shell = getShellElements();
+
+        if(!isMobile() || !shell.sidebar || !shell.sidebar.classList.contains("mobile-open")){
+            return;
+        }
+
+        if(shell.sidebar.contains(event.target) || (shell.btn && shell.btn.contains(event.target))){
+            return;
+        }
+
+        closeMobileMenu();
+    }
+
+    function handleKeydown(event){
+        if(event.key === "Escape"){
+            closeMobileMenu();
+        }
+    }
+
+    window.CrossroadSidebarShell = {
+        toggle: toggleShell,
+        close: closeMobileMenu,
+        sync: syncShell
+    };
+
+    window.toggleSidebar = toggleShell;
+    document.addEventListener("click", handleMenuButtonClick, true);
+    document.addEventListener("click", handleDocumentClick);
+    document.addEventListener("keydown", handleKeydown);
+    window.addEventListener("resize", syncShell);
+
+    if(document.readyState === "loading"){
+        document.addEventListener("DOMContentLoaded", function(){
+            window.toggleSidebar = toggleShell;
+            syncShell(true);
+        });
+    }else{
+        window.toggleSidebar = toggleShell;
+        syncShell(true);
+    }
+})();
+</script>
+<?php include_once __DIR__ . "/realtime.php"; ?>
+
+<script>
+(function(){
+    if(window.CrossroadResponsiveTables){
+        return;
+    }
+
+    window.CrossroadResponsiveTables = true;
+
+    function hasScrollShell(table){
+        return table.closest(".table-responsive, .contract-table-responsive, .contracts-table-wrap, .responsive-table-scroll, .dataTables_wrapper, .dataTables_scroll");
+    }
+
+    function wrapTable(table){
+        if(!table || table.tagName !== "TABLE" || !table.classList.contains("table") || hasScrollShell(table)){
+            return;
+        }
+
+        const parent = table.parentNode;
+
+        if(!parent){
+            return;
+        }
+
+        const wrapper = document.createElement("div");
+        wrapper.className = "responsive-table-scroll";
+        parent.insertBefore(wrapper, table);
+        wrapper.appendChild(table);
+    }
+
+    function enhanceTables(root){
+        const scope = root && root.querySelectorAll ? root : document;
+
+        if(scope.matches && scope.matches("table.table")){
+            wrapTable(scope);
+        }
+
+        scope.querySelectorAll("table.table").forEach(wrapTable);
+    }
+
+    function observeTables(){
+        if(!window.MutationObserver || !document.body){
+            return;
+        }
+
+        let queued = false;
+        const schedule = window.requestAnimationFrame || function(callback){
+            return window.setTimeout(callback, 16);
+        };
+
+        const observer = new MutationObserver(function(){
+            if(queued){
+                return;
+            }
+
+            queued = true;
+            schedule(function(){
+                queued = false;
+                enhanceTables(document);
+            });
+        });
+
+        observer.observe(document.body, {
+            childList:true,
+            subtree:true
+        });
+    }
+
+    function start(){
+        enhanceTables(document);
+        observeTables();
+    }
+
+    if(document.readyState === "loading"){
+        document.addEventListener("DOMContentLoaded", start);
+    }else{
+        start();
+    }
+})();
+</script>

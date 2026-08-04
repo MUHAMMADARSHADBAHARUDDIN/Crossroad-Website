@@ -5,12 +5,15 @@ startSecureSession();
 require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
 require_once "../includes/activity_log.php";
+require_once "../includes/contract_task_documents.php";
 
 header("Content-Type: text/plain; charset=UTF-8");
 
 if(!isset($_SESSION['username'])){
     exit("No session");
 }
+
+ensureContractTaskCompletionSchema($mysqli);
 
 function addTaskTableExists($mysqli, $tableName){
     $tableName = $mysqli->real_escape_string($tableName);
@@ -35,8 +38,12 @@ function validTaskDate($value){
 
 $contractId = isset($_POST['contract_id']) ? (int)$_POST['contract_id'] : 0;
 $taskText = trim($_POST['task_text'] ?? "");
+$taskType = trim($_POST['task_type'] ?? "");
 $taskStartDate = trim($_POST['task_start_date'] ?? "");
 $taskEndDate = trim($_POST['task_end_date'] ?? "");
+$claimAmountRaw = trim((string)($_POST['claim_amount'] ?? ""));
+$invoice = trim((string)($_POST['invoice'] ?? ""));
+$claimAmount = null;
 
 if($contractId <= 0){
     exit("Invalid contract.");
@@ -44,6 +51,20 @@ if($contractId <= 0){
 
 if($taskText === ""){
     exit("Task cannot be empty.");
+}
+
+if($taskType === "claim" && $invoice === ""){
+    exit("Please enter the invoice.");
+}
+
+if($claimAmountRaw !== ""){
+    $claimAmountRaw = str_replace([",", " "], "", $claimAmountRaw);
+
+    if(!is_numeric($claimAmountRaw) || (float)$claimAmountRaw < 0){
+        exit("Claim amount must be a positive number.");
+    }
+
+    $claimAmount = round((float)$claimAmountRaw, 2);
 }
 
 if(!validTaskDate($taskStartDate) || !validTaskDate($taskEndDate)){
@@ -92,6 +113,25 @@ if(!$contract){
 $createdBy = $contract['created_by'] ?? "";
 if(!hasContractTaskAddAccess($mysqli, $createdBy)){
     exit("Access denied. You do not have Task Add permission.");
+}
+
+$canViewClaim = hasContractClaimViewAccess($mysqli);
+if(!$canViewClaim && $claimAmountRaw !== ""){
+    exit("Access denied. You do not have View Claim permission.");
+}
+
+$hasDocumentUpload = isset($_FILES['task_document']) && ($_FILES['task_document']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
+
+if($hasDocumentUpload && !hasContractTaskDocumentUploadAccess($mysqli, $createdBy)){
+    exit("Access denied. You do not have checklist document upload permission.");
+}
+
+if($hasDocumentUpload){
+    $uploadError = contractTaskDocumentValidateUpload($_FILES['task_document']);
+
+    if($uploadError !== ""){
+        exit($uploadError);
+    }
 }
 
 if(addTaskColumnExists($mysqli, "contract_tasks", "task_text")){
@@ -154,6 +194,24 @@ if(addTaskColumnExists($mysqli, "contract_tasks", "created_by")){
     $params[] = $_SESSION['username'];
 }
 
+if(addTaskColumnExists($mysqli, "contract_tasks", "claim_amount") && $canViewClaim){
+    $columns[] = "claim_amount";
+    $placeholders[] = "?";
+    $types .= "d";
+    $params[] = $claimAmount;
+} elseif($claimAmount !== null){
+    exit("claim_amount column not found.");
+}
+
+if(addTaskColumnExists($mysqli, "contract_tasks", "invoice")){
+    $columns[] = "invoice";
+    $placeholders[] = "?";
+    $types .= "s";
+    $params[] = $invoice !== "" ? $invoice : null;
+} elseif($invoice !== ""){
+    exit("invoice column not found.");
+}
+
 $sql = "INSERT INTO contract_tasks (`" . implode("`, `", $columns) . "`) VALUES (" . implode(", ", $placeholders) . ")";
 $stmt = $mysqli->prepare($sql);
 
@@ -173,6 +231,42 @@ if(!$stmt->execute()){
 }
 
 $newTaskId = $stmt->insert_id;
+$uploadedDocumentName = "";
+
+if($hasDocumentUpload){
+    ensureContractTaskDocumentSchema($mysqli);
+
+    $file = $_FILES['task_document'];
+    $originalName = basename($file['name']);
+    $storedName = contractTaskDocumentStoredFileName($originalName);
+    $uploadDir = contractTaskDocumentEnsureUploadDir();
+    $targetPath = $uploadDir . "/" . $storedName;
+
+    if(!move_uploaded_file($file['tmp_name'], $targetPath)){
+        exit("Failed to move uploaded file.");
+    }
+
+    $docStmt = $mysqli->prepare("
+        INSERT INTO contract_task_documents (contract_id, task_id, file_name, original_file_name, uploaded_by)
+        VALUES (?, ?, ?, ?, ?)
+    ");
+
+    if(!$docStmt){
+        @unlink($targetPath);
+        exit("SQL Error: " . $mysqli->error);
+    }
+
+    $uploadedBy = $_SESSION['username'];
+    $docStmt->bind_param("iisss", $contractId, $newTaskId, $storedName, $originalName, $uploadedBy);
+
+    if(!$docStmt->execute()){
+        @unlink($targetPath);
+        exit("Failed to save checklist document: " . $docStmt->error);
+    }
+
+    $uploadedDocumentName = $originalName;
+}
+
 $username = $_SESSION['username'];
 $role = $_SESSION['role'] ?? "UNKNOWN";
 $ip = $_SERVER['REMOTE_ADDR'] ?? "Unknown";
@@ -186,6 +280,9 @@ $description = "User [$username] added a contract task.\n"
     . "Task ID: $newTaskId\n"
     . "Task: $taskText\n"
     . "Task Date: $dateText\n"
+    . "Claim Amount: " . ($claimAmount === null ? "Not Assigned" : number_format($claimAmount, 2)) . "\n"
+    . "Invoice: " . ($invoice === "" ? "Not Assigned" : $invoice) . "\n"
+    . ($uploadedDocumentName !== "" ? "Attached Document: $uploadedDocumentName\n" : "")
     . "Status: Pending\n"
     . "IP Address: $ip\n"
     . "Time: $time";

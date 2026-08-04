@@ -16,6 +16,7 @@ if(!hasPermission($mysqli, "inventory_stockout")){
 }
 
 $id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
+$ticketNumber = isset($_POST['ticket_number']) ? trim($_POST['ticket_number']) : "";
 $remark = isset($_POST['remark']) ? trim($_POST['remark']) : "";
 
 $username = $_SESSION['username'];
@@ -44,23 +45,30 @@ if(!$row){
 
 $insertStmt = $mysqli->prepare("
 INSERT INTO stock_out_history
-(part_number, serial_number, location, remark, quantity, stock_out_by)
-VALUES (?, ?, ?, ?, ?, ?)
+(part_number, serial_number, ticket_number, location, remark, quantity, stock_out_by)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 ");
+
+if(!$insertStmt){
+    exit("SQL Error: " . $mysqli->error);
+}
 
 $quantity = 1;
 
 $insertStmt->bind_param(
-    "ssssis",
+    "sssssis",
     $row['part_number'],
     $row['serial_number'],
+    $ticketNumber,
     $row['location'],
     $remark,
     $quantity,
     $username
 );
 
-$insertStmt->execute();
+if(!$insertStmt->execute()){
+    exit("Insert Error: " . $insertStmt->error);
+}
 
 $ip = $_SERVER['REMOTE_ADDR'];
 $time = date("Y-m-d H:i:s");
@@ -68,6 +76,7 @@ $time = date("Y-m-d H:i:s");
 $description = "User [$username] performed STOCK OUT on asset.
 Part Number: {$row['part_number']}
 Serial Number: {$row['serial_number']}
+Ticket Number: $ticketNumber
 Location: {$row['location']}
 Quantity: $quantity
 Remark: $remark

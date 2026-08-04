@@ -4,6 +4,7 @@ session_start();
 include("../includes/db_connect.php");
 require_once "../includes/activity_log.php";
 require_once "../includes/permissions.php";
+require_once "../includes/planner_profiles.php";
 
 if(!isset($_SESSION['username']) || !isset($_SESSION['role'])){
     die("No session");
@@ -12,6 +13,8 @@ if(!isset($_SESSION['username']) || !isset($_SESSION['role'])){
 if(!hasPermission($mysqli, "users_add")){
     die("Access denied.");
 }
+
+ensurePlannerProfileSchema($mysqli);
 
 /* =========================
    SELECTED PERMISSIONS
@@ -33,7 +36,11 @@ function isFullAdministratorAccess($permissions)
     return (
         in_array("users_full", $permissions, true) &&
         in_array("contracts_full", $permissions, true) &&
-        in_array("inventory_full", $permissions, true)
+        in_array("inventory_full", $permissions, true) &&
+        in_array("office_inventory_full", $permissions, true) &&
+        in_array("planner_full", $permissions, true) &&
+        in_array("visitor_full", $permissions, true) &&
+        in_array("bulletin_full", $permissions, true)
     );
 }
 
@@ -56,6 +63,8 @@ function allowedPermissionsList()
         "contracts_delete",
         "contracts_upload",
         "contracts_download",
+        "contracts_claim_view",
+        "contracts_master_budget",
         "contracts_personal",
 
         /* Task permissions */
@@ -63,6 +72,11 @@ function allowedPermissionsList()
         "contracts_task_add",
         "contracts_task_edit",
         "contracts_task_delete",
+        "contracts_task_document_add",
+        "contracts_task_document_upload",
+        "contracts_task_document_view",
+        "contracts_task_document_download",
+        "contracts_task_document_delete",
 
         "inventory_full",
         "inventory_view",
@@ -74,7 +88,30 @@ function allowedPermissionsList()
         "inventory_stockout_delete_info",
         "inventory_delete",
         "inventory_export",
-        "inventory_report"
+        "inventory_report",
+
+        "office_inventory_full",
+        "office_inventory_view",
+        "office_inventory_add",
+        "office_inventory_edit",
+        "office_inventory_delete",
+        "office_inventory_document_view",
+        "office_inventory_document_download",
+        "office_inventory_document_delete",
+
+        "planner_full",
+        "planner_view",
+        "planner_add",
+        "planner_edit",
+        "planner_delete"
+        ,"visitor_full"
+        ,"visitor_view"
+        ,"visitor_delete"
+        ,"visitor_report"
+        ,"bulletin_full"
+        ,"bulletin_view"
+        ,"bulletin_add"
+        ,"bulletin_delete"
     ];
 }
 
@@ -173,11 +210,17 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
     $email = trim($_POST['email'] ?? "");
     $password = trim($_POST['password'] ?? "");
     $role = trim($_POST['role'] ?? "");
+    $plannerRole = plannerNormalizeOperationalRole($_POST['planner_role'] ?? "");
+    $telegramChatId = trim($_POST['telegram_chat_id'] ?? "");
 
     $permissions = selectedPermissions();
 
-    if($username === "" || $email === "" || $password === "" || $role === ""){
+    if($username === "" || $email === "" || $password === "" || $role === "" || $plannerRole === ""){
         die("Please fill in all required fields.");
+    }
+
+    if($telegramChatId !== "" && !preg_match('/^(?:-?\d{5,20}|@[A-Za-z0-9_]{5,32})$/', $telegramChatId)){
+        die("Telegram Chat ID must be a numeric chat ID or a valid @channel username.");
     }
 
     if(strlen($password) < 8){
@@ -272,6 +315,10 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
         $actionNote = "Created normal user account with selected permissions.";
     }
 
+    if(!plannerSaveUserProfile($mysqli, $username, $accountType, $plannerRole, $telegramChatId)){
+        die("Unable to save the planner role.");
+    }
+
     $ip = $_SERVER['REMOTE_ADDR'];
     $time = date("Y-m-d H:i:s");
 
@@ -279,6 +326,7 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
 Username: $username
 Email: $email
 Role/Title: $role
+Planner Role: " . plannerOperationalRoleLabel($plannerRole) . "
 Account Type: $accountType
 Details: $actionNote
 IP Address: $ip

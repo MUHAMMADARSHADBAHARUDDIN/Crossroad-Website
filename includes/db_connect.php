@@ -1,16 +1,17 @@
 <?php
-$host = "127.0.0.1";
-$user = "crossroad_app";
-$password = "StrongPassword123!";
-$database = "crossroad_solutions_inventory_management";
-$port = 3306;
+require_once __DIR__ . "/env.php";
 
-mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+$host = trim((string)(getenv("CROSSROAD_DB_HOST") ?: "127.0.0.1"));
+$user = trim((string)(getenv("CROSSROAD_DB_USER") ?: "crossroad_app"));
+$password = (string)(getenv("CROSSROAD_DB_PASS") ?: "StrongPassword123!");
+$database = trim((string)(getenv("CROSSROAD_DB_NAME") ?: "crossroad_solutions_inventory_management"));
+$port = (int)(getenv("CROSSROAD_DB_PORT") ?: 3306);
 
-try {
-    $mysqli = new mysqli($host, $user, $password, $database, $port);
-    $mysqli->set_charset("utf8mb4");
-} catch (mysqli_sql_exception $e) {
-    die("Database connection failed: " . $e->getMessage());
+$mysqli = new mysqli($host, $user, $password, $database, $port);
+
+if ($mysqli->connect_error) {
+    die("Database connection failed: " . $mysqli->connect_error);
 }
+
+$mysqli->set_charset("utf8mb4");
 ?>

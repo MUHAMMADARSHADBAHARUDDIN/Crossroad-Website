@@ -595,12 +595,13 @@ if(isset($_GET['search'])){
 
 <style>
 .table-responsive {
-    overflow-x: hidden !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling:touch;
 }
 
 #logsTable {
     width: 100% !important;
-    table-layout: fixed;
+    table-layout: auto;
 }
 
 #logsTable td {
@@ -837,6 +838,35 @@ if(isset($_GET['search'])){
 }
 
 @media(max-width:768px){
+    .table-responsive{
+        overflow-x:auto !important;
+        -webkit-overflow-scrolling:touch;
+    }
+
+    #logsTable{
+        min-width:980px;
+    }
+
+    #logsTable th{
+        white-space:nowrap !important;
+        max-width:none;
+    }
+
+    #logsTable td{
+        white-space:normal !important;
+        max-width:360px;
+        word-break:break-word;
+        overflow-wrap:anywhere;
+    }
+
+    #logsTable td:first-child,
+    #logsTable td:last-child{
+        white-space:nowrap !important;
+        max-width:none;
+        word-break:normal;
+        overflow-wrap:normal;
+    }
+
     .activity-toolbar{
         align-items:flex-start;
     }

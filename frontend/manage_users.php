@@ -9,6 +9,7 @@ if(!isset($_SESSION['username'])){
 
 include("../includes/db_connect.php");
 require_once "../includes/permissions.php";
+require_once "../includes/planner_profiles.php";
 
 if(!hasPermission($mysqli, "users_view")){
     die("Access denied.");
@@ -17,6 +18,8 @@ if(!hasPermission($mysqli, "users_view")){
 $canAddUser = hasPermission($mysqli, "users_add");
 $canEditUser = hasPermission($mysqli, "users_edit");
 $canDeleteUser = hasPermission($mysqli, "users_delete");
+ensurePlannerProfileSchema($mysqli);
+$plannerOperationalRoles = plannerOperationalRoles();
 
 $search = "";
 
@@ -47,9 +50,16 @@ $permissionGroups = [
             "contracts_delete" => "Delete",
             "contracts_upload" => "Upload",
             "contracts_download" => "Download",
+            "contracts_claim_view" => "View Claim",
+            "contracts_master_budget" => "Master Budget",
             "contracts_task" => "Task Add",
             "contracts_task_edit" => "Task Edit",
             "contracts_task_delete" => "Task Delete",
+            "contracts_task_document_add" => "Task Document Add",
+            "contracts_task_document_upload" => "Task Document Upload",
+            "contracts_task_document_view" => "Task Document View",
+            "contracts_task_document_download" => "Task Document Download",
+            "contracts_task_document_delete" => "Task Document Delete",
             "contracts_personal" => "Personal / Own"
         ]
     ],
@@ -67,6 +77,47 @@ $permissionGroups = [
             "inventory_delete" => "Delete",
             "inventory_export" => "Export",
             "inventory_report" => "Report"
+        ]
+    ],
+    "office_inventory" => [
+        "title" => "Office Inventory",
+        "full" => "office_inventory_full",
+        "items" => [
+            "office_inventory_view" => "View",
+            "office_inventory_add" => "Add",
+            "office_inventory_edit" => "Edit",
+            "office_inventory_delete" => "Delete",
+            "office_inventory_document_view" => "Document View",
+            "office_inventory_document_download" => "Document Download",
+            "office_inventory_document_delete" => "Document Delete"
+        ]
+    ],
+    "planner" => [
+        "title" => "Planner",
+        "full" => "planner_full",
+        "items" => [
+            "planner_view" => "View",
+            "planner_add" => "Add",
+            "planner_edit" => "Edit",
+            "planner_delete" => "Delete"
+        ]
+    ],
+    "visitor" => [
+        "title" => "Visitor",
+        "full" => "visitor_full",
+        "items" => [
+            "visitor_view" => "View visitor records",
+            "visitor_delete" => "Delete visitor records",
+            "visitor_report" => "Generate reports"
+        ]
+    ],
+    "bulletin" => [
+        "title" => "Bulletin",
+        "full" => "bulletin_full",
+        "items" => [
+            "bulletin_view" => "View",
+            "bulletin_add" => "Add standby",
+            "bulletin_delete" => "Delete standby"
         ]
     ]
 ];
@@ -156,6 +207,9 @@ if($userResult){
     while($row = $userResult->fetch_assoc()){
         $row['account_type'] = "user";
         $row['display_role'] = $row['role'];
+        $profile = plannerGetUserProfile($mysqli, $row['username'], "user");
+        $row['planner_role'] = $profile['operational_role'] ?? "";
+        $row['telegram_chat_id'] = $profile['telegram_chat_id'] ?? "";
         $accounts[] = $row;
     }
 }
@@ -188,6 +242,9 @@ if($administratorResult){
         }
 
         $row['display_role'] = $row['role'];
+        $profile = plannerGetUserProfile($mysqli, $row['username'], "administrator");
+        $row['planner_role'] = $profile['operational_role'] ?? "";
+        $row['telegram_chat_id'] = $profile['telegram_chat_id'] ?? "";
         $accounts[] = $row;
     }
 }
@@ -235,6 +292,22 @@ html, body{
     overflow-wrap:anywhere;
 }
 
+.user-sort-header{
+    cursor:pointer;
+    user-select:none;
+    white-space:nowrap !important;
+}
+
+.user-sort-header i{
+    margin-left:6px;
+    color:#adb5bd;
+    font-size:11px;
+}
+
+.user-sort-header.active i{
+    color:#ffc107;
+}
+
 .user-table tbody tr{
     cursor:pointer;
 }
@@ -244,7 +317,8 @@ html, body{
 }
 
 .table-responsive{
-    overflow-x:hidden !important;
+    overflow-x:auto !important;
+    -webkit-overflow-scrolling:touch;
 }
 
 .badge-user{
@@ -361,41 +435,70 @@ html, body{
 
 @media(max-width: 768px){
     .user-table thead{
-        display:none;
+        display:table-header-group;
     }
 
     .user-table,
     .user-table tbody,
     .user-table tr,
     .user-table td{
-        display:block;
-        width:100%;
+        width:auto;
+    }
+
+    .user-table{
+        display:table;
+        min-width:860px;
+        table-layout:auto;
+    }
+
+    .user-table th,
+    .user-table td{
+        display:table-cell;
+    }
+
+    .user-table tbody{
+        display:table-row-group;
     }
 
     .user-table tr{
-        border:1px solid #dee2e6;
-        border-radius:10px;
-        margin-bottom:12px;
-        padding:10px;
-        background:#fff;
+        display:table-row;
+    }
+
+    .user-table tr{
+        border:0;
+        border-radius:0;
+        margin-bottom:0;
+        padding:0;
+        background:inherit;
     }
 
     .user-table td{
-        border:none;
-        border-bottom:1px solid #f1f1f1;
-        padding:8px 4px;
+        display:table-cell;
+        border-bottom-width:1px;
+        padding:8px 10px;
+        white-space:normal !important;
+        max-width:320px;
+        word-break:break-word;
+        overflow-wrap:anywhere;
     }
 
     .user-table td:last-child{
-        border-bottom:none;
+        white-space:nowrap !important;
+        max-width:none;
+    }
+
+    .user-table td:last-child{
+        border-bottom-width:1px;
     }
 
     .user-table td::before{
-        content:attr(data-label);
-        display:block;
-        font-weight:700;
-        color:#555;
-        margin-bottom:4px;
+        content:none !important;
+        display:none !important;
+    }
+
+    .table-responsive{
+        overflow-x:auto !important;
+        -webkit-overflow-scrolling:touch;
     }
 }
 </style>
@@ -443,10 +546,10 @@ html, body{
 
 <thead>
 <tr>
-    <th>Username</th>
-    <th>Email</th>
-    <th>Role</th>
-    <th>Permission</th>
+    <th class="user-sort-header" data-sort-column="0">Username <i class="fa fa-sort"></i></th>
+    <th class="user-sort-header" data-sort-column="1">Email <i class="fa fa-sort"></i></th>
+    <th class="user-sort-header" data-sort-column="2">Role <i class="fa fa-sort"></i></th>
+    <th class="user-sort-header" data-sort-column="3">Permission <i class="fa fa-sort"></i></th>
     <th>Actions</th>
 </tr>
 </thead>
@@ -521,6 +624,14 @@ if(in_array("contracts_full", $permissions, true)){
         $contractLabels[] = "Download";
     }
 
+    if(in_array("contracts_claim_view", $permissions, true)){
+        $contractLabels[] = "View Claim";
+    }
+
+    if(in_array("contracts_master_budget", $permissions, true)){
+        $contractLabels[] = "Master Budget";
+    }
+
     if(in_array("contracts_task", $permissions, true)){
         $contractLabels[] = "Task Add";
     }
@@ -531,6 +642,26 @@ if(in_array("contracts_full", $permissions, true)){
 
     if(in_array("contracts_task_delete", $permissions, true)){
         $contractLabels[] = "Task Delete";
+    }
+
+    if(in_array("contracts_task_document_add", $permissions, true)){
+        $contractLabels[] = "Task Document Add";
+    }
+
+    if(in_array("contracts_task_document_upload", $permissions, true)){
+        $contractLabels[] = "Task Document Upload";
+    }
+
+    if(in_array("contracts_task_document_view", $permissions, true)){
+        $contractLabels[] = "Task Document View";
+    }
+
+    if(in_array("contracts_task_document_download", $permissions, true)){
+        $contractLabels[] = "Task Document Download";
+    }
+
+    if(in_array("contracts_task_document_delete", $permissions, true)){
+        $contractLabels[] = "Task Document Delete";
     }
 
     if(in_array("contracts_personal", $permissions, true)){
@@ -592,6 +723,94 @@ if(in_array("inventory_full", $permissions, true)){
     }
 }
 
+if(in_array("office_inventory_full", $permissions, true)){
+    $permissionText[] = "Office Inventory: Full";
+} else {
+    $officeInventoryLabels = [];
+
+    if(in_array("office_inventory_view", $permissions, true)){
+        $officeInventoryLabels[] = "View";
+    }
+
+    if(in_array("office_inventory_add", $permissions, true)){
+        $officeInventoryLabels[] = "Add";
+    }
+
+    if(in_array("office_inventory_edit", $permissions, true)){
+        $officeInventoryLabels[] = "Edit";
+    }
+
+    if(in_array("office_inventory_delete", $permissions, true)){
+        $officeInventoryLabels[] = "Delete";
+    }
+
+    if(in_array("office_inventory_document_view", $permissions, true)){
+        $officeInventoryLabels[] = "Document View";
+    }
+
+    if(in_array("office_inventory_document_download", $permissions, true)){
+        $officeInventoryLabels[] = "Document Download";
+    }
+
+    if(in_array("office_inventory_document_delete", $permissions, true)){
+        $officeInventoryLabels[] = "Document Delete";
+    }
+
+    if(!empty($officeInventoryLabels)){
+        $permissionText[] = "Office Inventory: " . implode(", ", $officeInventoryLabels);
+    }
+}
+
+if(in_array("planner_full", $permissions, true)){
+    $permissionText[] = "Planner: Full";
+} else {
+    $plannerLabels = [];
+
+    if(in_array("planner_view", $permissions, true)){
+        $plannerLabels[] = "View";
+    }
+
+    if(in_array("planner_add", $permissions, true)){
+        $plannerLabels[] = "Add";
+    }
+
+    if(in_array("planner_edit", $permissions, true)){
+        $plannerLabels[] = "Edit";
+    }
+
+    if(in_array("planner_delete", $permissions, true)){
+        $plannerLabels[] = "Delete";
+    }
+
+    if(!empty($plannerLabels)){
+        $permissionText[] = "Planner: " . implode(", ", $plannerLabels);
+    }
+}
+
+$permissionText[] = "Planner Role: " . plannerOperationalRoleLabel($row['planner_role'] ?? "");
+
+if(in_array("visitor_full", $permissions, true) || in_array("visitor_view", $permissions, true) || in_array("visitor_delete", $permissions, true) || in_array("visitor_report", $permissions, true)){
+    $visitorLabels = [];
+    if(in_array("visitor_full", $permissions, true)){ $visitorLabels[] = "Full"; }
+    else {
+        if(in_array("visitor_view", $permissions, true)){ $visitorLabels[] = "View"; }
+        if(in_array("visitor_delete", $permissions, true)){ $visitorLabels[] = "Delete"; }
+        if(in_array("visitor_report", $permissions, true)){ $visitorLabels[] = "Report"; }
+    }
+    $permissionText[] = "Visitor: " . implode(", ", $visitorLabels);
+}
+
+if(in_array("bulletin_full", $permissions, true) || in_array("bulletin_view", $permissions, true) || in_array("bulletin_add", $permissions, true) || in_array("bulletin_delete", $permissions, true)){
+    $bulletinLabels = [];
+    if(in_array("bulletin_full", $permissions, true)){ $bulletinLabels[] = "Full"; }
+    else {
+        if(in_array("bulletin_view", $permissions, true)){ $bulletinLabels[] = "View"; }
+        if(in_array("bulletin_add", $permissions, true)){ $bulletinLabels[] = "Add"; }
+        if(in_array("bulletin_delete", $permissions, true)){ $bulletinLabels[] = "Delete"; }
+    }
+    $permissionText[] = "Bulletin: " . implode(", ", $bulletinLabels);
+}
+
 $permissionDetailJson = htmlspecialchars(json_encode($permissionText), ENT_QUOTES, 'UTF-8');
 ?>
 
@@ -599,6 +818,8 @@ $permissionDetailJson = htmlspecialchars(json_encode($permissionText), ENT_QUOTE
 data-username="<?= htmlspecialchars($row['username'], ENT_QUOTES, 'UTF-8') ?>"
 data-email="<?= htmlspecialchars($row['email'], ENT_QUOTES, 'UTF-8') ?>"
 data-role="<?= htmlspecialchars($row['display_role'], ENT_QUOTES, 'UTF-8') ?>"
+data-planner-role="<?= htmlspecialchars($row['planner_role'] ?? "", ENT_QUOTES, 'UTF-8') ?>"
+data-telegram-chat-id="<?= htmlspecialchars($row['telegram_chat_id'] ?? "", ENT_QUOTES, 'UTF-8') ?>"
 data-account-type="<?= htmlspecialchars($row['account_type'], ENT_QUOTES, 'UTF-8') ?>"
 data-permission-detail="<?= $permissionDetailJson ?>"
 >
@@ -635,6 +856,8 @@ class="btn btn-sm btn-primary action-btn editUserBtn"
 data-username="<?= htmlspecialchars($row['username'], ENT_QUOTES, 'UTF-8') ?>"
 data-account-type="<?= htmlspecialchars($row['account_type'], ENT_QUOTES, 'UTF-8') ?>"
 data-display-role="<?= htmlspecialchars($row['display_role'], ENT_QUOTES, 'UTF-8') ?>"
+data-planner-role="<?= htmlspecialchars($row['planner_role'] ?? "", ENT_QUOTES, 'UTF-8') ?>"
+data-telegram-chat-id="<?= htmlspecialchars($row['telegram_chat_id'] ?? "", ENT_QUOTES, 'UTF-8') ?>"
 data-email="<?= htmlspecialchars($row['email'], ENT_QUOTES, 'UTF-8') ?>"
 data-permissions="<?= $permissionsJson ?>"
 data-bs-toggle="modal"
@@ -797,6 +1020,25 @@ Password must contain at least 8 characters, 1 uppercase letter, and 1 symbol.
 </div>
 </div>
 
+<div class="row">
+<div class="col-md-6 mb-3">
+<label>Planner Role</label>
+<select name="planner_role" class="form-control" required>
+    <option value="">Select Planner Role</option>
+    <?php foreach($plannerOperationalRoles as $plannerRoleValue => $plannerRoleLabel): ?>
+        <option value="<?= htmlspecialchars($plannerRoleValue) ?>"><?= htmlspecialchars($plannerRoleLabel) ?></option>
+    <?php endforeach; ?>
+</select>
+</div>
+
+<div class="col-md-6 mb-3">
+<label>Telegram Chat ID</label>
+<input type="text" name="telegram_chat_id" class="form-control" placeholder="Example: 123456789">
+<div class="form-text">Optional. The user must start a chat with the Telegram bot first.</div>
+</div>
+
+</div>
+
 <hr>
 
 <h5 class="mb-3">
@@ -885,12 +1127,38 @@ If all modules are Full Access, this account becomes Administrator automatically
 <input
 type="password"
 name="password"
+id="edit_temporary_password"
 class="form-control"
-pattern="^(?=.*[A-Z])(?=.*[\W]).{8,}$"
+pattern="^(?=.*[A-Za-z])(?=.*[^A-Za-z0-9\s]).{8,}$"
+aria-describedby="temporary_password_help temporary_password_requirements"
 >
-<div class="form-text">
-Leave empty if you do not want to change password.
+<div class="form-text" id="temporary_password_help">
+Leave empty to keep the current password. If entered, this becomes a temporary password and the user must change it after login.
 </div>
+<div id="temporary_password_requirements" class="mt-2 small" aria-live="polite">
+    <div id="temp_req_length" class="text-muted"><i class="fa fa-circle-xmark me-1"></i> At least 8 characters</div>
+    <div id="temp_req_letter" class="text-muted"><i class="fa fa-circle-xmark me-1"></i> Contains an alphabetical letter</div>
+    <div id="temp_req_symbol" class="text-muted"><i class="fa fa-circle-xmark me-1"></i> Contains a symbol</div>
+</div>
+</div>
+
+</div>
+
+<div class="row">
+<div class="col-md-6 mb-3">
+<label>Planner Role</label>
+<select name="planner_role" id="edit_planner_role" class="form-control" required>
+    <option value="">Select Planner Role</option>
+    <?php foreach($plannerOperationalRoles as $plannerRoleValue => $plannerRoleLabel): ?>
+        <option value="<?= htmlspecialchars($plannerRoleValue) ?>"><?= htmlspecialchars($plannerRoleLabel) ?></option>
+    <?php endforeach; ?>
+</select>
+</div>
+
+<div class="col-md-6 mb-3">
+<label>Telegram Chat ID</label>
+<input type="text" name="telegram_chat_id" id="edit_telegram_chat_id" class="form-control" placeholder="Example: 123456789">
+<div class="form-text">Optional. Used for CSSB Planner Telegram reminders.</div>
 </div>
 
 </div>
@@ -962,6 +1230,32 @@ function setupPermissionForm(form){
 setupPermissionForm(document.getElementById("addUserForm"));
 setupPermissionForm(document.getElementById("editUserForm"));
 
+const temporaryPasswordInput = document.getElementById("edit_temporary_password");
+
+function setTemporaryPasswordRequirement(id, passed){
+    const item = document.getElementById(id);
+    if(!item){ return; }
+    item.classList.toggle("text-success", passed);
+    item.classList.toggle("text-muted", !passed);
+    const icon = item.querySelector("i");
+    if(icon){
+        icon.classList.toggle("fa-circle-check", passed);
+        icon.classList.toggle("fa-circle-xmark", !passed);
+    }
+}
+
+function updateTemporaryPasswordRequirements(){
+    const value = temporaryPasswordInput ? temporaryPasswordInput.value : "";
+    setTemporaryPasswordRequirement("temp_req_length", value.length >= 8);
+    setTemporaryPasswordRequirement("temp_req_letter", /[A-Za-z]/.test(value));
+    setTemporaryPasswordRequirement("temp_req_symbol", /[^A-Za-z0-9\s]/.test(value));
+}
+
+if(temporaryPasswordInput){
+    temporaryPasswordInput.addEventListener("input", updateTemporaryPasswordRequirements);
+    updateTemporaryPasswordRequirements();
+}
+
 document.querySelectorAll(".editUserBtn").forEach(button => {
     button.addEventListener("click", function(event){
         event.stopPropagation();
@@ -969,6 +1263,8 @@ document.querySelectorAll(".editUserBtn").forEach(button => {
         const username = this.dataset.username;
         const accountType = this.dataset.accountType;
         const displayRole = this.dataset.displayRole;
+        const plannerRole = this.dataset.plannerRole || "";
+        const telegramChatId = this.dataset.telegramChatId || "";
         const email = this.dataset.email || "";
 
         let permissions = [];
@@ -1002,14 +1298,17 @@ document.querySelectorAll(".editUserBtn").forEach(button => {
         }
 
         roleSelect.value = displayRole;
+        document.getElementById("edit_planner_role").value = plannerRole;
+        document.getElementById("edit_telegram_chat_id").value = telegramChatId;
 
         form.querySelector('input[name="password"]').value = "";
+        updateTemporaryPasswordRequirements();
 
         form.querySelectorAll(".perm-check").forEach(checkbox => {
             checkbox.checked = permissions.includes(checkbox.value);
         });
 
-        ["users", "contracts", "inventory"].forEach(module => {
+        ["users", "contracts", "inventory", "office_inventory", "planner", "visitor", "bulletin"].forEach(module => {
             syncFullCheckbox(form, module);
         });
     });
@@ -1070,22 +1369,95 @@ function toggleAddPassword(){
 
 const liveUserSearch = document.getElementById("liveUserSearch");
 const clearUserSearch = document.getElementById("clearUserSearch");
+let userSortColumn = null;
+let userSortDirection = "asc";
+
+function getUserSortValue(row, columnIndex){
+    if(columnIndex === 0){
+        return row.dataset.username || "";
+    }
+
+    if(columnIndex === 1){
+        return row.dataset.email || "";
+    }
+
+    if(columnIndex === 2){
+        const accountTypeRank = (row.dataset.accountType || "") === "administrator" ? "0" : "1";
+        return accountTypeRank + " " + (row.dataset.role || "");
+    }
+
+    const cells = row.querySelectorAll("td");
+    return cells[columnIndex] ? cells[columnIndex].innerText : "";
+}
+
+function updateUserSortHeaders(activeHeader){
+    document.querySelectorAll(".user-sort-header").forEach(header => {
+        const icon = header.querySelector("i");
+        header.classList.toggle("active", header === activeHeader);
+
+        if(!icon){
+            return;
+        }
+
+        if(header !== activeHeader){
+            icon.className = "fa fa-sort";
+            return;
+        }
+
+        icon.className = userSortDirection === "asc" ? "fa fa-sort-up" : "fa fa-sort-down";
+    });
+}
+
+function sortUserTable(columnIndex, activeHeader){
+    const tbody = document.querySelector(".user-table tbody");
+
+    if(!tbody){
+        return;
+    }
+
+    if(userSortColumn === columnIndex){
+        userSortDirection = userSortDirection === "asc" ? "desc" : "asc";
+    }else{
+        userSortColumn = columnIndex;
+        userSortDirection = "asc";
+    }
+
+    const direction = userSortDirection === "asc" ? 1 : -1;
+    const rows = Array.from(tbody.querySelectorAll("tr[data-username]"));
+
+    rows.sort((a, b) => {
+        const aValue = getUserSortValue(a, columnIndex).trim().toLowerCase();
+        const bValue = getUserSortValue(b, columnIndex).trim().toLowerCase();
+
+        return aValue.localeCompare(bValue, undefined, {
+            numeric: true,
+            sensitivity: "base"
+        }) * direction;
+    });
+
+    rows.forEach(row => tbody.appendChild(row));
+    updateUserSortHeaders(activeHeader);
+}
 
 function filterUserTable(){
-    const keyword = liveUserSearch.value.toLowerCase().trim();
+    const keyword = liveUserSearch ? liveUserSearch.value.toLowerCase().trim() : "";
     const rows = document.querySelectorAll(".user-table tbody tr[data-username]");
 
     rows.forEach(row => {
         const username = (row.dataset.username || "").toLowerCase();
         const email = (row.dataset.email || "").toLowerCase();
         const role = (row.dataset.role || "").toLowerCase();
+        const accountType = (row.dataset.accountType || "").toLowerCase();
+        const permissions = ((row.dataset.permissionDetail || "") + " " + (row.innerText || "")).toLowerCase();
 
-        const match =
+        const globalMatch = keyword === "" ||
             username.includes(keyword) ||
             email.includes(keyword) ||
-            role.includes(keyword);
+            role.includes(keyword) ||
+            accountType.includes(keyword) ||
+            permissions.includes(keyword);
 
-        row.style.display = match ? "" : "none";
+        row.style.display = globalMatch ? "" : "none";
     });
 }
 
@@ -1103,6 +1475,12 @@ if(clearUserSearch){
         }
     });
 }
+
+document.querySelectorAll(".user-sort-header").forEach(header => {
+    header.addEventListener("click", function(){
+        sortUserTable(parseInt(this.dataset.sortColumn, 10), this);
+    });
+});
 </script>
 
 </body>

@@ -1,14 +1,7 @@
 <?php
 session_start();
 require_once "../includes/db_connect.php";
-
-// PHPMailer
-use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\Exception;
-
-require '../PHPMailer/src/PHPMailer.php';
-require '../PHPMailer/src/SMTP.php';
-require '../PHPMailer/src/Exception.php';
+require_once "../includes/mailer.php";
 
 if(isset($_POST['submit'])){
 
@@ -48,23 +41,11 @@ if(isset($_POST['submit'])){
     // =========================
     // 2. SEND EMAIL USING PHPMailer
     // =========================
-    $mail = new PHPMailer(true);
-
     try {
-        // SMTP SETTINGS
-        $mail->isSMTP();
-        $mail->Host       = 'smtp.gmail.com';
-        $mail->SMTPAuth   = true;
-        $mail->Username   = 'crossroadinventory@gmail.com';
-        $mail->Password   = 'iitrihnuejntcpkc';
-        $mail->SMTPSecure = 'tls';
-        $mail->Port       = 587;
-
-        // DEBUG DISABLED
-        $mail->SMTPDebug = 0;
+        $mail = crossroadCreateMailer();
 
         // EMAIL DETAILS
-        $mail->setFrom('crossroadinventory@gmail.com', 'Crossroad System');
+        $mailConfig = crossroadMailConfig();
 
         /*
         =========================
@@ -73,7 +54,7 @@ if(isset($_POST['submit'])){
         This is needed as the main "To" receiver.
         All administrators will be CC below.
         */
-        $mail->addAddress('crossroadinventory@gmail.com', 'Crossroad System');
+        $mail->addAddress($mailConfig['from'], $mailConfig['from_name']);
 
         // =========================
         // GET ADMIN EMAIL(S) AS CC
@@ -139,8 +120,11 @@ if(isset($_POST['submit'])){
         echo "<script>alert('Request sent successfully'); window.location.href='../frontend/index.html';</script>";
         exit();
 
-    } catch (Exception $e) {
-        echo "Mailer Error: " . $mail->ErrorInfo;
+    } catch (Throwable $e) {
+        $mailerError = isset($mail) && trim((string)$mail->ErrorInfo) !== ""
+            ? $mail->ErrorInfo
+            : $e->getMessage();
+        echo "Mailer Error: " . htmlspecialchars($mailerError, ENT_QUOTES, 'UTF-8');
     }
 }
 ?>

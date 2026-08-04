@@ -4,6 +4,7 @@ session_start();
 include("../includes/db_connect.php");
 require_once "../includes/activity_log.php";
 require_once "../includes/permissions.php";
+require_once "../includes/planner_profiles.php";
 
 if(!isset($_SESSION['username']) || !isset($_SESSION['role'])){
     exit("No session");
@@ -115,6 +116,8 @@ if($deleteStmt->execute()){
         $deletePermAll->bind_param("s", $username);
         $deletePermAll->execute();
     }
+
+    plannerDeleteUserProfiles($mysqli, $username);
 
     $ip = $_SERVER['REMOTE_ADDR'];
     $time = date("Y-m-d H:i:s");

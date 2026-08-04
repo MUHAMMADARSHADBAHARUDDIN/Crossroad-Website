@@ -3,6 +3,7 @@ session_start();
 require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
 require_once "../includes/search_helper.php";
+require_once "../includes/inventory_report_schema.php";
 
 if(!isset($_SESSION['username'])){
     exit("No session");
@@ -11,6 +12,8 @@ if(!isset($_SESSION['username'])){
 if(!hasPermission($mysqli, "inventory_view")){
     die("Access denied");
 }
+
+ensureInventoryReportSchema($mysqli);
 
 function stockoutEscape($value){
     return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
@@ -39,7 +42,7 @@ $search = trim($_GET['search'] ?? "");
 $stmt = $mysqli->prepare("
     SELECT *
     FROM stock_out_history
-    ORDER BY stock_out_date DESC
+    ORDER BY id DESC
 ");
 
 if(!$stmt){
@@ -85,11 +88,12 @@ if(stockoutAdditionalInfoTableExists($mysqli)){
 <style>
 html, body{ overflow-x:hidden !important; }
 .main{ overflow-x:hidden !important; max-width:100%; }
-.table-responsive{ overflow-x:hidden !important; width:100%; }
+.table-responsive{ overflow-x:auto !important; overflow-y:hidden; width:100%; -webkit-overflow-scrolling:touch; overscroll-behavior-x:contain; }
 
 #stockOutTable{
     width:100% !important;
-    table-layout:fixed;
+    min-width:900px;
+    table-layout:auto;
 }
 
 #stockOutTable th,
@@ -107,7 +111,7 @@ html, body{ overflow-x:hidden !important; }
 
 #stockOutTable_wrapper{
     width:100%;
-    overflow-x:hidden !important;
+    overflow-x:visible !important;
 }
 
 #stockOutTable_wrapper .row{
@@ -252,7 +256,50 @@ html, body{ overflow-x:hidden !important; }
     word-break:break-word;
 }
 
-@media(max-width:768px){
+@media(max-width:992px){
+    .table-responsive{
+        overflow-x:auto !important;
+        -webkit-overflow-scrolling:touch;
+    }
+
+    #stockOutTable{
+        min-width:940px !important;
+        max-width:none !important;
+    }
+
+    #stockOutTable th{
+        white-space:nowrap !important;
+        min-width:140px;
+        max-width:none !important;
+        word-break:normal !important;
+        overflow-wrap:normal !important;
+    }
+
+    #stockOutTable td{
+        white-space:normal !important;
+        min-width:140px;
+        max-width:360px !important;
+        word-break:break-word !important;
+        overflow-wrap:anywhere !important;
+    }
+
+    #stockOutTable th:nth-child(3),
+    #stockOutTable td:nth-child(3){
+        min-width:320px;
+    }
+
+    #stockOutTable th:nth-child(4),
+    #stockOutTable td:nth-child(4){
+        min-width:170px;
+    }
+
+    #stockOutTable td:nth-child(4){
+        white-space:nowrap !important;
+        max-width:none !important;
+        word-break:normal !important;
+        overflow-wrap:normal !important;
+    }
+
     #stockOutTable_wrapper .stockout-bottom-row{
         gap:10px;
     }
@@ -283,7 +330,7 @@ html, body{ overflow-x:hidden !important; }
                    id="liveStockOutSearch"
                    name="search"
                    class="form-control"
-                   placeholder="Search by Part Number / Serial / Remark / Additional Information..."
+                   placeholder="Search by Part Number / Serial / Ticket / Remark / Additional Information..."
                    value="<?= stockoutEscape($search) ?>"
                    autocomplete="off">
             <button type="button" class="btn btn-warning">
@@ -300,7 +347,7 @@ html, body{ overflow-x:hidden !important; }
                 <tr>
                     <th>Part Number</th>
                     <th>Serial Number</th>
-                    <th>Original Remark</th>
+                    <th>Ticket</th>
                     <th>Action</th>
                 </tr>
             </thead>
@@ -314,17 +361,30 @@ html, body{ overflow-x:hidden !important; }
                     $rawDate = $row['stock_out_date'] ?? '';
                     $date = (!empty($rawDate) && strtotime($rawDate)) ? date("d/m/y", strtotime($rawDate)) : "-";
                     $time = (!empty($rawDate) && strtotime($rawDate)) ? date("H:i:s", strtotime($rawDate)) : "";
+                    $ticketNumber = trim((string)($row['ticket_number'] ?? ''));
                     $notesSearch = "";
 
                     foreach($notes as $note){
-                        $notesSearch .= " " . ($note['additional_information'] ?? '') . " " . ($note['added_by'] ?? '');
+                        $noteDate = !empty($note['added_at']) && strtotime($note['added_at'])
+                            ? date("d/m/y H:i", strtotime($note['added_at']))
+                            : "";
+
+                        $notesSearch .= " "
+                            . ($note['id'] ?? '') . " "
+                            . ($note['additional_information'] ?? '') . " "
+                            . ($note['added_by'] ?? '') . " "
+                            . ($note['added_at'] ?? '') . " "
+                            . $noteDate;
                     }
 
                     $searchText = strtolower(
+                        $id . ' ' .
                         ($row['part_number'] ?? '') . ' ' .
                         ($row['serial_number'] ?? '') . ' ' .
+                        $ticketNumber . ' ' .
                         ($row['location'] ?? '') . ' ' .
                         ($row['remark'] ?? '') . ' ' .
+                        ($row['quantity'] ?? '') . ' ' .
                         ($row['stock_out_by'] ?? '') . ' ' .
                         ($row['stock_out_date'] ?? '') . ' ' .
                         $date . ' ' .
@@ -346,6 +406,11 @@ html, body{ overflow-x:hidden !important; }
                         <div class="stockout-detail-box">
                             <span>Date</span>
                             <strong><?= stockoutEscape(trim($date . ' ' . $time)) ?></strong>
+                        </div>
+
+                        <div class="stockout-detail-box">
+                            <span>Original Remark</span>
+                            <strong><?= nl2br(stockoutEscape(($row['remark'] ?? '') !== '' ? $row['remark'] : '-')) ?></strong>
                         </div>
                     </div>
 
@@ -400,7 +465,7 @@ html, body{ overflow-x:hidden !important; }
                         data-detail-id="stockout-detail-<?= $id ?>">
                         <td><?= stockoutEscape($row['part_number'] ?? '') ?></td>
                         <td><?= stockoutEscape($row['serial_number'] ?? '') ?></td>
-                        <td><?= stockoutEscape(($row['remark'] ?? '') !== '' ? $row['remark'] : '-') ?></td>
+                        <td><?= stockoutEscape($ticketNumber !== '' ? $ticketNumber : '-') ?></td>
 
                         <td>
                             <div class="action-buttons">

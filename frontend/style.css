@@ -19,7 +19,7 @@ body{
     justify-content:space-between;
     padding:0 20px;
     border-bottom:3px solid #ffc107;
-    z-index:1000;
+    z-index:1100;
 }
 
 .header-left{
@@ -41,18 +41,27 @@ body{
 /* MENU BUTTON (SMALL BUT STABLE) */
 /* MENU BUTTON - CLEAN SYMMETRICAL ANIMATION */
 .menu-btn{
-    width:22px;
-    height:18px;
+    width:38px;
+    height:38px;
     cursor:pointer;
     position:relative;
-    display:inline-block;
+    display:inline-flex;
+    flex:0 0 38px;
+    align-items:center;
+    justify-content:center;
+    padding:0;
+    border:0;
+    background:transparent;
+    appearance:none;
+    z-index:1102;
+    touch-action:manipulation;
 }
 
 /* hamburger lines */
 .menu-btn span{
     position:absolute;
-    left:0;
-    width:100%;
+    left:8px;
+    width:22px;
     height:2px;
     background:white;
     border-radius:10px;
@@ -65,20 +74,20 @@ body{
 
 /* normal hamburger position */
 .menu-btn span:nth-child(1){
-    top:2px;
+    top:12px;
 }
 
 .menu-btn span:nth-child(2){
-    top:8px;
+    top:18px;
 }
 
 .menu-btn span:nth-child(3){
-    top:14px;
+    top:24px;
 }
 
 /* X animation when active */
 .menu-btn:not(.active) span:nth-child(1){
-    top:8px;
+    top:18px;
     transform:rotate(45deg);
 }
 
@@ -87,9 +96,11 @@ body{
 }
 
 .menu-btn:not(.active) span:nth-child(3){
-    top:8px;
+    top:18px;
     transform:rotate(-45deg);
 }
+
+
 /* SIDEBAR */
 
 .sidebar{
@@ -102,6 +113,7 @@ body{
     padding-top:70px;
     color:white;
     transition:width 0.3s ease;
+    z-index:1050;
 
     /* ✅ ADD THIS */
     overflow-y:auto;
@@ -245,6 +257,22 @@ table{
     font-size:14px;
 }
 
+.table-responsive,
+.responsive-table-scroll{
+    display:block;
+    width:100%;
+    overflow-x:auto;
+    overflow-y:visible;
+    -webkit-overflow-scrolling:touch;
+    overscroll-behavior-x:contain;
+    max-width:100%;
+}
+
+.table-responsive table,
+.responsive-table-scroll table{
+    max-width:none;
+}
+
 .table td{
     vertical-align:middle;
 }
@@ -256,6 +284,8 @@ table{
 .table td{
     max-width:200px;
     word-wrap:break-word;
+    overflow-wrap:anywhere;
+    word-break:break-word;
 }
 
 .table th{
@@ -355,18 +385,105 @@ table{
 }
 /* Clickable table row hover effect */
 .table tbody tr {
-    transition: all 0.2s ease;
+    transition: background-color 0.18s ease, box-shadow 0.18s ease;
 }
 
 .table tbody tr:hover {
     background-color: #fff3cd !important; /* soft yellow (matches your theme) */
-    transform: scale(1.01);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    box-shadow: inset 3px 0 0 #ffc107;
 }
 
 /* Optional: make cursor obvious */
 .table tbody tr {
     cursor: pointer;
+}
+
+@media(max-width:992px){
+    .table-responsive,
+    .contract-table-responsive,
+    .contracts-table-wrap,
+    .responsive-table-scroll,
+    .dataTables_wrapper{
+        width:100%;
+        max-width:100%;
+        overflow-x:auto !important;
+        overflow-y:visible;
+        -webkit-overflow-scrolling:touch;
+        overscroll-behavior-x:contain;
+    }
+
+    .table-responsive > table,
+    .table-responsive table.table,
+    .table-responsive table.dataTable,
+    .contract-table-responsive table,
+    .contracts-table-wrap table,
+    .responsive-table-scroll table,
+    .dataTables_wrapper table.table,
+    .dataTables_wrapper table.dataTable{
+        width:max-content !important;
+        min-width:720px !important;
+        max-width:none !important;
+        table-layout:auto !important;
+    }
+
+    .table-responsive th,
+    .contract-table-responsive th,
+    .contracts-table-wrap th,
+    .responsive-table-scroll th,
+    .dataTables_wrapper table.table th,
+    .dataTables_wrapper table.dataTable th{
+        white-space:nowrap !important;
+        max-width:none !important;
+        word-break:normal !important;
+        overflow-wrap:normal !important;
+    }
+
+    .table-responsive td,
+    .contract-table-responsive td,
+    .contracts-table-wrap td,
+    .responsive-table-scroll td,
+    .dataTables_wrapper table.table td,
+    .dataTables_wrapper table.dataTable td{
+        white-space:normal !important;
+        max-width:360px !important;
+        word-break:break-word !important;
+        overflow-wrap:anywhere !important;
+    }
+
+    .modal-body{
+        overflow-x:auto;
+        -webkit-overflow-scrolling:touch;
+    }
+
+    .modal-body table.table{
+        min-width:720px;
+        max-width:none;
+    }
+}
+
+.modal.fade .modal-dialog{
+    transform:translate3d(0, 14px, 0) scale(0.985);
+    transition:transform 0.2s cubic-bezier(0.2, 0, 0, 1), opacity 0.2s ease;
+    will-change:transform;
+}
+
+.modal.show .modal-dialog{
+    transform:translate3d(0, 0, 0) scale(1);
+}
+
+.modal-content{
+    backface-visibility:hidden;
+    transform:translateZ(0);
+}
+
+@media (prefers-reduced-motion: reduce){
+    .modal.fade .modal-dialog,
+    .table tbody tr,
+    .sidebar,
+    .main,
+    .menu-btn span{
+        transition:none !important;
+    }
 }
 
 /* =========================================================
@@ -656,6 +773,7 @@ html.compact-mode-pending .btn{
 
 .sidebar-scrim{
     display:none;
+    padding:0;
 }
 
 @media(max-width:768px){
@@ -666,12 +784,26 @@ html.compact-mode-pending .btn{
     }
 
     .header-left{
+        flex:1 1 auto;
         gap:10px;
         min-width:0;
     }
 
+    .menu-btn{
+        display:inline-flex;
+        flex:0 0 40px;
+        width:40px;
+        height:40px;
+    }
+
+    .menu-btn span{
+        left:8px;
+        width:24px;
+    }
+
     .header-logo{
         height:30px;
+        flex:0 0 auto;
     }
 
     .company-title{
@@ -683,6 +815,7 @@ html.compact-mode-pending .btn{
     }
 
     .topbar-right{
+        flex:0 0 auto;
         gap:8px;
     }
 
@@ -711,14 +844,17 @@ html.compact-mode-pending .btn{
         top:64px;
         width:230px;
         height:calc(100vh - 64px);
+        height:calc(100dvh - 64px);
         padding-top:10px;
         transform:translateX(-105%);
         transition:transform 0.25s ease;
         box-shadow:16px 0 36px rgba(0,0,0,0.22);
+        z-index:1090;
     }
 
-    body.sidebar-mobile-open .sidebar,
-    body.sidebar-mobile-open .sidebar.collapsed{
+    .sidebar.mobile-open,
+    body.sidebar-open .sidebar,
+    body.sidebar-mobile-open .sidebar{
         transform:translateX(0);
     }
 
@@ -752,19 +888,116 @@ html.compact-mode-pending .btn{
         width:100%;
         border:0;
         background:rgba(0,0,0,0.38);
-        z-index:990;
+        z-index:1080;
     }
 
+    body.sidebar-open .sidebar-scrim,
     body.sidebar-mobile-open .sidebar-scrim{
         display:block;
-    }
-
-    .sidebar{
-        z-index:1001;
     }
 
     .app-back-to-top{
         right:14px;
         bottom:14px;
+    }
+}
+@media(max-width:430px){
+    .topbar{
+        height:58px;
+        padding:0 8px;
+        gap:6px;
+    }
+
+    .header-left{
+        flex:1 1 auto;
+        gap:8px;
+        min-width:0;
+    }
+
+    .menu-btn{
+        width:40px;
+        height:40px;
+        flex-basis:40px;
+    }
+
+    .menu-btn span{
+        left:7px;
+        width:26px;
+    }
+
+    .header-logo{
+        height:26px;
+        flex:0 0 auto;
+    }
+
+    .company-title{
+        display:none;
+    }
+
+    .topbar-right{
+        flex:0 0 auto;
+        gap:6px;
+    }
+
+    .user-pill{
+        width:20px;
+        max-width:20px;
+        gap:0;
+        overflow:hidden;
+        font-size:0;
+    }
+
+    .user-pill i{
+        font-size:14px;
+    }
+
+    .topbar .btn{
+        padding:0.25rem 0.4rem;
+        font-size:11px;
+        line-height:1.2;
+    }
+
+    .sidebar,
+    .sidebar.collapsed{
+        top:58px;
+        width:92vw;
+        max-width:280px;
+        height:calc(100vh - 58px);
+        height:calc(100dvh - 58px);
+        padding-top:8px;
+    }
+
+    .sidebar a{
+        height:42px;
+    }
+
+    .sidebar i,
+    .sidebar.collapsed i{
+        margin-left:20px;
+    }
+
+    .sidebar a span{
+        left:54px;
+    }
+
+    .submenu i{
+        margin-left:34px;
+    }
+
+    .submenu span{
+        left:68px !important;
+    }
+
+    .sidebar-section{
+        padding-left:20px;
+    }
+
+    .sidebar-scrim{
+        inset:58px 0 0 0;
+    }
+
+    .main,
+    .main.expanded{
+        padding-top:80px !important;
     }
 }

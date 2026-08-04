@@ -10,6 +10,11 @@ if(!isset($_SESSION['username'])){
 require_once "../includes/db_connect.php";
 require_once "../includes/activity_log.php";
 require_once "../includes/permissions.php";
+require_once "../includes/contract_schema.php";
+require_once "../includes/contract_task_documents.php";
+
+ensureContractProjectSchema($mysqli);
+ensureContractTaskDocumentSchema($mysqli);
 
 function contractDeleteTableExists($mysqli, $tableName){
     $tableName = $mysqli->real_escape_string($tableName);
@@ -64,6 +69,43 @@ $role = $_SESSION['role'] ?? "UNKNOWN";
 $mysqli->begin_transaction();
 
 try{
+    $taskDocumentFiles = [];
+
+    if(
+        contractDeleteTableExists($mysqli, "contract_task_documents") &&
+        contractDeleteColumnExists($mysqli, "contract_task_documents", "contract_id")
+    ){
+        $docSelectStmt = $mysqli->prepare("
+            SELECT file_name
+            FROM contract_task_documents
+            WHERE contract_id = ?
+        ");
+
+        if($docSelectStmt){
+            $docSelectStmt->bind_param("i", $id);
+            $docSelectStmt->execute();
+            $docResult = $docSelectStmt->get_result();
+
+            while($doc = $docResult->fetch_assoc()){
+                $taskDocumentFiles[] = $doc['file_name'] ?? "";
+            }
+        }
+
+        $docDeleteStmt = $mysqli->prepare("
+            DELETE FROM contract_task_documents
+            WHERE contract_id = ?
+        ");
+
+        if(!$docDeleteStmt){
+            throw new Exception("Checklist document delete prepare error: " . $mysqli->error);
+        }
+
+        $docDeleteStmt->bind_param("i", $id);
+
+        if(!$docDeleteStmt->execute()){
+            throw new Exception("Checklist document delete error: " . $docDeleteStmt->error);
+        }
+    }
 
     /*
         1. Delete related files/tasks for the contract being deleted.
@@ -106,6 +148,14 @@ try{
 
         if(!$taskStmt->execute()){
             throw new Exception("Task delete error: " . $taskStmt->error);
+        }
+    }
+
+    foreach($taskDocumentFiles as $fileName){
+        $filePath = contractTaskDocumentDiskPath($fileName);
+
+        if(is_file($filePath)){
+            @unlink($filePath);
         }
     }
 
@@ -202,7 +252,31 @@ try{
     }
 
     /*
-        6. Log activity.
+        6. Shift related checklist document contract_id.
+    */
+    if(
+        contractDeleteTableExists($mysqli, "contract_task_documents") &&
+        contractDeleteColumnExists($mysqli, "contract_task_documents", "contract_id")
+    ){
+        $shiftTaskDocumentStmt = $mysqli->prepare("
+            UPDATE contract_task_documents
+            SET contract_id = contract_id - 1
+            WHERE contract_id > ?
+        ");
+
+        if(!$shiftTaskDocumentStmt){
+            throw new Exception("Checklist document contract_id shift prepare error: " . $mysqli->error);
+        }
+
+        $shiftTaskDocumentStmt->bind_param("i", $id);
+
+        if(!$shiftTaskDocumentStmt->execute()){
+            throw new Exception("Checklist document contract_id shift error: " . $shiftTaskDocumentStmt->error);
+        }
+    }
+
+    /*
+        7. Log activity.
     */
     $ip = $_SERVER['REMOTE_ADDR'];
     $time = date("Y-m-d H:i:s");
@@ -213,6 +287,7 @@ try{
     $projectManager = $contract['project_manager'] ?? "";
     $accountManager = $contract['account_manager'] ?? "";
     $endUser = $contract['end_user'] ?? "";
+    $projectCode = $contract['project_code'] ?? "";
     $contractNo = $contract['contract_no'] ?? "";
     $service = $contract['service'] ?? "";
     $poDate = $contract['po_date'] ?? "";
@@ -223,6 +298,7 @@ try{
 
     $description = "User [$username] deleted contract.
 Deleted Contract No: $id
+Project Code: $projectCode
 Project Name: $projectName
 Year Awarded: $yearAwarded
 Project Owner: $projectOwner
