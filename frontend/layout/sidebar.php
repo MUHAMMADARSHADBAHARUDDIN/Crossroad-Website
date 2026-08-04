@@ -67,9 +67,8 @@ $menu = [
         ],
         [
             "name" => "Telegram Notifications",
-            "icon" => "fa-telegram",
+            "icon" => "fab fa-telegram",
             "link" => "telegram_notifications.php",
-            "submenu" => true,
             "show" => $canViewPlanner
         ],
     ],
