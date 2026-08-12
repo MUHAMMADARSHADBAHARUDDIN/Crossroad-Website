@@ -92,6 +92,22 @@ $permissionGroups = [
             "office_inventory_document_delete" => "Document Delete"
         ]
     ],
+    "receiving" => [
+        "title" => "Item Receive",
+        "full" => "receiving_full",
+        "items" => [
+            "receiving_view" => "View Receiving Records",
+            "receiving_add" => "Receive Items"
+        ]
+    ],
+    "part_request" => [
+        "title" => "Part Request",
+        "full" => "part_request_full",
+        "items" => [
+            "part_request_view" => "View",
+            "part_request_add" => "Create Request"
+        ]
+    ],
     "planner" => [
         "title" => "Planner",
         "full" => "planner_full",
@@ -1308,7 +1324,7 @@ document.querySelectorAll(".editUserBtn").forEach(button => {
             checkbox.checked = permissions.includes(checkbox.value);
         });
 
-        ["users", "contracts", "inventory", "office_inventory", "planner", "visitor", "bulletin"].forEach(module => {
+        ["users", "contracts", "inventory", "office_inventory", "receiving", "part_request", "planner", "visitor", "bulletin"].forEach(module => {
             syncFullCheckbox(form, module);
         });
     });

@@ -167,6 +167,13 @@ body{
     transition:opacity 0.2s ease;
 }
 
+/* Keep the longest navigation label clear of the vertical scrollbar. */
+.sidebar a[href="telegram_notifications.php"] span{
+    left:58px;
+    padding-right:14px;
+    font-size:14px;
+}
+
 /* hide text smoothly */
 
 .sidebar.collapsed a span{
@@ -199,6 +206,41 @@ body{
 
 .main.expanded{
     margin-left:70px;
+}
+
+/* Item Receive attachment control */
+input[type="file"][name="attachment"].form-control{
+    display:block;
+    width:100%;
+    min-height:44px!important;
+    padding:0!important;
+    line-height:42px;
+    overflow:hidden;
+    border-radius:7px!important;
+}
+
+input[type="file"][name="attachment"].form-control::file-selector-button{
+    height:42px;
+    margin:0 14px 0 0;
+    padding:0 18px;
+    border:0;
+    border-right:1px solid #cfd6df;
+    background:#f3f5f8;
+    color:#202733;
+    font-weight:600;
+    cursor:pointer;
+}
+
+input[type="file"][name="attachment"].form-control::-webkit-file-upload-button{
+    height:42px;
+    margin:0 14px 0 0;
+    padding:0 18px;
+    border:0;
+    border-right:1px solid #cfd6df;
+    background:#f3f5f8;
+    color:#202733;
+    font-weight:600;
+    cursor:pointer;
 }
 
 /* BANNER */

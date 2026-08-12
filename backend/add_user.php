@@ -98,6 +98,12 @@ function allowedPermissionsList()
         "office_inventory_document_view",
         "office_inventory_document_download",
         "office_inventory_document_delete",
+        "receiving_full",
+        "receiving_view",
+        "receiving_add",
+        "part_request_full",
+        "part_request_view",
+        "part_request_add",
 
         "planner_full",
         "planner_view",

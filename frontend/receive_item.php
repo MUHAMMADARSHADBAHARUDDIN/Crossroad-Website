@@ -1,0 +1,64 @@
+<?php
+session_start();
+require_once "../includes/db_connect.php"; require_once "../includes/permissions.php"; require_once "../includes/receiving_schema.php"; require_once "../includes/activity_log.php"; require_once "../includes/date_helpers.php";
+if(!isset($_SESSION['username'])){header("Location:index.html");exit;} if(!hasPermission($mysqli,"receiving_add")){die("Access denied");} ensureReceivingSchema($mysqli);
+$username=$_SESSION['username']; $role=$_SESSION['role']??"UNKNOWN"; $error="";
+function riE($v){return htmlspecialchars((string)($v??""),ENT_QUOTES,"UTF-8");}
+if($_SERVER['REQUEST_METHOD']==="POST"){
+ $date=appNormalizeDateInput($_POST['received_date']??""); $by=trim($_POST['received_by']??""); $type=trim($_POST['item_type']??""); $item=trim($_POST['item_name']??""); $part=trim($_POST['part_number']??""); $serial=trim($_POST['serial_number']??""); $brand=trim($_POST['brand']??""); $desc=trim($_POST['description']??""); $qty=max(1,(int)($_POST['quantity']??1)); $rack=trim($_POST['rack_location']??""); $remark=trim($_POST['remark']??"");
+ if(!$date||$by===""||$type===""||$item===""||$rack===""){$error="Received date, received by, item type, item name and rack/location are required.";}
+ $stored="";$original="";$mime="";$size=0;
+ if($error === "" && isset($_FILES['attachment']) && $_FILES['attachment']['error'] !== UPLOAD_ERR_NO_FILE){
+    $f = $_FILES['attachment'];
+    if($f['error'] !== UPLOAD_ERR_OK){
+        $error = "Attachment upload failed.";
+    } elseif($f['size'] > 104857600){
+        $error = "Attachment must not exceed 100 MB.";
+    } else {
+        $original = basename($f['name']);
+        $ext = strtolower(pathinfo($original, PATHINFO_EXTENSION));
+        $allowedExtensions = ['png','jpg','jpeg','gif','webp','pdf','doc','docx','xls','xlsx','txt'];
+        $mimeByExtension = [
+            'png'=>'image/png','jpg'=>'image/jpeg','jpeg'=>'image/jpeg','gif'=>'image/gif','webp'=>'image/webp',
+            'pdf'=>'application/pdf','doc'=>'application/msword',
+            'docx'=>'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'xls'=>'application/vnd.ms-excel','xlsx'=>'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'txt'=>'text/plain'
+        ];
+        if(!in_array($ext, $allowedExtensions, true)){
+            $error = "Unsupported attachment type.";
+        } else {
+            if(class_exists('finfo') && defined('FILEINFO_MIME_TYPE')){
+                $detector = new finfo(FILEINFO_MIME_TYPE);
+                $detectedMime = $detector->file($f['tmp_name']);
+                $mime = is_string($detectedMime) ? $detectedMime : '';
+            } elseif(function_exists('mime_content_type')){
+                $detectedMime = @mime_content_type($f['tmp_name']);
+                $mime = is_string($detectedMime) ? $detectedMime : '';
+            }
+            if($mime === '' || $mime === 'application/octet-stream' || $mime === 'application/zip'){
+                $mime = $mimeByExtension[$ext];
+            }
+            $allowedMimes = array_values(array_unique($mimeByExtension));
+            if(!in_array($mime, $allowedMimes, true)){
+                $error = "The attachment content does not match an allowed file type.";
+            } else {
+                $dir = __DIR__ . "/../uploads/item_receive";
+                if(!is_dir($dir) && !mkdir($dir, 0775, true)){
+                    $error = "Unable to create the attachment folder.";
+                } else {
+                    $stored = bin2hex(random_bytes(16)) . "." . $ext;
+                    if(!move_uploaded_file($f['tmp_name'], $dir . "/" . $stored)){
+                        $error = "Unable to save attachment.";
+                    } else {
+                        $size = (int)$f['size'];
+                    }
+                }
+            }
+        }
+    }
+ }
+ if($error===""){$empty="";$stmt=$mysqli->prepare("INSERT INTO receiving_records(received_date,received_by,item_type,item_name,part_number,serial_number,brand,description,quantity,rack_location,purpose_route,purpose_detail,client_name,project_name,remark,attachment_file_name,attachment_original_name,attachment_mime,attachment_size,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");$stmt->bind_param("ssssssssisssssssssis",$date,$by,$type,$item,$part,$serial,$brand,$desc,$qty,$rack,$empty,$empty,$empty,$empty,$remark,$stored,$original,$mime,$size,$username);if($stmt->execute()){logActivity($mysqli,$username,$role,"ITEM RECEIVE","Received item: $item; rack: $rack");header("Location:item_receive.php?saved=1");exit;}$error="Unable to save item: ".$stmt->error;}
+}
+?>
+<!doctype html><html><head><title>Receive Item</title><link rel="stylesheet" href="style.css"><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"><style>.receive-card{height:auto!important;display:block!important;cursor:default!important;border:1px solid #d8dee8!important;box-shadow:0 6px 20px rgba(0,0,0,.08)}.form-label{font-weight:600}.form-control,.form-select{min-height:42px}</style></head><body><?php include "layout/header.php";include "layout/sidebar.php";?><main class="main"><div class="d-flex justify-content-between align-items-center mb-3"><div><h2>Receive Item</h2><div class="text-muted">Record an item received. Inventory entry will be completed manually later.</div></div><a href="item_receive.php" class="btn btn-outline-secondary"><i class="fa fa-arrow-left"></i> Back</a></div><?php if($error):?><div class="alert alert-danger"><?=riE($error)?></div><?php endif;?><div class="card receive-card"><div class="card-body p-4"><form method="post" enctype="multipart/form-data"><input type="hidden" name="MAX_FILE_SIZE" value="104857600"><div class="row"><div class="col-md-4 mb-3"><label class="form-label">Received Date *</label><input type="date" name="received_date" class="form-control" value="<?=riE($_POST['received_date']??date('Y-m-d'))?>" required></div><div class="col-md-4 mb-3"><label class="form-label">Received By *</label><input name="received_by" class="form-control" value="<?=riE($_POST['received_by']??$username)?>" required></div><div class="col-md-4 mb-3"><label class="form-label">Item Type *</label><select name="item_type" class="form-select" required><option value="">Select type</option><option>Laptop</option><option>Part / Component</option><option>Other Item</option></select></div><div class="col-md-4 mb-3"><label class="form-label">Item Name / Model *</label><input name="item_name" class="form-control" required></div><div class="col-md-4 mb-3"><label class="form-label">Part Number</label><input name="part_number" class="form-control"></div><div class="col-md-4 mb-3"><label class="form-label">Serial / Asset ID</label><input name="serial_number" class="form-control"></div><div class="col-md-4 mb-3"><label class="form-label">Brand</label><input name="brand" class="form-control"></div><div class="col-md-4 mb-3"><label class="form-label">Quantity *</label><input type="number" min="1" name="quantity" value="1" class="form-control" required></div><div class="col-md-4 mb-3"><label class="form-label">Rack / Location *</label><input name="rack_location" class="form-control" required></div><div class="col-12 mb-3"><label class="form-label">Description</label><textarea name="description" class="form-control" rows="3"></textarea></div><div class="col-12 mb-3"><label class="form-label">Attachment (PNG, JPG, PDF, Word, Excel, TXT — max 100 MB)</label><input type="file" name="attachment" class="form-control" accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx,.txt"></div><div class="col-12 mb-3"><label class="form-label">Remark</label><textarea name="remark" class="form-control" rows="3"></textarea></div></div><button class="btn btn-warning"><i class="fa fa-save"></i> Save Received Item</button></form></div></div></main><?php include "layout/footer.php";?></body></html>
