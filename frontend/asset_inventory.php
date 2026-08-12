@@ -63,7 +63,7 @@ SELECT
     description,
     MAX(no) AS latest_no,
     MAX(date_received) AS date_received,
-    COUNT(*) AS total_qty,
+    SUM(COALESCE(quantity, 1)) AS total_qty,
     MIN(created_by) AS created_by,
     GROUP_CONCAT(no SEPARATOR ' ') AS record_ids,
     GROUP_CONCAT(serial_number SEPARATOR ' ') AS serial_numbers,

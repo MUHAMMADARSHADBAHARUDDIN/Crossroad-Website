@@ -8,6 +8,8 @@ if(!function_exists('crossroadRealtimeChannelForAction')){
             return "";
         }
         if(strpos($action, "PLANNER") !== false){ return "planner"; }
+        if(strpos($action, "ITEM RECEIVE") !== false){ return "receiving"; }
+        if(strpos($action, "PART REQUEST") !== false){ return "part_request"; }
         if(strpos($action, "OFFICE INVENTORY") !== false || strpos($action, "OFFICE LICENSE") !== false){ return "office_inventory"; }
         if(strpos($action, "CONTRACT") !== false || strpos($action, "PROJECT") !== false){ return "contracts"; }
         if(strpos($action, "SERVER") !== false){ return "server_inventory"; }

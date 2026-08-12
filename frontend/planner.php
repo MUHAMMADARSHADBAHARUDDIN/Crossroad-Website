@@ -771,6 +771,13 @@ if(!$taskStmt){
 $taskStmt->bind_param("ss", $displayEndValue, $displayStartValue);
 $taskStmt->execute();
 $taskResult = $taskStmt->get_result();
+$technicalPicLookup = [];
+
+if($plannerViewMode === "technical"){
+    foreach(plannerPicNamesByOperationalRole($mysqli, "technical") as $technicalPicName){
+        $technicalPicLookup[strtolower($technicalPicName)] = true;
+    }
+}
 
 while($row = $taskResult->fetch_assoc()){
     $normalizedTitle = plannerNormalizeTaskTitle($row['title']);
@@ -792,13 +799,16 @@ while($row = $taskResult->fetch_assoc()){
     }
 
     if($plannerViewMode === "technical"){
-        $creatorPlannerRole = plannerCreatorOperationalRole(
-            $mysqli,
-            $row['created_by'] ?? "",
-            $row['created_account_type'] ?? ""
-        );
+        $hasTechnicalPic = false;
 
-        if($creatorPlannerRole !== "technical"){
+        foreach($taskPics as $taskPic){
+            if(isset($technicalPicLookup[strtolower($taskPic)])){
+                $hasTechnicalPic = true;
+                break;
+            }
+        }
+
+        if(!$hasTechnicalPic){
             continue;
         }
     }

@@ -1,5 +1,8 @@
 .env
 node_modules/
+output/
+tmp/
+deployment/*.zip
 Crossroad-Website-deployment-*.zip
 .env.*
 !.env.example

@@ -26,6 +26,8 @@ $canViewContracts = hasPermission($mysqli, "contracts_view");
 $canViewMasterBudget = hasContractMasterBudgetAccess($mysqli);
 $canViewInventory = hasPermission($mysqli, "inventory_view");
 $canViewOfficeInventory = hasPermission($mysqli, "office_inventory_view");
+$canViewReceiving = hasPermission($mysqli, "receiving_view");
+$canViewPartRequest = hasPermission($mysqli, "part_request_view");
 $canViewPlanner = hasPermission($mysqli, "planner_view");
 $canViewVisitors = hasPermission($mysqli, "visitor_view");
 $canViewBulletin = hasPermission($mysqli, "bulletin_view");
@@ -95,6 +97,18 @@ $menu = [
     ],
 
     "TECHNICAL" => [
+        [
+            "name" => "Item Receive",
+            "icon" => "fa-truck-ramp-box",
+            "link" => "item_receive.php",
+            "show" => $canViewReceiving
+        ],
+        [
+            "name" => "Part Request",
+            "icon" => "fa-file-circle-plus",
+            "link" => "part_request.php",
+            "show" => $canViewPartRequest
+        ],
         [
             "name" => "Parts Inventory",
             "icon" => "fa-box",

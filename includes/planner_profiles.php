@@ -380,6 +380,48 @@ if(!function_exists('plannerCreatorOperationalRole')){
     }
 }
 
+if(!function_exists('plannerPicNamesByOperationalRole')){
+    function plannerPicNamesByOperationalRole($mysqli, $role){
+        ensurePlannerProfileSchema($mysqli);
+        $role = plannerNormalizeOperationalRole($role);
+
+        if($role === ""){
+            return [];
+        }
+
+        $stmt = $mysqli->prepare("
+            SELECT DISTINCT planner_name
+            FROM planner_user_profiles
+            WHERE operational_role = ?
+              AND TRIM(planner_name) <> ''
+            ORDER BY planner_name ASC
+        ");
+
+        if(!$stmt){
+            return [];
+        }
+
+        $stmt->bind_param("s", $role);
+
+        if(!$stmt->execute()){
+            return [];
+        }
+
+        $result = $stmt->get_result();
+        $names = [];
+
+        while($result && ($row = $result->fetch_assoc())){
+            $name = trim((string)($row['planner_name'] ?? ""));
+
+            if($name !== ""){
+                $names[] = $name;
+            }
+        }
+
+        return $names;
+    }
+}
+
 if(!function_exists('plannerGetEmailRecipientsByPlannerName')){
     function plannerGetEmailRecipientsByPlannerName($mysqli, $plannerName){
         ensurePlannerProfileSchema($mysqli);

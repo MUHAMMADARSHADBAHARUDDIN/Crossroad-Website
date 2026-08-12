@@ -190,6 +190,12 @@ if(!function_exists('hasPermission')){
         elseif(strpos($permissionName, "office_inventory_") === 0){
             $module = "office_inventory_full";
         }
+        elseif(strpos($permissionName, "receiving_") === 0){
+            $module = "receiving_full";
+        }
+        elseif(strpos($permissionName, "part_request_") === 0){
+            $module = "part_request_full";
+        }
         elseif(strpos($permissionName, "planner_") === 0){
             $module = "planner_full";
         }
