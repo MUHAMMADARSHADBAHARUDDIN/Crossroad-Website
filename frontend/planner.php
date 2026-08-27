@@ -176,7 +176,28 @@ function plannerColor($value){
 function plannerColorForTitle($title, $taskOptions = null){
     $title = plannerNormalizeTaskTitle($title);
     $options = is_array($taskOptions) ? $taskOptions : plannerDefaultTaskOptions();
-    return $options[$title] ?? "#0d6efd";
+
+    foreach($options as $optionTitle => $optionColor){
+        if(strcasecmp($title, $optionTitle) === 0){
+            return plannerColor($optionColor);
+        }
+    }
+
+    // Custom titles are tasks created through the "Other" option.
+    return "#ffc107";
+}
+
+function plannerIsOtherTaskTitle($title, $taskOptions = null){
+    $title = plannerNormalizeTaskTitle($title);
+    $options = is_array($taskOptions) ? $taskOptions : plannerDefaultTaskOptions();
+
+    foreach(array_keys($options) as $optionTitle){
+        if(strcasecmp($title, $optionTitle) === 0){
+            return false;
+        }
+    }
+
+    return true;
 }
 
 function plannerPersonValues($value){
@@ -782,6 +803,9 @@ if($plannerViewMode === "technical"){
 while($row = $taskResult->fetch_assoc()){
     $normalizedTitle = plannerNormalizeTaskTitle($row['title']);
     $taskPics = plannerPersonValues($row['person_in_charge'] ?? "");
+    $taskColor = plannerIsOtherTaskTitle($normalizedTitle, $taskOptions)
+        ? "#ffc107"
+        : plannerColor($row['color'] ?? plannerColorForTitle($normalizedTitle, $taskOptions));
 
     if($plannerViewMode === "personal"){
         $matchesCurrentUser = false;
@@ -822,7 +846,7 @@ while($row = $taskResult->fetch_assoc()){
         "end_date" => (string)($row['end_date'] ?? $row['start_date']),
         "task_time" => $row['task_time'] !== null ? substr((string)$row['task_time'], 0, 5) : "",
         "task_time_display" => plannerTimeDisplay($row['task_time'] ?? ""),
-        "color" => plannerColor($row['color'] ?? plannerColorForTitle($normalizedTitle, $taskOptions)),
+        "color" => $taskColor,
         "created_by" => (string)($row['created_by'] ?? ""),
         "created_account_type" => (string)($row['created_account_type'] ?? ""),
         "updated_by" => (string)($row['updated_by'] ?? "")

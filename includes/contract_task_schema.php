@@ -52,6 +52,27 @@ if(!function_exists('ensureContractTaskCompletionSchema')){
             ");
         }
 
+        if(!contractTaskSchemaColumnExists($mysqli, "contract_tasks", "task_type")){
+            $mysqli->query("
+                ALTER TABLE `contract_tasks`
+                ADD COLUMN `task_type` varchar(30) DEFAULT NULL
+            ");
+        }
+
+        if(!contractTaskSchemaColumnExists($mysqli, "contract_tasks", "remark")){
+            $mysqli->query("
+                ALTER TABLE `contract_tasks`
+                ADD COLUMN `remark` text DEFAULT NULL
+            ");
+        }
+
+        if(!contractTaskSchemaColumnExists($mysqli, "contract_tasks", "notification_email")){
+            $mysqli->query("
+                ALTER TABLE `contract_tasks`
+                ADD COLUMN `notification_email` varchar(255) DEFAULT NULL
+            ");
+        }
+
         $done = true;
     }
 }

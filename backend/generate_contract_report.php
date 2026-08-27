@@ -221,6 +221,15 @@ function contractReportResolvePeriod($mysqli){
         $period = "30day";
     }
 
+    if(in_array($period, ["all", "alltime", "allyears"], true)){
+        return [
+            "code" => "all",
+            "label" => "All Years",
+            "start" => "1000-01-01 00:00:00",
+            "end" => "9999-12-31 23:59:59"
+        ];
+    }
+
     $today = date("Y-m-d");
     $tomorrow = date("Y-m-d 00:00:00", strtotime($today . " +1 day"));
 

@@ -5,12 +5,20 @@ require_once __DIR__ . "/../includes/planner_schema.php";
 require_once __DIR__ . "/../includes/planner_profiles.php";
 require_once __DIR__ . "/../includes/mailer.php";
 require_once __DIR__ . "/../includes/telegram.php";
+require_once __DIR__ . "/../includes/system_health.php";
 
 date_default_timezone_set("Asia/Kuala_Lumpur");
 ensurePlannerSchema($mysqli);
 ensurePlannerProfileSchema($mysqli);
 
 function plannerEmailReminderFail($message, $httpStatus = 500, $exitCode = 1){
+    $checkedAt = (new DateTimeImmutable("now", new DateTimeZone("Asia/Kuala_Lumpur")))->format(DATE_ATOM);
+    crossroadWritePlannerCronStatus([
+        "success" => false,
+        "error" => (string)$message,
+        "checked_at" => $checkedAt
+    ]);
+
     if(PHP_SAPI !== "cli"){
         http_response_code($httpStatus);
     }
@@ -19,7 +27,7 @@ function plannerEmailReminderFail($message, $httpStatus = 500, $exitCode = 1){
     echo json_encode([
         "success" => false,
         "error" => (string)$message,
-        "checked_at" => (new DateTimeImmutable("now", new DateTimeZone("Asia/Kuala_Lumpur")))->format(DATE_ATOM)
+        "checked_at" => $checkedAt
     ], JSON_UNESCAPED_SLASHES);
 
     if(PHP_SAPI === "cli"){
@@ -398,8 +406,7 @@ while($task = $taskResult->fetch_assoc()){
     }
 }
 
-header("Content-Type: application/json");
-echo json_encode([
+$cronResult = [
     "success" => $failed === 0 && $telegramFailed === 0,
     "dry_run" => $dryRun,
     "eligible" => $eligible,
@@ -415,7 +422,11 @@ echo json_encode([
     "telegram_skipped" => $telegramSkipped,
     "missing_telegram_chat_id" => $missingTelegram,
     "checked_at" => $now->format(DATE_ATOM)
-], JSON_UNESCAPED_SLASHES);
+];
+crossroadWritePlannerCronStatus($cronResult);
+
+header("Content-Type: application/json");
+echo json_encode($cronResult, JSON_UNESCAPED_SLASHES);
 
 if(PHP_SAPI === "cli"){
     echo PHP_EOL;

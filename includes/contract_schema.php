@@ -1105,8 +1105,10 @@ if(!function_exists('ensureContractProjectSchema')){
         }
 
         $contractColumns = [
+            "notification_email" => "varchar(255) DEFAULT NULL AFTER `contract_end`",
             "payment_term" => "varchar(100) DEFAULT NULL AFTER `amount`",
             "no_of_pm" => "decimal(8,2) DEFAULT NULL AFTER `payment_term`",
+            "project_remark" => "text DEFAULT NULL AFTER `no_of_pm`",
             "pm_y1_q1" => "varchar(50) DEFAULT NULL AFTER `no_of_pm`",
             "pm_y1_q2" => "varchar(50) DEFAULT NULL AFTER `pm_y1_q1`",
             "pm_y1_q3" => "varchar(50) DEFAULT NULL AFTER `pm_y1_q2`",

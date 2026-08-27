@@ -101,7 +101,7 @@ Part Request emails are sent automatically to `fazdlan@crossroad.my` and CC `sup
 
 Sign in as Administrator and open **Manage Users**. Assign the required permissions:
 
-- **Item Receive**: View Receiving Records, Receive Items
+- **Item Receive**: View Receiving Records, Receive Items, Edit Received Items, Delete Received Items
 - **Part Request**: View, Create Request
 
 Administrators already have access automatically.

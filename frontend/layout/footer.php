@@ -50,7 +50,7 @@ $crossroadRealtimePublicUrl = trim((string)(getenv("CROSSROAD_REALTIME_PUBLIC_UR
     const moduleMap = {
         planner: ["planner.php", "personal_planner.php", "technical_planner.php"],
         office_inventory: ["office_inventory.php", "office_add.php", "office_edit.php", "office_license.php", "office_license_antivirus.php"],
-        receiving: ["item_receive.php", "receive_item.php", "item_receive_report.php"],
+        receiving: ["item_receive.php", "receive_item.php", "edit_receive_item.php", "item_receive_report.php"],
         part_request: ["part_request.php", "part_request_pdf.php", "part_request_report.php"],
         contracts: ["contracts.php", "contract_add.php", "contract_edit.php", "project_tracker.php", "project_insights.php", "master_budget.php"],
         asset_inventory: ["asset_inventory.php", "asset_add.php", "asset_edit.php", "asset_delete.php", "stock_out.php"],

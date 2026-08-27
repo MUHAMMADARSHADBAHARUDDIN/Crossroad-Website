@@ -193,9 +193,14 @@ body{
         <h5 class="mb-1">Project / Owner Dashboard</h5>
         <small class="text-muted">Open a focused dashboard by project code or owner.</small>
     </div>
-    <button type="button" class="btn btn-dark" data-bs-toggle="modal" data-bs-target="#trackerFilterModal">
-        <i class="fa fa-filter"></i> View Project / Owner
-    </button>
+    <div class="d-flex gap-2 flex-wrap">
+        <button type="button" class="btn btn-dark" data-bs-toggle="modal" data-bs-target="#trackerFilterModal">
+            <i class="fa fa-filter"></i> View Project / Owner
+        </button>
+        <a class="btn btn-dark" href="../backend/generate_contract_report.php?report_type=all&amp;period=all" target="_blank" rel="noopener">
+            <i class="fa fa-file-pdf"></i> Project Report
+        </a>
+    </div>
 </div>
 
 <div class="row g-4">

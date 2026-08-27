@@ -6,6 +6,7 @@ require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
 require_once "../includes/activity_log.php";
 require_once "../includes/contract_task_schema.php";
+require_once "../includes/contract_notifications.php";
 
 header("Content-Type: text/plain; charset=UTF-8");
 
@@ -38,6 +39,9 @@ function updateTaskValidDate($value){
 
 $id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
 $taskText = trim($_POST['task_text'] ?? "");
+$taskType = trim((string)($_POST['task_type'] ?? ""));
+$remark = trim((string)($_POST['remark'] ?? ""));
+$notificationEmail = trim((string)($_POST['notification_email'] ?? ""));
 $taskStartDate = trim($_POST['task_start_date'] ?? "");
 $taskEndDate = trim($_POST['task_end_date'] ?? "");
 $claimAmountRaw = trim((string)($_POST['claim_amount'] ?? ""));
@@ -46,7 +50,32 @@ $claimAmount = null;
 
 if($id <= 0){ exit("Invalid task."); }
 if($taskText === ""){ exit("Task cannot be empty."); }
-if(stripos($taskText, "Claim -") === 0 && $invoice === ""){ exit("Please enter the invoice."); }
+$allowedTaskTypes = ["preventive", "kickoff", "training", "meeting", "corrective", "claim", "other"];
+if(!in_array($taskType, $allowedTaskTypes, true)){
+    if(stripos($taskText, "Claim -") === 0 || strcasecmp($taskText, "Claim") === 0){
+        $taskType = "claim";
+    }elseif(stripos($taskText, "Preventive Maintenance") === 0){
+        $taskType = "preventive";
+    }elseif(strcasecmp($taskText, "Kickoff") === 0){
+        $taskType = "kickoff";
+    }elseif(strcasecmp($taskText, "Training") === 0){
+        $taskType = "training";
+    }elseif(strcasecmp($taskText, "Meeting") === 0){
+        $taskType = "meeting";
+    }elseif(stripos($taskText, "Corrective Maintenance") === 0){
+        $taskType = "corrective";
+    }else{
+        $taskType = "other";
+    }
+}
+
+$isClaimTask = $taskType === "claim";
+if($isClaimTask && $invoice === ""){ exit("Please enter the invoice."); }
+if(!$isClaimTask){
+    $claimAmountRaw = "";
+    $claimAmount = null;
+    $invoice = "";
+}
 if($claimAmountRaw !== ""){
     $claimAmountRaw = str_replace([",", " "], "", $claimAmountRaw);
 
@@ -82,12 +111,18 @@ $hasTaskDates = updateTaskColumnExists($mysqli, "contract_tasks", "task_start_da
     && updateTaskColumnExists($mysqli, "contract_tasks", "task_end_date");
 $hasClaimAmount = updateTaskColumnExists($mysqli, "contract_tasks", "claim_amount");
 $hasInvoice = updateTaskColumnExists($mysqli, "contract_tasks", "invoice");
+$hasTaskType = updateTaskColumnExists($mysqli, "contract_tasks", "task_type");
+$hasRemark = updateTaskColumnExists($mysqli, "contract_tasks", "remark");
+$hasNotificationEmail = updateTaskColumnExists($mysqli, "contract_tasks", "notification_email");
 $dateSelect = $hasTaskDates ? ", task_start_date, task_end_date" : "";
 $claimSelect = $hasClaimAmount ? ", claim_amount" : "";
 $invoiceSelect = $hasInvoice ? ", invoice" : ", NULL AS invoice";
+$taskTypeSelect = $hasTaskType ? ", task_type" : ", NULL AS task_type";
+$remarkSelect = $hasRemark ? ", remark" : ", NULL AS remark";
+$notificationEmailSelect = $hasNotificationEmail ? ", notification_email" : ", NULL AS notification_email";
 
 $taskStmt = $mysqli->prepare("
-    SELECT contract_id, `$textColumn` AS old_task_text $dateSelect $claimSelect $invoiceSelect
+    SELECT contract_id, `$textColumn` AS old_task_text $dateSelect $claimSelect $invoiceSelect $taskTypeSelect $remarkSelect $notificationEmailSelect
     FROM contract_tasks
     WHERE `$idColumn` = ?
     LIMIT 1
@@ -99,7 +134,7 @@ $task = $taskStmt->get_result()->fetch_assoc();
 if(!$task){ exit("Task not found."); }
 
 $contractId = (int)$task['contract_id'];
-$contractStmt = $mysqli->prepare("SELECT created_by, project_name, contract_no FROM project_inventory WHERE no = ? LIMIT 1");
+$contractStmt = $mysqli->prepare("SELECT created_by, project_name, project_code, contract_no, contract_start, contract_end FROM project_inventory WHERE no = ? LIMIT 1");
 if(!$contractStmt){ exit("SQL Error: " . $mysqli->error); }
 $contractStmt->bind_param("i", $contractId);
 $contractStmt->execute();
@@ -122,6 +157,24 @@ if(!$hasTaskDates && $taskStartDate !== ""){
 $setParts = ["`$textColumn` = ?"];
 $types = "s";
 $params = [$taskText];
+
+if($hasTaskType){
+    $setParts[] = "task_type = ?";
+    $types .= "s";
+    $params[] = $taskType;
+}
+
+if($hasRemark){
+    $setParts[] = "remark = ?";
+    $types .= "s";
+    $params[] = $remark !== "" ? $remark : null;
+}
+
+if($hasNotificationEmail){
+    $setParts[] = "notification_email = ?";
+    $types .= "s";
+    $params[] = $notificationEmail !== "" ? $notificationEmail : null;
+}
 
 if($hasTaskDates){
     $startValue = $taskStartDate !== "" ? $taskStartDate : null;
@@ -182,6 +235,8 @@ $oldClaimText = "Unchanged";
 $newClaimText = "Unchanged";
 $oldInvoiceText = isset($task['invoice']) && trim((string)$task['invoice']) !== "" ? $task['invoice'] : "Not Assigned";
 $newInvoiceText = $invoice === "" ? "Not Assigned" : $invoice;
+$oldRemarkText = isset($task['remark']) && trim((string)$task['remark']) !== "" ? $task['remark'] : "Not Assigned";
+$newRemarkText = $remark === "" ? "Not Assigned" : $remark;
 
 if($canViewClaim){
     $oldClaimText = isset($task['claim_amount']) && $task['claim_amount'] !== null && $task['claim_amount'] !== ""
@@ -195,10 +250,16 @@ $description = "User [$username] edited a contract task.\n"
     . "Contract No: " . ($contract['contract_no'] ?? "") . "\n"
     . "Project Name: " . ($contract['project_name'] ?? "") . "\n"
     . "Task ID: $id\n\n"
-    . "OLD DATA:\n- Task: " . ($task['old_task_text'] ?? "") . "\n- Task Date: $oldDateText\n- Claim Amount: $oldClaimText\n- Invoice: $oldInvoiceText\n\n"
-    . "NEW DATA:\n- Task: $taskText\n- Task Date: $newDateText\n- Claim Amount: $newClaimText\n- Invoice: $newInvoiceText\n\n"
+    . "OLD DATA:\n- Task: " . ($task['old_task_text'] ?? "") . "\n- Remark: $oldRemarkText\n- Task Date: $oldDateText\n- Claim Amount: $oldClaimText\n- Invoice: $oldInvoiceText\n\n"
+    . "NEW DATA:\n- Checklist Type: $taskType\n- Task: $taskText\n- Remark: $newRemarkText\n- Task Date: $newDateText\n- Claim Amount: $newClaimText\n- Invoice: $newInvoiceText\n\n"
     . "IP Address: $ip\nTime: $time";
 
 logActivity($mysqli, $username, $role, "EDIT CONTRACT TASK", $description);
+crossroadSendContractNotification($notificationEmail, "A project task was updated", $contract, [
+    "task_text" => $taskText,
+    "task_start_date" => $taskStartDate,
+    "task_end_date" => $taskEndDate,
+    "remark" => $remark
+]);
 exit("success");
 ?>

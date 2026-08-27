@@ -77,15 +77,18 @@ $result = $stmt->get_result();
 
 if($result->num_rows == 0){
     echo "
-        <div class='alert alert-secondary mb-0'>
-            <i class='fa fa-folder-open'></i> No document uploaded for this contract.
+        <div class='contract-files-result' data-file-count='0'>
+            <div class='alert alert-secondary mb-0'>
+                <i class='fa fa-folder-open'></i> No document uploaded for this contract.
+            </div>
         </div>
     ";
     $stmt->close();
     exit();
 }
 
-echo "<div class='list-group'>";
+$fileCount = (int)$result->num_rows;
+echo "<div class='contract-files-result' data-file-count='" . $fileCount . "'><div class='list-group'>";
 
 while($row = $result->fetch_assoc()){
 
@@ -145,7 +148,7 @@ while($row = $result->fetch_assoc()){
     ";
 }
 
-echo "</div>";
+echo "</div></div>";
 
 $stmt->close();
 ?>

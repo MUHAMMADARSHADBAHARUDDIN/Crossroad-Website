@@ -12,6 +12,7 @@ require_once "../includes/activity_log.php";
 require_once "../includes/permissions.php";
 require_once "../includes/date_helpers.php";
 require_once "../includes/contract_schema.php";
+require_once "../includes/contract_notifications.php";
 
 ensureContractProjectSchema($mysqli);
 
@@ -216,6 +217,7 @@ if(isset($_POST['submit'])){
     $po_date = appNormalizeDateInput($_POST['po_date'] ?? "");
     $contract_start = appNormalizeDateInput($_POST['contract_start'] ?? "");
     $contract_end = appNormalizeDateInput($_POST['contract_end'] ?? "");
+    $notification_email = trim((string)($_POST['notification_email'] ?? ""));
     $amount = floatval($_POST['amount']);
     $year_awarded = ($_POST['year_awarded'] ?? '') !== '' ? (int)$_POST['year_awarded'] : null;
     $payment_term = trim($_POST['payment_term'] ?? '');
@@ -304,8 +306,8 @@ if(isset($_POST['submit'])){
         (no, project_code, year_awarded, project_name, project_owner, project_manager, account_manager, end_user,
         contract_no, service, po_date, contract_start, contract_end, status, amount, payment_term, no_of_pm,
         pm_y1_q1, pm_y1_q2, pm_y1_q3, pm_y1_q4, pm_y2_q1, pm_y2_q2, pm_y2_q3, pm_y2_q4,
-        pm_y3_q1, pm_y3_q2, pm_y3_q3, pm_y3_q4, pm_y4_q1, pm_y4_q2, pm_y4_q3, pm_y4_q4, created_by)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        pm_y3_q1, pm_y3_q2, pm_y3_q3, pm_y3_q4, pm_y4_q1, pm_y4_q2, pm_y4_q3, pm_y4_q4, notification_email, created_by)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ");
 
     if(!$stmt){
@@ -313,7 +315,7 @@ if(isset($_POST['submit'])){
     }
 
     $stmt->bind_param(
-        "isisssssssssssdsdsssssssssssssssss",
+        "isisssssssssssdsdssssssssssssssssss",
         $no,
         $project_code,
         $year_awarded,
@@ -335,6 +337,7 @@ if(isset($_POST['submit'])){
         $pmFields['pm_y2_q1'], $pmFields['pm_y2_q2'], $pmFields['pm_y2_q3'], $pmFields['pm_y2_q4'],
         $pmFields['pm_y3_q1'], $pmFields['pm_y3_q2'], $pmFields['pm_y3_q3'], $pmFields['pm_y3_q4'],
         $pmFields['pm_y4_q1'], $pmFields['pm_y4_q2'], $pmFields['pm_y4_q3'], $pmFields['pm_y4_q4'],
+        $notification_email,
         $created_by
     );
 
@@ -373,6 +376,16 @@ Time: $time";
         "ADD CONTRACT",
         $description
     );
+
+    crossroadNotifyContractRecipients($mysqli, [$created_by, $project_manager], "New contract created", [
+        "project_name" => $project_name,
+        "project_code" => $project_code,
+        "contract_no" => $contract_no,
+        "created_by" => $created_by,
+        "project_manager" => $project_manager,
+        "contract_start" => $contract_start,
+        "contract_end" => $contract_end
+    ]);
 
     header("Location: contracts.php");
     exit();
@@ -676,9 +689,27 @@ Time: $time";
 
 </form>
 
+<div id="contractSavingModal" class="contract-saving-overlay" role="dialog" aria-modal="true" aria-labelledby="contractSavingTitle" aria-describedby="contractSavingText" hidden>
+    <div class="contract-saving-box">
+        <div class="spinner-border text-warning" role="status" aria-hidden="true"></div>
+        <div>
+            <strong id="contractSavingTitle">Saving contract</strong>
+            <span id="contractSavingText">Please wait while email and Telegram notifications are being sent.</span>
+        </div>
+    </div>
+</div>
+
+<style>
+.contract-saving-overlay{position:fixed;inset:0;z-index:20000;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(15,18,22,.64);backdrop-filter:blur(2px)}
+.contract-saving-overlay[hidden]{display:none}.contract-saving-box{display:flex;align-items:center;gap:17px;width:min(420px,100%);padding:24px;border:1px solid rgba(255,255,255,.2);border-radius:14px;background:#fff;color:#171b20;box-shadow:0 20px 55px rgba(0,0,0,.35)}
+.contract-saving-box .spinner-border{width:2.6rem;height:2.6rem;flex:0 0 2.6rem}.contract-saving-box>div:last-child{display:flex;flex-direction:column;gap:4px}.contract-saving-box strong{font-size:1rem}.contract-saving-box span{color:#6c757d;font-size:.84rem;line-height:1.4}
+</style>
+
 </div>
 
 <?php include "layout/footer.php"; ?>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
 const projectCodeKnownPatterns = <?= json_encode(contractProjectCodeKnownPatterns()) ?>;
@@ -948,9 +979,14 @@ if(projectCodeMiddlePreview){
 }
 
 var contractAddForm = document.querySelector("form.form-card");
-
+var contractAddSending = false;
 if(contractAddForm){
-    contractAddForm.addEventListener("submit", function(){
+    contractAddForm.addEventListener("submit", function(event){
+        if(contractAddSending){
+            return;
+        }
+
+        event.preventDefault();
         document.querySelectorAll(".contract-title-case").forEach(function(field){
             normalizeContractTitleCaseField(field);
         });
@@ -962,6 +998,13 @@ if(contractAddForm){
                 projectCodeMiddlePreview.value = normalizeProjectCodeMiddleValue(projectCodeMiddlePreview.value);
             }
         }
+
+        document.getElementById("contractSavingModal").hidden = false;
+        document.body.setAttribute("aria-busy", "true");
+        window.setTimeout(function(){
+            contractAddSending = true;
+            contractAddForm.requestSubmit(contractAddForm.querySelector('button[name="submit"]'));
+        }, 180);
     });
 }
 

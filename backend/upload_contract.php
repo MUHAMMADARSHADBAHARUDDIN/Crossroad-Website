@@ -8,6 +8,8 @@ if(!isset($_SESSION['username'])){
     die("No session");
 }
 
+$isAjax = strtolower((string)($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'xmlhttprequest';
+
 if($_SERVER["REQUEST_METHOD"] === "POST"){
 
     if(!isset($_POST['contract_id']) || !isset($_FILES['file'])){
@@ -95,7 +97,12 @@ Time: $time";
                 $description
             );
 
-            echo "<script>alert('File uploaded successfully'); window.history.back();</script>";
+            if($isAjax){
+                header("Content-Type: text/plain; charset=UTF-8");
+                echo "success";
+            } else {
+                echo "<script>alert('File uploaded successfully'); window.history.back();</script>";
+            }
             exit();
 
         } else {

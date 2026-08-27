@@ -70,6 +70,13 @@ if(!function_exists('ensurePlannerSchema')){
             plannerEnsureColumn($mysqli, "planner_tasks", "updated_by", "varchar(100) DEFAULT NULL AFTER `created_at`");
             plannerEnsureColumn($mysqli, "planner_tasks", "updated_at", "datetime DEFAULT NULL AFTER `updated_by`");
             $mysqli->query("UPDATE `planner_tasks` SET `title` = 'Training', `color` = '#e83e8c' WHERE `title` = 'Trainning'");
+            $mysqli->query("
+                UPDATE `planner_tasks`
+                SET `color` = '#ffc107'
+                WHERE LOWER(TRIM(`title`)) NOT IN
+                    ('pm', 'cm', 'kickoff', 'meeting', 'site assestment', 'training', 'deployment')
+                  AND `color` <> '#ffc107'
+            ");
         }
 
         if(!plannerTableExists($mysqli, "planner_holiday_cache")){

@@ -120,6 +120,9 @@ $hasCompletedBy = taskColumnExists($mysqli, "contract_tasks", "completed_by");
 $hasCompletedAt = taskColumnExists($mysqli, "contract_tasks", "completed_at");
 $hasClaimAmount = taskColumnExists($mysqli, "contract_tasks", "claim_amount");
 $hasInvoice = taskColumnExists($mysqli, "contract_tasks", "invoice");
+$hasTaskType = taskColumnExists($mysqli, "contract_tasks", "task_type");
+$hasRemark = taskColumnExists($mysqli, "contract_tasks", "remark");
+$hasNotificationEmail = taskColumnExists($mysqli, "contract_tasks", "notification_email");
 
 if($hasIsCompleted){
     $completeSql = "CASE WHEN is_completed = 1 THEN 1 ELSE 0 END AS is_done";
@@ -136,6 +139,9 @@ $dateSelect = $hasTaskDates
     : ", NULL AS task_start_date, NULL AS task_end_date";
 $claimSelect = ($hasClaimAmount && $canViewClaim) ? ", claim_amount" : ", NULL AS claim_amount";
 $invoiceSelect = $hasInvoice ? ", invoice" : ", NULL AS invoice";
+$taskTypeSelect = $hasTaskType ? ", task_type" : ", NULL AS task_type";
+$remarkSelect = $hasRemark ? ", remark" : ", NULL AS remark";
+$notificationEmailSelect = $hasNotificationEmail ? ", notification_email" : ", NULL AS notification_email";
 $metaSelect = ""
     . ($hasCreatedBy ? ", created_by" : ", '' AS created_by")
     . ($hasCompletedBy ? ", completed_by" : ", '' AS completed_by")
@@ -143,7 +149,7 @@ $metaSelect = ""
 $orderColumn = taskColumnExists($mysqli, "contract_tasks", "created_at") ? "created_at" : $idColumn;
 
 $sql = "
-    SELECT `$idColumn` AS task_id, `$textColumn` AS task_text, $completeSql $dateSelect $claimSelect $invoiceSelect $metaSelect
+    SELECT `$idColumn` AS task_id, `$textColumn` AS task_text, $completeSql $dateSelect $claimSelect $invoiceSelect $taskTypeSelect $remarkSelect $notificationEmailSelect $metaSelect
     FROM contract_tasks
     WHERE contract_id = ?
     ORDER BY `$orderColumn` ASC
@@ -190,100 +196,63 @@ $percent = $total > 0 ? round(($done / $total) * 100) : 0;
 ?>
 <div class="task-checklist-header">
     <div>
-        <b>Checklist Progress</b>
-        <div class="text-muted small"><?= $done ?> of <?= $total ?> task completed</div>
+        <b>Project Checklist</b>
+        <div class="text-muted small"><?= $done ?> of <?= $total ?> items completed</div>
     </div>
     <div class="task-summary-pill"><?= $percent ?>%</div>
 </div>
 
-<div class="progress mb-3" style="height:18px; border-radius:999px;">
-    <div class="progress-bar <?= $percent >= 70 ? 'bg-success' : ($percent >= 40 ? 'bg-warning' : 'bg-danger') ?>"
-         style="width:<?= $percent ?>%; font-size:11px; font-weight:700;"><?= $percent ?>%</div>
+<div class="task-progress-track" aria-label="Checklist progress: <?= $percent ?> percent">
+    <div class="task-progress-value <?= $percent >= 70 ? 'bg-success' : ($percent >= 40 ? 'bg-warning' : 'bg-danger') ?>" style="width:<?= $percent ?>%"></div>
 </div>
-
-<?php if($canAddTask): ?>
-<div class="task-add-box">
-    <div class="row g-2 align-items-end mb-2">
-        <div class="col-md-4">
-            <label class="form-label small mb-1">Checklist Type</label>
-            <select id="newTaskType" class="form-select">
-                <option value="">Select type</option>
-                <option value="preventive">Preventive Maintenance</option>
-                <option value="corrective">Corrective Maintenance</option>
-                <option value="claim">Claim</option>
-                <option value="other">Other</option>
-            </select>
-        </div>
-
-        <div class="col-md-4 task-entry-field task-maintenance-field d-none">
-            <label class="form-label small mb-1" id="newTaskMaintenanceLabel">Preventive Maintenance Number</label>
-            <select id="newTaskMaintenanceNumber" class="form-select">
-                <option value="">Select number</option>
-                <?php for($number = 1; $number <= 20; $number++): ?>
-                    <option value="<?= $number ?>"><?= $number ?></option>
-                <?php endfor; ?>
-            </select>
-        </div>
-
-        <div class="col-md-8 task-entry-field task-claim-field d-none">
-            <label class="form-label small mb-1">Claim Remark</label>
-            <input type="text" id="newTaskClaimRemark" class="form-control" placeholder="Claim for..." autocomplete="off">
-        </div>
-
-        <div class="col-md-8 task-entry-field task-other-field d-none">
-            <label class="form-label small mb-1">Checklist Item</label>
-            <input type="text" id="newContractTaskText" class="form-control" placeholder="Add new checklist item..." autocomplete="off">
-        </div>
-    </div>
-
-    <div class="row g-2 align-items-end">
-        <div class="col-md-3 task-entry-field task-common-field d-none">
-            <label class="form-label small mb-1">Task Start Date</label>
-            <input type="date" id="newTaskStartDate" class="form-control">
-        </div>
-        <div class="col-md-3 task-entry-field task-common-field d-none">
-            <label class="form-label small mb-1">Task End Date</label>
-            <input type="date" id="newTaskEndDate" class="form-control">
-        </div>
-        <?php if($canViewClaim): ?>
-            <div class="col-md-4 task-entry-field task-claim-field d-none">
-                <label class="form-label small mb-1">Claim Amount</label>
-                <input type="number" id="newTaskClaimAmount" class="form-control" min="0.01" step="0.01" placeholder="0.00">
-            </div>
-        <?php endif; ?>
-        <div class="col-md-3 task-entry-field task-claim-field d-none">
-            <label class="form-label small mb-1">Invoice</label>
-            <input type="text" id="newTaskInvoice" class="form-control" placeholder="Invoice no." autocomplete="off">
-        </div>
-        <div class="col-md-2 d-grid task-entry-field task-common-field d-none">
-            <button type="button" class="btn btn-warning" id="addTaskBtn" onclick="addContractTask()">
-                <i class="fa fa-plus"></i> Add
-            </button>
-        </div>
-    </div>
-    <?php if($canUploadTaskDocument): ?>
-    <div class="mt-2 task-entry-field task-common-field d-none">
-        <label class="form-label small mb-1">Attach Document</label>
-        <input type="file" id="newTaskDocument" class="form-control">
-        <small class="text-muted">Maximum file size 100MB. ZIP files are allowed.</small>
-    </div>
-    <?php endif; ?>
-    <small class="text-muted d-block mt-2">Choose a checklist type first. Only the required fields for that type will appear.</small>
-</div>
-<?php endif; ?>
 
 <?php if($total <= 0): ?>
 <div class="task-empty-state">
     <i class="fa fa-list-check fa-2x mb-2"></i>
-    <div>No checklist item yet.</div>
-    <?php if($canAddTask): ?><small>Add your first checklist item above.</small><?php else: ?><small>You do not have permission to add checklist items.</small><?php endif; ?>
+    <div class="fw-semibold">No checklist item yet.</div>
+    <?php if($canAddTask): ?><small>Use the Add Checklist Item button to create the first entry.</small><?php else: ?><small>You do not have permission to add checklist items.</small><?php endif; ?>
 </div>
 <?php else: ?>
-<div class="task-checklist">
+<div class="contract-checklist-scroll">
+<table class="contract-checklist-table" aria-label="Contract checklist">
+<thead>
+<tr>
+    <th style="width:25%">Checklist Item</th>
+    <th style="width:13%">Status</th>
+    <th style="width:15%">Date</th>
+    <th style="width:18%">Remark</th>
+    <th style="width:14%">Created By</th>
+    <th style="width:9%">Documents</th>
+    <th style="width:6%">Actions</th>
+</tr>
+</thead>
+<tbody>
 <?php foreach($tasks as $task): ?>
     <?php
     $taskId = (int)$task['task_id'];
-    $taskText = $task['task_text'] ?? "";
+    $taskText = trim((string)($task['task_text'] ?? ""));
+    $displayTaskText = $taskText;
+    $taskType = strtolower(trim((string)($task['task_type'] ?? "")));
+    $taskRemark = trim((string)($task['remark'] ?? ""));
+    $notificationEmail = trim((string)($task['notification_email'] ?? ""));
+
+    if(!in_array($taskType, ["preventive", "kickoff", "training", "meeting", "corrective", "claim", "other"], true)){
+        if(stripos($taskText, "Claim -") === 0 || strcasecmp($taskText, "Claim") === 0){
+            $taskType = "claim";
+        }elseif(stripos($taskText, "Preventive Maintenance") === 0){
+            $taskType = "preventive";
+        }elseif(strcasecmp($taskText, "Kickoff") === 0){
+            $taskType = "kickoff";
+        }elseif(strcasecmp($taskText, "Training") === 0){
+            $taskType = "training";
+        }elseif(strcasecmp($taskText, "Meeting") === 0){
+            $taskType = "meeting";
+        }elseif(stripos($taskText, "Corrective Maintenance") === 0){
+            $taskType = "corrective";
+        }else{
+            $taskType = "other";
+        }
+    }
     $taskStartDate = $task['task_start_date'] ?? "";
     $taskEndDate = $task['task_end_date'] ?? "";
     $taskCreatedBy = trim((string)($task['created_by'] ?? ""));
@@ -298,75 +267,89 @@ $percent = $total > 0 ? round(($done / $total) * 100) : 0;
     $hasAssignedDate = !empty($taskStartDate) && $taskStartDate !== "0000-00-00";
     $completedAtText = taskFormatDateTime($completedAt);
     $taskDateText = (!$hasAssignedDate && $isDone && $completedAtText !== "")
-        ? "Ticked on " . $completedAtText
+        ? $completedAtText
         : taskFormatDateRange($taskStartDate, $taskEndDate);
-    $taskMetaParts = [];
+    $remarkParts = [];
+    $tickedByText = "";
 
-    if($taskCreatedBy !== ""){
-        $taskMetaParts[] = "Created by " . $taskCreatedBy;
-    }
-
-    if($isDone){
-        if($completedBy !== ""){
-            $taskMetaParts[] = "Ticked by " . $completedBy;
+    foreach(["Corrective Maintenance - ", "Claim - "] as $remarkPrefix){
+        if(stripos($taskText, $remarkPrefix) === 0){
+            $displayTaskText = rtrim($remarkPrefix, " -");
+            $remarkValue = trim(substr($taskText, strlen($remarkPrefix)));
+            if($taskRemark === "" && $remarkValue !== "") $taskRemark = $remarkValue;
+            break;
         }
-
     }
+
+    if($taskRemark !== "") $remarkParts[] = $taskRemark;
+    if($canViewClaim && $claimAmountText !== "") $remarkParts[] = "Claim: " . $claimAmountText;
+    if($invoice !== "") $remarkParts[] = "Invoice: " . $invoice;
+    if($isDone && $completedBy !== "") $tickedByText = "Ticked by " . $completedBy;
     ?>
-    <div class="contract-task-item <?= $isDone ? 'task-completed' : '' ?> <?= $canOpenTaskDocument ? 'contract-task-document-enabled' : '' ?>"
-         data-task-id="<?= $taskId ?>"
-         tabindex="-1">
-        <div class="contract-task-left">
-            <input type="checkbox" class="form-check-input contract-task-checkbox"
-                   <?= $isDone ? 'checked' : '' ?> <?= !$canEditTask ? 'disabled' : '' ?>
-                   onchange="toggleContractTask(<?= $taskId ?>, this.checked, this)">
-            <div>
-                <div class="contract-task-text"><?= taskEscape($taskText) ?></div>
-                <div class="contract-task-meta">
-                    <span class="me-2"><?= $isDone ? 'Completed' : 'Pending' ?></span>
-                    <span><i class="fa fa-calendar-days"></i> <?= taskEscape($taskDateText) ?></span>
-                    <?php if($documentCount > 0): ?>
-                        <span class="task-document-indicator">
-                            <i class="fa fa-paperclip"></i>
-                            <?= $documentCount ?> document<?= $documentCount === 1 ? '' : 's' ?>
-                        </span>
-                    <?php endif; ?>
-                    <?php if($canViewClaim && $claimAmountText !== ""): ?>
-                        <span class="task-document-indicator task-claim-indicator">
-                            <i class="fa fa-coins"></i>
-                            <?= taskEscape($claimAmountText) ?>
-                        </span>
-                    <?php endif; ?>
-                    <?php if($invoice !== ""): ?>
-                        <span class="task-document-indicator">
-                            <i class="fa fa-file-invoice"></i>
-                            Invoice: <?= taskEscape($invoice) ?>
-                        </span>
-                    <?php endif; ?>
-                </div>
-                <?php if(!empty($taskMetaParts)): ?>
-                    <div class="contract-task-meta">
-                        <span><i class="fa fa-user-check"></i> <?= taskEscape(implode(" | ", $taskMetaParts)) ?></span>
-                    </div>
+    <tr class="contract-task-item <?= $isDone ? 'task-completed' : '' ?>"
+        data-task-id="<?= $taskId ?>">
+        <td class="task-status-cell"
+            title="Click to <?= $isDone ? 'mark as pending' : 'mark as completed' ?>"
+            onclick="handleTaskStatusCellClick(event, this)">
+            <div class="contract-task-text"><?= taskEscape($displayTaskText) ?></div>
+        </td>
+        <td>
+            <div class="task-status-wrap">
+                <input type="checkbox" class="form-check-input contract-task-checkbox"
+                       aria-label="Mark <?= taskEscape($displayTaskText) ?> as completed"
+                       <?= $isDone ? 'checked' : '' ?> <?= !$canEditTask ? 'disabled' : '' ?>
+                       onchange="toggleContractTask(<?= $taskId ?>, this.checked, this)">
+                <span class="task-status-badge <?= $isDone ? 'completed' : 'pending' ?>">
+                    <i class="fa <?= $isDone ? 'fa-circle-check' : 'fa-clock' ?>"></i>
+                    <?= $isDone ? 'Completed' : 'Pending' ?>
+                </span>
+            </div>
+        </td>
+        <td class="task-date-cell"><i class="fa fa-calendar-days text-muted me-1"></i><?= taskEscape($taskDateText) ?></td>
+        <td class="task-remark-cell">
+            <?php if(!empty($remarkParts)): ?>
+                <div><?= taskEscape(implode(" | ", $remarkParts)) ?></div>
+            <?php endif; ?>
+            <?php if($tickedByText !== ""): ?>
+                <div class="task-ticked-by"><?= taskEscape($tickedByText) ?></div>
+            <?php endif; ?>
+            <?php if(empty($remarkParts) && $tickedByText === ""): ?>
+                <span class="text-muted">—</span>
+            <?php endif; ?>
+        </td>
+        <td class="task-created-cell"><i class="fa fa-user text-muted me-1"></i><?= taskEscape($taskCreatedBy !== "" ? $taskCreatedBy : "—") ?></td>
+        <td class="task-document-cell">
+            <?php if($canOpenTaskDocument): ?>
+                <button type="button" class="task-document-button" onclick="openContractTaskDocuments(<?= $taskId ?>)">
+                    <i class="fa fa-paperclip"></i>
+                    <?= $documentCount > 0 ? $documentCount . ' file' . ($documentCount === 1 ? '' : 's') : 'Add file' ?>
+                </button>
+            <?php else: ?>
+                <span class="text-muted">—</span>
+            <?php endif; ?>
+        </td>
+        <td>
+            <?php if($canEditTask || $canDeleteTask): ?>
+            <div class="contract-task-actions">
+                <?php if($canEditTask): ?>
+                    <button type="button" class="btn btn-sm btn-primary task-icon-btn" title="Edit checklist item" aria-label="Edit checklist item"
+                            onclick='openEditTaskModal(<?= $taskId ?>, <?= taskEscape(json_encode($taskText)) ?>, <?= taskEscape(json_encode($taskStartDate)) ?>, <?= taskEscape(json_encode($taskEndDate)) ?>, <?= taskEscape(json_encode($claimAmountValue)) ?>, <?= taskEscape(json_encode($invoice)) ?>, <?= taskEscape(json_encode($taskType)) ?>, <?= taskEscape(json_encode($taskRemark)) ?>, <?= taskEscape(json_encode($notificationEmail)) ?>)'>
+                        <i class="fa fa-pen"></i>
+                    </button>
+                <?php endif; ?>
+                <?php if($canDeleteTask): ?>
+                    <button type="button" class="btn btn-sm btn-danger task-icon-btn" title="Delete checklist item" aria-label="Delete checklist item" onclick="deleteContractTask(<?= $taskId ?>)">
+                        <i class="fa fa-trash"></i>
+                    </button>
                 <?php endif; ?>
             </div>
-        </div>
-        <?php if($canEditTask || $canDeleteTask): ?>
-        <div class="contract-task-actions">
-            <?php if($canEditTask): ?>
-                <button type="button" class="btn btn-sm btn-primary task-icon-btn" title="Edit task"
-                        onclick='openEditTaskModal(<?= $taskId ?>, <?= taskEscape(json_encode($taskText)) ?>, <?= taskEscape(json_encode($taskStartDate)) ?>, <?= taskEscape(json_encode($taskEndDate)) ?>, <?= taskEscape(json_encode($claimAmountValue)) ?>, <?= taskEscape(json_encode($invoice)) ?>)'>
-                    <i class="fa fa-pen"></i>
-                </button>
+            <?php else: ?>
+                <span class="text-muted">—</span>
             <?php endif; ?>
-            <?php if($canDeleteTask): ?>
-                <button type="button" class="btn btn-sm btn-danger task-icon-btn" title="Delete task" onclick="deleteContractTask(<?= $taskId ?>)">
-                    <i class="fa fa-trash"></i>
-                </button>
-            <?php endif; ?>
-        </div>
-        <?php endif; ?>
-    </div>
+        </td>
+    </tr>
 <?php endforeach; ?>
+</tbody>
+</table>
 </div>
 <?php endif; ?>

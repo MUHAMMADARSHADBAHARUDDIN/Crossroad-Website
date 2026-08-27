@@ -26,6 +26,8 @@ $username = $_SESSION['username'];
 
 $canAddContract = hasContractAddAccess($mysqli);
 $canViewClaim = hasContractClaimViewAccess($mysqli);
+$contractImportResult = $_SESSION['contract_import_result'] ?? null;
+unset($_SESSION['contract_import_result']);
 
 function contractEscape($value){
     return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
@@ -450,6 +452,8 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
         $canEditThisContract = hasContractEditAccess($mysqli, $created_by);
         $canDeleteThisContract = hasContractDeleteAccess($mysqli, $created_by);
         $canUploadThisContract = hasContractUploadAccess($mysqli, $created_by);
+        $canAddTaskThisContract = hasContractTaskAddAccess($mysqli, $created_by);
+        $canUploadTaskDocumentThisContract = hasContractTaskDocumentUploadAccess($mysqli, $created_by);
 
         $auto_status = trim((string)($row['status'] ?? '')) ?: ($row['auto_status'] ?? "Active");
 
@@ -531,16 +535,6 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
         $formattedEnd = contractFormatDate($row['contract_end']);
         $formattedPoDate = contractFormatDate($row['po_date']);
         $displayProjectCode = contractProjectCodeDisplay($row['project_code'] ?? "");
-        $pmYearDisplay = [];
-        for($pmYear = 1; $pmYear <= 4; $pmYear++){
-            $parts = [];
-            for($pmQuarter = 1; $pmQuarter <= 4; $pmQuarter++){
-                $value = trim((string)($row["pm_y{$pmYear}_q{$pmQuarter}"] ?? ''));
-                if($value !== '') $parts[] = "Q{$pmQuarter}: " . contractEscape($value);
-            }
-            $pmYearDisplay[$pmYear] = $parts ? implode('<br>', $parts) : '<span class="text-muted">—</span>';
-        }
-
         $meta = [
             "id" => $row['no'],
             "projectcode" => $displayProjectCode,
@@ -550,6 +544,8 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
             "accountmanager" => $row['account_manager'] ?? '',
             "createdby" => $created_by,
             "canupload" => $canUploadThisContract ? "1" : "0",
+            "canaddtask" => $canAddTaskThisContract ? "1" : "0",
+            "canuploadtaskdocument" => $canUploadTaskDocumentThisContract ? "1" : "0",
             "enduser" => $row['end_user'],
             "contractno" => $row['contract_no'],
             "service" => $row['service'],
@@ -588,8 +584,6 @@ if(isset($_GET['ajax']) && $_GET['ajax'] == "1"){
             "amount" => "RM " . number_format((float)$row['amount'], 2),
             "payment_term" => contractEscape($row['payment_term'] ?? ''),
             "no_of_pm" => contractEscape($row['no_of_pm'] ?? ''),
-            "pm_year_1" => $pmYearDisplay[1], "pm_year_2" => $pmYearDisplay[2],
-            "pm_year_3" => $pmYearDisplay[3], "pm_year_4" => $pmYearDisplay[4],
             "actions" => $actionsHtml,
             "meta" => $meta
         ];
@@ -916,13 +910,123 @@ body{
 }
 
 /* =========================================================
-   REAL CHECKLIST STYLE - NOT TABLE
+   CONTRACT DETAIL + EXCEL-INSPIRED CHECKLIST
 ========================================================= */
-.task-card{
-    background:#f8fafc;
-    border:1px solid #e5e7eb;
+.contract-detail-modal .modal-dialog{
+    max-width:1080px;
+}
+
+.contract-detail-modal .modal-content,
+.contract-tools-modal .modal-content{
+    overflow:hidden;
+    border:0;
+    border-radius:18px;
+    box-shadow:0 24px 70px rgba(15,23,42,.24);
+}
+
+.contract-detail-modal .modal-header,
+.contract-tools-modal .modal-header{
+    padding:18px 22px;
+    border:0;
+    background:linear-gradient(135deg,#173866 0%,#2f5a9c 100%);
+    color:#fff;
+}
+
+.contract-detail-modal .modal-body{
+    padding:22px;
+    background:#f5f7fb;
+}
+
+.contract-overview-grid{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:12px;
+    margin-bottom:16px;
+}
+
+.contract-overview-card{
+    padding:14px 16px;
+    border:1px solid #dbe3ee;
+    border-radius:13px;
+    background:#fff;
+}
+
+.contract-overview-label{
+    display:block;
+    margin-bottom:4px;
+    color:#64748b;
+    font-size:12px;
+    font-weight:700;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+}
+
+.contract-overview-value{
+    color:#182334;
+    font-size:15px;
+    font-weight:650;
+    overflow-wrap:anywhere;
+}
+
+.contract-detail-toolbar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    flex-wrap:wrap;
+    padding:12px 14px;
+    margin-bottom:16px;
+    border:1px solid #dbe3ee;
+    border-radius:13px;
+    background:#fff;
+}
+
+.contract-detail-toolbar-copy strong{
+    display:block;
+    color:#182334;
+}
+
+.contract-detail-toolbar-copy span{
+    color:#64748b;
+    font-size:12px;
+}
+
+.contract-detail-actions{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+}
+
+.contract-detail-action{
+    min-height:40px;
+    border-radius:9px;
+    font-weight:650;
+}
+
+.attachment-count-badge{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-width:22px;
+    height:22px;
+    margin-left:5px;
+    padding:0 7px;
+    border-radius:999px;
+    background:#e8eef8;
+    color:#173866;
+    font-size:11px;
+    font-weight:800;
+}
+
+.contract-checklist-panel{
+    overflow:hidden;
+    border:1px solid #d6deea;
     border-radius:14px;
-    padding:14px;
+    background:#fff;
+}
+
+.task-card{
+    background:#fff;
 }
 
 .task-checklist-header{
@@ -930,7 +1034,7 @@ body{
     justify-content:space-between;
     align-items:center;
     gap:10px;
-    margin-bottom:12px;
+    padding:15px 17px 11px;
     flex-wrap:wrap;
 }
 
@@ -944,76 +1048,173 @@ body{
     font-weight:700;
 }
 
-.task-add-box{
-    background:#fff;
-    border:1px solid #e5e7eb;
-    border-radius:12px;
-    padding:10px;
-    margin-bottom:12px;
+.task-progress-track{
+    height:8px;
+    margin:0 17px 16px;
+    overflow:hidden;
+    border-radius:999px;
+    background:#e8edf4;
 }
 
-.task-checklist{
-    display:flex;
-    flex-direction:column;
-    gap:10px;
+.task-progress-value{
+    height:100%;
+    border-radius:inherit;
+    transition:width .2s ease;
+}
+
+.contract-checklist-scroll{
+    width:100%;
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+}
+
+.contract-checklist-table{
+    width:100%;
+    min-width:900px;
+    margin:0;
+    border-collapse:separate;
+    border-spacing:0;
+}
+
+.contract-checklist-table thead th{
+    padding:10px 12px;
+    border-right:1px solid rgba(255,255,255,.35);
+    border-bottom:0;
+    background:#315b9e;
+    color:#fff;
+    font-size:12px;
+    font-weight:750;
+    letter-spacing:.02em;
+    white-space:nowrap;
+}
+
+.contract-checklist-table thead th:last-child{
+    border-right:0;
 }
 
 .contract-task-item{
-    display:flex;
-    align-items:flex-start;
-    justify-content:space-between;
-    gap:12px;
-    background:#fff;
-    border:1px solid #e5e7eb;
-    border-radius:14px;
-    padding:12px 14px;
-    transition:0.2s ease;
+    transition:background-color .16s ease, box-shadow .16s ease;
+}
+
+.contract-task-item td{
+    padding:11px 12px;
+    border-right:1px solid #dbe2ea;
+    border-bottom:1px solid #dbe2ea;
+    color:#273244;
+    font-size:13px;
+    vertical-align:middle;
+}
+
+.contract-task-item td:last-child{
+    border-right:0;
 }
 
 .contract-task-item:hover{
-    border-color:#ffc107;
-    box-shadow:0 4px 12px rgba(0,0,0,0.06);
-}
-
-.contract-task-document-enabled{
-    cursor:pointer;
+    background:#fff8df;
 }
 
 .contract-task-item.contract-task-focus{
-    border-color:#ffc107;
-    background:#fff8e1;
-    box-shadow:0 0 0 4px rgba(255,193,7,0.22), 0 8px 18px rgba(0,0,0,0.08);
-}
-
-.contract-task-left{
-    display:flex;
-    align-items:flex-start;
-    gap:11px;
-    flex:1;
-    min-width:0;
+    background:#fff1bf;
+    box-shadow:inset 4px 0 0 #ffc107;
 }
 
 .contract-task-checkbox{
-    width:20px;
-    height:20px;
+    width:18px;
+    height:18px;
     cursor:pointer;
-    margin-top:2px;
-    flex:0 0 auto;
 }
 
 .contract-task-text{
-    font-size:14px;
-    font-weight:600;
+    font-size:13px;
+    font-weight:700;
     color:#212529;
-    line-height:1.4;
+    line-height:1.35;
     overflow-wrap:anywhere;
     word-break:break-word;
 }
 
 .contract-task-meta{
-    font-size:12px;
+    font-size:11px;
     color:#6c757d;
-    margin-top:4px;
+    margin-top:3px;
+}
+
+.task-status-wrap{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    white-space:nowrap;
+}
+
+.task-status-cell{
+    cursor:pointer;
+    user-select:none;
+}
+
+.task-status-cell:hover{
+    background:#fff3cd;
+}
+
+.task-status-badge{
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+    padding:4px 8px;
+    border-radius:999px;
+    font-size:11px;
+    font-weight:750;
+}
+
+.task-status-badge.pending{
+    background:#fff3cd;
+    color:#795b00;
+}
+
+.task-status-badge.completed{
+    background:#dff5e7;
+    color:#146c43;
+}
+
+.task-date-cell,
+.task-created-cell{
+    min-width:145px;
+}
+
+.task-remark-cell{
+    min-width:170px;
+    color:#566274 !important;
+}
+
+.task-ticked-by{
+    display:block;
+    margin-top:5px;
+    padding-top:5px;
+    border-top:1px dashed #cbd5e1;
+    color:#4b6078;
+    font-size:12px;
+}
+
+.task-document-cell{
+    min-width:118px;
+}
+
+.task-document-button{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    min-height:34px;
+    padding:6px 9px;
+    border:1px solid #b7c5d9;
+    border-radius:8px;
+    background:#fff;
+    color:#315b9e;
+    font-size:12px;
+    font-weight:700;
+}
+
+.task-document-button:hover{
+    border-color:#315b9e;
+    background:#eef4ff;
 }
 
 .task-document-indicator{
@@ -1034,33 +1235,32 @@ body{
     gap:6px;
     flex-wrap:wrap;
     justify-content:flex-end;
+    white-space:nowrap;
 }
 
 .task-icon-btn{
     border:none;
     border-radius:9px;
-    width:34px;
-    height:34px;
+    width:32px;
+    height:32px;
     display:inline-flex;
     align-items:center;
     justify-content:center;
 }
 
 .task-completed{
-    background:#f0fff4;
-    border-color:#b7e4c7;
+    background:#f3fbf6;
 }
 
 .task-completed .contract-task-text{
-    color:#198754;
-    text-decoration:line-through;
+    color:#146c43;
 }
 
 .task-empty-state{
-    background:#fff;
-    border:1px dashed #cbd5e1;
-    border-radius:14px;
-    padding:18px;
+    margin:0 17px 17px;
+    border:1px dashed #b9c5d5;
+    border-radius:12px;
+    padding:24px;
     text-align:center;
     color:#6c757d;
 }
@@ -1075,6 +1275,36 @@ body{
     border:1px solid #ffe69c;
     border-radius:10px;
     padding:10px;
+}
+
+.contract-tools-modal .modal-body{
+    padding:20px;
+    background:#f7f9fc;
+}
+
+.contract-tools-section{
+    padding:16px;
+    border:1px solid #dbe3ee;
+    border-radius:13px;
+    background:#fff;
+}
+
+.contract-upload-feedback{
+    display:none;
+    margin-top:10px;
+}
+
+#contractModal,
+#contractAttachmentsModal,
+#contractImportModal,
+#addTaskModal,
+#editTaskModal,
+#taskDocumentModal{
+    z-index:1200;
+}
+
+.modal-backdrop.show{
+    z-index:1190;
 }
 
 .task-document-row{
@@ -1367,6 +1597,9 @@ body{
     }
 
     #contractModal .modal-dialog,
+    #contractAttachmentsModal .modal-dialog,
+    #addTaskModal .modal-dialog,
+    #editTaskModal .modal-dialog,
     #taskDocumentModal .modal-dialog{
         width:calc(100% - 20px);
         max-width:calc(100% - 20px);
@@ -1374,12 +1607,18 @@ body{
     }
 
     #contractModal .modal-content,
+    #contractAttachmentsModal .modal-content,
+    #addTaskModal .modal-content,
+    #editTaskModal .modal-content,
     #taskDocumentModal .modal-content{
         max-height:calc(100dvh - 20px);
         overflow:hidden;
     }
 
     #contractModal .modal-header,
+    #contractAttachmentsModal .modal-header,
+    #addTaskModal .modal-header,
+    #editTaskModal .modal-header,
     #taskDocumentModal .modal-header{
         position:sticky;
         top:0;
@@ -1387,6 +1626,9 @@ body{
     }
 
     #contractModal .modal-body,
+    #contractAttachmentsModal .modal-body,
+    #addTaskModal .modal-body,
+    #editTaskModal .modal-body,
     #taskDocumentModal .modal-body{
         overflow-x:hidden !important;
         overflow-y:auto;
@@ -1421,6 +1663,29 @@ body{
         bottom:0;
         z-index:3;
         background:#fff;
+    }
+
+    .contract-overview-grid{
+        grid-template-columns:1fr;
+    }
+
+    .contract-detail-toolbar{
+        align-items:stretch;
+    }
+
+    .contract-detail-actions,
+    .contract-detail-action{
+        width:100%;
+    }
+
+    .contract-checklist-table{
+        min-width:820px;
+    }
+
+    .contract-checklist-table .contract-task-actions{
+        justify-content:flex-start;
+        flex-wrap:nowrap;
+        padding-left:0;
     }
 }
 
@@ -1484,11 +1749,23 @@ body{
 
 <div id="activeFilterBox" class="active-filter-box"></div>
 
+<?php if(is_array($contractImportResult)): ?>
+<div class="alert alert-<?= contractEscape($contractImportResult['status'] ?? 'info') ?> alert-dismissible fade show" role="alert">
+    <?= contractEscape($contractImportResult['message'] ?? '') ?>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+<?php endif; ?>
+
 <?php if($canAddContract): ?>
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-    <a href="contract_add.php" class="btn btn-warning">
-        <i class="fa fa-plus"></i> Add Contract
-    </a>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="contract_add.php" class="btn btn-warning">
+            <i class="fa fa-plus"></i> Add Contract
+        </a>
+        <button type="button" class="btn btn-dark" data-bs-toggle="modal" data-bs-target="#contractImportModal">
+            <i class="fa fa-file-import"></i> Import
+        </button>
+    </div>
     <label class="d-flex align-items-center gap-2 mb-0">
         <span>Show</span>
         <select id="contractPageLength" class="form-select form-select-sm" style="width:82px">
@@ -1535,10 +1812,6 @@ body{
     <th>Amount</th>
     <th>Payment Term</th>
     <th>No. of PM</th>
-    <th>Preventive Maintenance Year 1</th>
-    <th>Preventive Maintenance Year 2</th>
-    <th>Preventive Maintenance Year 3</th>
-    <th>Preventive Maintenance Year 4</th>
     <th>Actions</th>
 </tr>
 </thead>
@@ -1562,59 +1835,96 @@ body{
     <button type="button" data-status="Drop">Drop</button>
 </div>
 
+<?php if($canAddContract): ?>
+<div class="modal fade" id="contractImportModal" tabindex="-1" aria-labelledby="contractImportModalTitle" aria-hidden="true">
+<div class="modal-dialog modal-dialog-centered">
+<form id="contractImportForm" action="../backend/import_contracts.php" method="POST" enctype="multipart/form-data" class="modal-content">
+    <div class="modal-header bg-dark text-white">
+        <h5 class="modal-title" id="contractImportModalTitle"><i class="fa fa-file-excel"></i> Import Contracts</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+    </div>
+    <div class="modal-body">
+        <input type="hidden" name="csrf_token" value="<?= contractEscape($csrfToken) ?>">
+        <label class="form-label" for="projectImportFile">Crossroad Project Excel File</label>
+        <input type="file" id="projectImportFile" name="project_file" class="form-control" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+        <div class="alert alert-info small mt-3 mb-0">
+            Only the <strong>Project List</strong> sheet will be read. Payment Milestone and all other sheets are ignored. Existing contracts remain unchanged; only new contracts are added.
+        </div>
+    </div>
+    <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" id="contractImportSubmit" class="btn btn-warning"><i class="fa fa-upload"></i> Import Contracts</button>
+    </div>
+</form>
+</div>
+</div>
+<?php endif; ?>
+
 <!-- CONTRACT MODAL -->
-<div class="modal fade" id="contractModal">
-<div class="modal-dialog modal-lg">
+<div class="modal fade contract-detail-modal" id="contractModal" tabindex="-1" aria-labelledby="contractModalTitle" aria-hidden="true">
+<div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
 <div class="modal-content border-0 shadow-lg rounded-4">
 
-<div class="modal-header bg-primary text-white">
-    <h5 class="modal-title">
-        <i class="fa fa-file-contract"></i> Contract Details
+<div class="modal-header">
+    <h5 class="modal-title" id="contractModalTitle">
+        <i class="fa fa-file-contract"></i> <span id="contractModalTitleText">Contract Details</span>
     </h5>
-    <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
 </div>
 
-<div class="modal-body p-4">
-<div class="row g-3">
-<div class="col-md-6">
-    <b>Contract Amount</b>
-    <div id="m_amount"></div>
+<div class="modal-body">
+<input type="hidden" name="contract_id" id="m_id">
+
+<div class="contract-overview-grid">
+<div class="contract-overview-card">
+    <span class="contract-overview-label">Project</span>
+    <div id="m_project" class="contract-overview-value"></div>
+</div>
+<div class="contract-overview-card">
+    <span class="contract-overview-label">Contract Number</span>
+    <div id="m_contractno" class="contract-overview-value"></div>
+</div>
+<div class="contract-overview-card">
+    <span class="contract-overview-label">Contract Amount</span>
+    <div id="m_amount" class="contract-overview-value text-success"></div>
     <?php if($canViewClaim): ?>
     <div id="m_claimSummary" class="mt-2 small d-none">
-        <div>Claim Amount: <span id="m_claimAmount" class="fw-bold text-warning"></span></div>
-        <div>Amount: <span id="m_originalAmount" class="fw-bold text-danger"></span></div>
+        <div>Amount: <span id="m_originalAmount" class="fw-bold text-success"></span></div>
+        <div>Claim Amount: <span id="m_claimAmount" class="fw-bold text-danger"></span></div>
         <div>Leftover: <span id="m_leftoverAmount" class="fw-bold text-success"></span></div>
     </div>
     <?php endif; ?>
 </div>
-<div class="col-md-6"><b>Created By</b><div id="m_createdby"></div></div>
-
+<div class="contract-overview-card">
+    <span class="contract-overview-label">Created By</span>
+    <div id="m_createdby" class="contract-overview-value"></div>
+</div>
 </div>
 
-<hr>
-
-<h6><i class="fa fa-paperclip"></i> Attachments</h6>
-<div id="filesContainer">Loading...</div>
-
-<div id="uploadSection" class="mt-3">
-<form action="../backend/upload_contract.php" method="POST" enctype="multipart/form-data">
-    <input type="hidden" name="contract_id" id="m_id">
-    <div class="input-group">
-        <input type="file" name="file" class="form-control" required>
-        <button class="btn btn-warning">Upload</button>
+<div class="contract-detail-toolbar">
+    <div class="contract-detail-toolbar-copy">
+        <strong>Contract workspace</strong>
+        <span>Documents and new checklist items open in a focused window.</span>
     </div>
-</form>
+    <div class="contract-detail-actions">
+        <button type="button" class="btn btn-outline-primary contract-detail-action" id="openContractAttachmentsBtn" onclick="openContractAttachmentsModal()">
+            <i class="fa fa-paperclip"></i> Attachments
+            <span class="attachment-count-badge" id="contractAttachmentCount">...</span>
+        </button>
+        <button type="button" class="btn btn-warning contract-detail-action d-none" id="openAddTaskBtn" onclick="openAddTaskModal()">
+            <i class="fa fa-plus"></i> Add Checklist Item
+        </button>
+    </div>
 </div>
 
-<hr>
-
-<h6><i class="fa fa-list-check"></i> Contract Checklist</h6>
-<div id="tasksContainer" class="task-card">
+<div class="contract-checklist-panel">
+<div id="tasksContainer" class="task-card" aria-live="polite">
     <div class="task-loading">
         <i class="fa fa-spinner fa-spin"></i> Loading tasks...
     </div>
 </div>
 
+</div>
 </div>
 <div class="modal-footer contract-mobile-modal-footer">
     <button type="button" class="btn btn-secondary w-100" data-bs-dismiss="modal">
@@ -1625,12 +1935,125 @@ body{
 </div>
 </div>
 
+<!-- CONTRACT ATTACHMENTS MODAL -->
+<div class="modal fade contract-tools-modal" id="contractAttachmentsModal" tabindex="-1" aria-labelledby="contractAttachmentsModalTitle" aria-hidden="true">
+<div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+<div class="modal-content">
+<div class="modal-header">
+    <div>
+        <h5 class="modal-title" id="contractAttachmentsModalTitle"><i class="fa fa-paperclip"></i> Contract Attachments</h5>
+        <div class="small opacity-75">View, download or upload contract documents.</div>
+    </div>
+    <button class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+</div>
+<div class="modal-body">
+    <div class="contract-tools-section">
+        <div id="filesContainer" aria-live="polite">Loading...</div>
+    </div>
+    <div id="uploadSection" class="contract-tools-section mt-3">
+        <form id="contractUploadForm" action="../backend/upload_contract.php" method="POST" enctype="multipart/form-data">
+            <input type="hidden" name="contract_id" id="attachmentContractId">
+            <label class="form-label fw-semibold" for="contractAttachmentFile">Upload a document</label>
+            <div class="input-group">
+                <input type="file" name="file" id="contractAttachmentFile" class="form-control" required>
+                <button class="btn btn-warning" id="contractUploadBtn" type="submit"><i class="fa fa-upload"></i> Upload</button>
+            </div>
+            <div class="contract-upload-feedback alert mb-0" id="contractUploadFeedback" role="status"></div>
+        </form>
+    </div>
+</div>
+</div>
+</div>
+</div>
+
+<!-- ADD CHECKLIST MODAL -->
+<div class="modal fade contract-tools-modal" id="addTaskModal" tabindex="-1" aria-labelledby="addTaskModalTitle" aria-hidden="true">
+<div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+<div class="modal-content">
+<div class="modal-header">
+    <div>
+        <h5 class="modal-title" id="addTaskModalTitle"><i class="fa fa-list-check"></i> Add Checklist Item</h5>
+        <div class="small opacity-75">Create one clear checklist entry at a time.</div>
+    </div>
+    <button class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+</div>
+<div class="modal-body">
+    <div class="contract-tools-section">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label">Checklist Type <span class="text-danger">*</span></label>
+                <select id="newTaskType" class="form-select">
+                    <option value="">Select type</option>
+                    <option value="preventive">Preventive Maintenance</option>
+                    <option value="kickoff">Kickoff</option>
+                    <option value="training">Training</option>
+                    <option value="meeting">Meeting</option>
+                    <option value="corrective">Corrective Maintenance</option>
+                    <option value="claim">Claim</option>
+                    <option value="other">Other</option>
+                </select>
+            </div>
+            <div class="col-md-8 task-entry-field task-common-field d-none">
+                <label class="form-label">Remark</label>
+                <input type="text" id="newTaskRemark" class="form-control" placeholder="Add a note for this checklist item" autocomplete="off">
+            </div>
+            <div class="col-md-4 task-entry-field task-maintenance-field d-none">
+                <label class="form-label" id="newTaskMaintenanceLabel">Preventive Maintenance Number</label>
+                <select id="newTaskMaintenanceNumber" class="form-select">
+                    <option value="">Select number</option>
+                    <?php for($number = 1; $number <= 20; $number++): ?>
+                        <option value="<?= $number ?>"><?= $number ?></option>
+                    <?php endfor; ?>
+                </select>
+            </div>
+            <div class="col-md-8 task-entry-field task-claim-field d-none">
+                <label class="form-label">Claim Remark</label>
+                <input type="text" id="newTaskClaimRemark" class="form-control" placeholder="Claim for..." autocomplete="off">
+            </div>
+            <div class="col-md-8 task-entry-field task-other-field d-none">
+                <label class="form-label">Checklist Item</label>
+                <input type="text" id="newContractTaskText" class="form-control" placeholder="Example: Purchase Order (PO)" autocomplete="off">
+            </div>
+            <div class="col-md-3 task-entry-field task-common-field d-none">
+                <label class="form-label">Start Date</label>
+                <input type="date" id="newTaskStartDate" class="form-control">
+            </div>
+            <div class="col-md-3 task-entry-field task-common-field d-none">
+                <label class="form-label">End Date</label>
+                <input type="date" id="newTaskEndDate" class="form-control">
+            </div>
+            <?php if($canViewClaim): ?>
+            <div class="col-md-3 task-entry-field task-claim-field d-none">
+                <label class="form-label">Claim Amount</label>
+                <input type="number" id="newTaskClaimAmount" class="form-control" min="0.01" step="0.01" placeholder="0.00">
+            </div>
+            <?php endif; ?>
+            <div class="col-md-3 task-entry-field task-claim-field d-none">
+                <label class="form-label">Invoice</label>
+                <input type="text" id="newTaskInvoice" class="form-control" placeholder="Invoice no." autocomplete="off">
+            </div>
+            <div class="col-12 task-entry-field task-common-field d-none" id="newTaskDocumentWrapper">
+                <label class="form-label">Checklist Document <span class="text-muted fw-normal">(optional)</span></label>
+                <input type="file" id="newTaskDocument" class="form-control">
+                <small class="text-muted">Maximum file size 100MB. ZIP files are allowed.</small>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal-footer">
+    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+    <button type="button" class="btn btn-warning" id="addTaskBtn" onclick="addContractTask()"><i class="fa fa-plus"></i> Add Item</button>
+</div>
+</div>
+</div>
+</div>
+
 <!-- EDIT TASK MODAL -->
-<div class="modal fade" id="editTaskModal">
+<div class="modal fade contract-tools-modal" id="editTaskModal">
 <div class="modal-dialog modal-dialog-centered">
 <div class="modal-content">
 
-<div class="modal-header bg-primary text-white">
+<div class="modal-header">
     <h5 class="modal-title">
         <i class="fa fa-pen"></i> Edit Task
     </h5>
@@ -1639,9 +2062,13 @@ body{
 
 <div class="modal-body">
     <input type="hidden" id="editTaskId">
+    <input type="hidden" id="editTaskType">
 
     <label class="form-label">Task</label>
     <textarea id="editTaskText" class="form-control mb-3" rows="4"></textarea>
+
+    <label class="form-label">Remark</label>
+    <textarea id="editTaskRemark" class="form-control mb-3" rows="2" placeholder="Add a note for this checklist item"></textarea>
 
     <div class="row g-2">
         <div class="col-md-6">
@@ -1654,8 +2081,10 @@ body{
         </div>
     </div>
     <?php if($canViewClaim): ?>
+    <div id="editTaskClaimAmountWrapper" class="d-none">
         <label class="form-label mt-3">Claim Amount</label>
         <input type="number" id="editTaskClaimAmount" class="form-control" min="0" step="0.01" placeholder="0.00">
+    </div>
     <?php endif; ?>
     <div id="editTaskInvoiceWrapper" class="d-none">
         <label class="form-label mt-3">Invoice</label>
@@ -1678,11 +2107,11 @@ body{
 </div>
 
 <!-- TASK DOCUMENT MODAL -->
-<div class="modal fade" id="taskDocumentModal">
+<div class="modal fade contract-tools-modal" id="taskDocumentModal">
 <div class="modal-dialog modal-lg modal-dialog-centered">
 <div class="modal-content">
 
-<div class="modal-header bg-dark text-white">
+<div class="modal-header">
     <h5 class="modal-title">
         <i class="fa fa-paperclip"></i> Checklist Documents
     </h5>
@@ -1721,6 +2150,17 @@ const focusContractId = <?= json_encode($focusContractId) ?>;
 const focusTaskId = <?= json_encode($focusTaskId) ?>;
 const canViewClaim = <?= json_encode($canViewClaim) ?>;
 const contractTaskDocumentMaxBytes = 100 * 1024 * 1024;
+let currentCanUploadTaskDocument = false;
+let pendingChecklistNotificationAction = "";
+let currentTaskNotificationEmail = "";
+
+document.getElementById("contractImportForm")?.addEventListener("submit", function(){
+    let submitButton = document.getElementById("contractImportSubmit");
+    if(submitButton){
+        submitButton.disabled = true;
+        submitButton.innerHTML = "<i class='fa fa-spinner fa-spin'></i> Reading Project List...";
+    }
+});
 
 function withContractCsrf(data){
     data = data || {};
@@ -1787,6 +2227,78 @@ function loadContractTasks(taskToFocus){
     }).fail(function(){
         $("#tasksContainer").html("<div class='alert alert-danger mb-0'>Failed to load checklist.</div>");
     });
+}
+
+function updateContractAttachmentCount(){
+    let result = $("#filesContainer .contract-files-result");
+    let count = result.length ? parseInt(result.data("file-count"), 10) : 0;
+
+    if(isNaN(count)){
+        count = 0;
+    }
+
+    $("#contractAttachmentCount").text(count);
+}
+
+function loadContractFiles(){
+    let contractId = $("#m_id").val();
+
+    if(!contractId){
+        $("#filesContainer").html("<div class='alert alert-warning mb-0'>No contract selected.</div>");
+        $("#contractAttachmentCount").text("0");
+        return;
+    }
+
+    $("#filesContainer").html("<div class='text-primary small'><i class='fa fa-spinner fa-spin'></i> Loading attachments...</div>");
+
+    $.post("../backend/get_contract_files.php", {id: contractId}, function(fileData){
+        $("#filesContainer").html(fileData);
+        updateContractAttachmentCount();
+    }).fail(function(){
+        $("#filesContainer").html("<div class='alert alert-danger mb-0'>Failed to load attachments.</div>");
+        $("#contractAttachmentCount").text("!");
+    });
+}
+
+function showContractToolModal(modalId){
+    let contractModalElement = document.getElementById("contractModal");
+    let toolModalElement = document.getElementById(modalId);
+
+    if(!toolModalElement){
+        return;
+    }
+
+    let showToolModal = function(){
+        toolModalElement.dataset.restoreContractModal = "1";
+        bootstrap.Modal.getOrCreateInstance(toolModalElement).show();
+    };
+
+    if(contractModalElement && contractModalElement.classList.contains("show")){
+        contractModalElement.addEventListener("hidden.bs.modal", showToolModal, {once:true});
+        bootstrap.Modal.getOrCreateInstance(contractModalElement).hide();
+        return;
+    }
+
+    showToolModal();
+}
+
+function openContractAttachmentsModal(){
+    if(!$("#m_id").val()){
+        return;
+    }
+
+    showContractToolModal("contractAttachmentsModal");
+}
+
+function openAddTaskModal(){
+    if($("#openAddTaskBtn").hasClass("d-none")){
+        return;
+    }
+
+    $("#newTaskType").val("");
+    resetNewTaskEntryDetails();
+    syncNewTaskEntryFields();
+    showContractToolModal("addTaskModal");
 }
 
 function reloadContractTableProgress(){
@@ -1887,22 +2399,27 @@ function syncNewTaskEntryFields(){
     if(type === "preventive"){
         $(".task-maintenance-field").removeClass("d-none");
         $("#newTaskMaintenanceLabel").text("Preventive Maintenance Number");
+        if(!currentCanUploadTaskDocument) $("#newTaskDocumentWrapper").addClass("d-none");
         return;
     }
 
     if(type === "corrective"){
         $(".task-other-field").removeClass("d-none");
+        if(!currentCanUploadTaskDocument) $("#newTaskDocumentWrapper").addClass("d-none");
         return;
     }
 
     if(type === "claim"){
         $(".task-claim-field").removeClass("d-none");
+        if(!currentCanUploadTaskDocument) $("#newTaskDocumentWrapper").addClass("d-none");
         return;
     }
 
     if(type === "other"){
         $(".task-other-field").removeClass("d-none");
     }
+
+    if(!currentCanUploadTaskDocument) $("#newTaskDocumentWrapper").addClass("d-none");
 }
 
 function resetNewTaskEntryDetails(){
@@ -1913,6 +2430,7 @@ function resetNewTaskEntryDetails(){
     $("#newTaskStartDate").val("");
     $("#newTaskEndDate").val("");
     $("#newTaskClaimAmount").val("");
+    $("#newTaskRemark").val("");
 
     let taskDocumentInput = document.getElementById("newTaskDocument");
 
@@ -1938,6 +2456,18 @@ function buildNewContractTaskText(){
         }
 
         return "Preventive Maintenance " + number;
+    }
+
+    if(type === "kickoff"){
+        return "Kickoff";
+    }
+
+    if(type === "training"){
+        return "Training";
+    }
+
+    if(type === "meeting"){
+        return "Meeting";
     }
 
     if(type === "corrective"){
@@ -1972,6 +2502,117 @@ function buildNewContractTaskText(){
     return taskText;
 }
 
+function validateChecklistBeforeNotification(action){
+    if(action === "edit"){
+        let taskText = $("#editTaskText").val().trim();
+        let taskStartDate = $("#editTaskStartDate").val();
+        let taskEndDate = $("#editTaskEndDate").val();
+        let taskType = $("#editTaskType").val() || "other";
+
+        if(taskText === ""){ alert("Task cannot be empty."); return false; }
+        if(taskStartDate === "" && taskEndDate !== ""){ alert("Please select a task start date first."); return false; }
+        if(taskStartDate !== "" && taskEndDate !== "" && taskEndDate < taskStartDate){ alert("Task end date cannot be before the start date."); return false; }
+        if(taskType === "claim" && ($("#editTaskInvoice").val() || "").trim() === ""){ alert("Please enter the invoice."); return false; }
+        return true;
+    }
+
+    let taskType = $("#newTaskType").val() || "";
+    let taskText = buildNewContractTaskText();
+    let taskStartDate = $("#newTaskStartDate").val();
+    let taskEndDate = $("#newTaskEndDate").val();
+    let taskDocumentInput = document.getElementById("newTaskDocument");
+
+    if(taskType === "" || taskText === ""){ return false; }
+    if(taskStartDate === "" && taskEndDate !== ""){ alert("Please select a task start date first."); return false; }
+    if(taskStartDate !== "" && taskEndDate !== "" && taskEndDate < taskStartDate){ alert("Task end date cannot be before the start date."); return false; }
+    if(taskType === "claim" && canViewClaim && ($("#newTaskClaimAmount").val() || "").trim() === ""){ alert("Please enter the claim amount."); return false; }
+    if(taskType === "claim" && ($("#newTaskInvoice").val() || "").trim() === ""){ alert("Please enter the invoice."); return false; }
+    if(taskDocumentInput && taskDocumentInput.files.length > 0 && !validateContractTaskDocumentFile(taskDocumentInput.files[0])){ return false; }
+    return true;
+}
+
+function requestChecklistNotification(action){
+    pendingChecklistNotificationAction = action === "edit" ? "edit" : "add";
+
+    if(!validateChecklistBeforeNotification(pendingChecklistNotificationAction)){
+        return;
+    }
+
+    let sourceModalId = pendingChecklistNotificationAction === "edit" ? "editTaskModal" : "addTaskModal";
+    let sourceModalElement = document.getElementById(sourceModalId);
+    let notificationModalElement = document.getElementById("checklistNotificationModal");
+    let notificationEmailInput = document.getElementById("checklistNotificationEmail");
+
+    notificationEmailInput.value = pendingChecklistNotificationAction === "edit" ? currentTaskNotificationEmail : "";
+
+    let showNotificationModal = function(){
+        bootstrap.Modal.getOrCreateInstance(notificationModalElement).show();
+        notificationModalElement.addEventListener("shown.bs.modal", function(){
+            notificationEmailInput.focus();
+        }, {once:true});
+    };
+
+    if(sourceModalElement && sourceModalElement.classList.contains("show")){
+        sourceModalElement.dataset.emailNotificationTransition = "1";
+        sourceModalElement.addEventListener("hidden.bs.modal", showNotificationModal, {once:true});
+        bootstrap.Modal.getOrCreateInstance(sourceModalElement).hide();
+    }else{
+        showNotificationModal();
+    }
+}
+
+function backFromChecklistNotification(){
+    let notificationModalElement = document.getElementById("checklistNotificationModal");
+    let sourceModalId = pendingChecklistNotificationAction === "edit" ? "editTaskModal" : "addTaskModal";
+
+    notificationModalElement.addEventListener("hidden.bs.modal", function(){
+        bootstrap.Modal.getOrCreateInstance(document.getElementById(sourceModalId)).show();
+    }, {once:true});
+
+    bootstrap.Modal.getOrCreateInstance(notificationModalElement).hide();
+}
+
+function confirmChecklistNotification(){
+    let emailInput = document.getElementById("checklistNotificationEmail");
+
+    if(emailInput.value.trim() !== "" && !emailInput.checkValidity()){
+        emailInput.reportValidity();
+        return;
+    }
+
+    let action = pendingChecklistNotificationAction;
+    let notificationModalElement = document.getElementById("checklistNotificationModal");
+
+    if(action === "edit"){
+        currentTaskNotificationEmail = emailInput.value.trim();
+    }
+
+    notificationModalElement.addEventListener("hidden.bs.modal", function(){
+        if(action === "edit"){
+            updateContractTask();
+        }else{
+            addContractTask();
+        }
+    }, {once:true});
+
+    bootstrap.Modal.getOrCreateInstance(notificationModalElement).hide();
+}
+
+function restoreContractAfterChecklistSave(sourceModalId){
+    let sourceModalElement = document.getElementById(sourceModalId);
+
+    if(sourceModalElement){
+        delete sourceModalElement.dataset.restoreContractModal;
+        delete sourceModalElement.dataset.emailNotificationTransition;
+    }
+
+    bootstrap.Modal.getOrCreateInstance(document.getElementById("contractModal")).show();
+}
+
+function reopenChecklistAfterSaveError(sourceModalId){
+    bootstrap.Modal.getOrCreateInstance(document.getElementById(sourceModalId)).show();
+}
+
 function addContractTask(){
     let contractId = $("#m_id").val();
     let taskType = $("#newTaskType").val() || "";
@@ -1980,6 +2621,8 @@ function addContractTask(){
     let taskEndDate = $("#newTaskEndDate").val();
     let claimAmount = taskType === "claim" && canViewClaim ? (($("#newTaskClaimAmount").val() || "").trim()) : "";
     let invoice = taskType === "claim" ? (($("#newTaskInvoice").val() || "").trim()) : "";
+    let remark = ($("#newTaskRemark").val() || "").trim();
+    let notificationEmail = ($("#checklistNotificationEmail").val() || "").trim();
     let taskDocumentInput = document.getElementById("newTaskDocument");
 
     if(!contractId){
@@ -2036,6 +2679,8 @@ function addContractTask(){
     formData.append("task_end_date", taskEndDate);
     formData.append("claim_amount", claimAmount);
     formData.append("invoice", invoice);
+    formData.append("remark", remark);
+    formData.append("notification_email", notificationEmail);
 
     if(taskDocumentInput && taskDocumentInput.files.length > 0){
         formData.append("task_document", taskDocumentInput.files[0]);
@@ -2052,6 +2697,9 @@ function addContractTask(){
             $("#newTaskType").val("");
             resetNewTaskEntryDetails();
             syncNewTaskEntryFields();
+
+            let addModal = bootstrap.Modal.getInstance(document.getElementById("addTaskModal"));
+            if(addModal) addModal.hide();
 
             loadContractTasks();
             reloadContractTableProgress();
@@ -2093,39 +2741,54 @@ function toggleContractTask(id, isCompleted, checkboxEl){
     });
 }
 
-function openEditTaskModal(id, taskText, taskStartDate, taskEndDate, claimAmount, invoice){
+function handleTaskStatusCellClick(event, cellEl){
+    event.stopPropagation();
+
+    if($(event.target).is("input")){
+        return;
+    }
+
+    let checkbox = $(cellEl).find(".contract-task-checkbox").first();
+
+    if(checkbox.length && !checkbox.prop("disabled")){
+        checkbox[0].click();
+    }
+}
+
+function openEditTaskModal(id, taskText, taskStartDate, taskEndDate, claimAmount, invoice, taskType, remark, notificationEmail){
     $("#editTaskId").val(id);
+    $("#editTaskType").val(taskType || "other");
     $("#editTaskText").val(taskText);
+    $("#editTaskRemark").val(remark || "");
+    currentTaskNotificationEmail = notificationEmail || "";
     $("#editTaskStartDate").val(taskStartDate || "");
     $("#editTaskEndDate").val(taskEndDate || "");
     $("#editTaskClaimAmount").val(claimAmount || "");
     $("#editTaskInvoice").val(invoice || "");
 
-    if(String(taskText || "").toLowerCase().indexOf("claim -") === 0){
+    if(taskType === "claim"){
+        $("#editTaskClaimAmountWrapper").removeClass("d-none");
         $("#editTaskInvoiceWrapper").removeClass("d-none");
     } else {
+        $("#editTaskClaimAmountWrapper").addClass("d-none");
         $("#editTaskInvoiceWrapper").addClass("d-none");
-    }
-
-    new bootstrap.Modal(document.getElementById("editTaskModal")).show();
-}
-
-$(document).on("input", "#editTaskText", function(){
-    if(String($(this).val() || "").toLowerCase().indexOf("claim -") === 0){
-        $("#editTaskInvoiceWrapper").removeClass("d-none");
-    } else {
-        $("#editTaskInvoiceWrapper").addClass("d-none");
+        $("#editTaskClaimAmount").val("");
         $("#editTaskInvoice").val("");
     }
-});
+
+    showContractToolModal("editTaskModal");
+}
 
 function updateContractTask(){
     let id = $("#editTaskId").val();
+    let taskType = $("#editTaskType").val() || "other";
     let taskText = $("#editTaskText").val().trim();
+    let remark = $("#editTaskRemark").val().trim();
+    let notificationEmail = ($("#checklistNotificationEmail").val() || "").trim();
     let taskStartDate = $("#editTaskStartDate").val();
     let taskEndDate = $("#editTaskEndDate").val();
-    let claimAmount = canViewClaim ? (($("#editTaskClaimAmount").val() || "").trim()) : "";
-    let invoice = $("#editTaskInvoiceWrapper").hasClass("d-none") ? "" : (($("#editTaskInvoice").val() || "").trim());
+    let claimAmount = taskType === "claim" && canViewClaim ? (($("#editTaskClaimAmount").val() || "").trim()) : "";
+    let invoice = taskType === "claim" ? (($("#editTaskInvoice").val() || "").trim()) : "";
 
     if(taskText === ""){
         alert("Task cannot be empty.");
@@ -2147,14 +2810,17 @@ function updateContractTask(){
         return;
     }
 
-    if(String(taskText || "").toLowerCase().indexOf("claim -") === 0 && invoice === ""){
+    if(taskType === "claim" && invoice === ""){
         alert("Please enter the invoice.");
         return;
     }
 
     let postData = {
         id: id,
+        task_type: taskType,
         task_text: taskText,
+        remark: remark,
+        notification_email: notificationEmail,
         task_start_date: taskStartDate,
         task_end_date: taskEndDate,
         invoice: invoice
@@ -2166,7 +2832,8 @@ function updateContractTask(){
 
     $.post("../backend/update_contract_task.php", withContractCsrf(postData), function(data){
         if(data.trim() === "success"){
-            bootstrap.Modal.getInstance(document.getElementById("editTaskModal")).hide();
+            let editModal = bootstrap.Modal.getInstance(document.getElementById("editTaskModal"));
+            if(editModal) editModal.hide();
             loadContractTasks();
             reloadContractTableProgress();
         }else{
@@ -2199,7 +2866,7 @@ function deleteContractTask(id){
 function openContractTaskDocuments(taskId){
     $("#taskDocumentTaskId").val(taskId);
     $("#taskDocumentContainer").html("<div class='task-loading'><i class='fa fa-spinner fa-spin'></i> Loading documents...</div>");
-    bootstrap.Modal.getOrCreateInstance(document.getElementById("taskDocumentModal")).show();
+    showContractToolModal("taskDocumentModal");
     loadContractTaskDocuments();
 }
 
@@ -2289,20 +2956,7 @@ function deleteContractFile(fileId, contractId){
     }, function(data){
 
         if(data.trim() === "success"){
-
-            $("#filesContainer").html(
-                "<div class='text-primary small'><i class='fa fa-spinner fa-spin'></i> Reloading documents...</div>"
-            );
-
-            $.post("../backend/get_contract_files.php", {
-                id: contractId
-            }, function(fileData){
-                $("#filesContainer").html(fileData);
-            }).fail(function(){
-                $("#filesContainer").html(
-                    "<div class='alert alert-danger mb-0'>Failed to reload documents.</div>"
-                );
-            });
+            loadContractFiles();
 
         }else{
             alert(data);
@@ -2321,6 +2975,18 @@ $(document).ready(function(){
     let focusSearchRetried = false;
     let activeTableRequest = null;
     let lastSubmittedSearch = initialSearch;
+
+    $("#contractAttachmentsModal, #addTaskModal, #editTaskModal, #taskDocumentModal").on("hidden.bs.modal", function(){
+        if(this.dataset.emailNotificationTransition === "1"){
+            delete this.dataset.emailNotificationTransition;
+            return;
+        }
+
+        if(this.dataset.restoreContractModal === "1"){
+            delete this.dataset.restoreContractModal;
+            bootstrap.Modal.getOrCreateInstance(document.getElementById("contractModal")).show();
+        }
+    });
 
     contractsTable = $('#contractsTable').DataTable({
         processing: true,
@@ -2365,7 +3031,7 @@ $(document).ready(function(){
             { targets: 1, width: "110px" },
             { targets: 2, width: "120px" },
             { targets: 3, width: "360px" },
-            { targets: [17, 18, 19, 20], width: "210px" }
+            { targets: 17, width: "210px" }
         ],
         columns: [
             { data: "project_code", className: "contract-col-project-code" },
@@ -2385,10 +3051,6 @@ $(document).ready(function(){
             { data: "amount", className: "contract-col-amount" },
             { data: "payment_term" },
             { data: "no_of_pm" },
-            { data: "pm_year_1", orderable: false },
-            { data: "pm_year_2", orderable: false },
-            { data: "pm_year_3", orderable: false },
-            { data: "pm_year_4", orderable: false },
             {
                 data: "actions",
                 orderable: false,
@@ -2425,7 +3087,7 @@ $(document).ready(function(){
             $("td:eq(8)", row).attr("data-label", "Status");
             $("td:eq(9)", row).attr("data-label", "Progress");
             $("td:eq(10)", row).attr("data-label", "Amount");
-            $("td:eq(11)", row).attr("data-label", "Actions");
+            $("td:eq(17)", row).attr("data-label", "Actions");
         }
     });
 
@@ -2584,19 +3246,63 @@ $(document).ready(function(){
         syncNewTaskEntryFields();
     });
 
-    $(document).on("keypress", "#newContractTaskText, #newTaskClaimRemark, #newTaskInvoice", function(e){
+    $("#contractUploadForm").on("submit", function(e){
+        e.preventDefault();
+
+        let form = this;
+        let fileInput = document.getElementById("contractAttachmentFile");
+
+        if(!fileInput || fileInput.files.length <= 0){
+            $("#contractUploadFeedback")
+                .removeClass("alert-success alert-danger")
+                .addClass("alert-warning")
+                .text("Please choose a document first.")
+                .show();
+            return;
+        }
+
+        let formData = new FormData(form);
+        $("#contractUploadBtn").prop("disabled", true).html("<i class='fa fa-spinner fa-spin'></i> Uploading...");
+        $("#contractUploadFeedback").hide();
+
+        $.ajax({
+            url: form.action,
+            type: "POST",
+            data: formData,
+            processData: false,
+            contentType: false
+        }).done(function(data){
+            if(String(data).trim() === "success"){
+                fileInput.value = "";
+                $("#contractUploadFeedback")
+                    .removeClass("alert-warning alert-danger")
+                    .addClass("alert-success")
+                    .text("Document uploaded successfully.")
+                    .show();
+                loadContractFiles();
+            } else {
+                $("#contractUploadFeedback")
+                    .removeClass("alert-warning alert-success")
+                    .addClass("alert-danger")
+                    .text(String(data).replace(/<[^>]*>/g, " ").trim() || "Upload failed.")
+                    .show();
+            }
+        }).fail(function(){
+            $("#contractUploadFeedback")
+                .removeClass("alert-warning alert-success")
+                .addClass("alert-danger")
+                .text("Failed to upload the document.")
+                .show();
+        }).always(function(){
+            $("#contractUploadBtn").prop("disabled", false).html("<i class='fa fa-upload'></i> Upload");
+        });
+    });
+
+    $(document).on("keypress", "#newContractTaskText, #newTaskClaimRemark, #newTaskInvoice, #newTaskRemark", function(e){
         if(e.which === 13){
             e.preventDefault();
             addContractTask();
         }
-    });
-
-    $(document).on("click", ".contract-task-item.contract-task-document-enabled", function(e){
-        if($(e.target).closest("input, button, a, textarea, label").length){
-            return;
-        }
-
-        openContractTaskDocuments($(this).data("task-id"));
     });
 
     function openContractModal(data, options){
@@ -2606,17 +3312,24 @@ $(document).ready(function(){
 
         $('#m_id').val(meta.id);
         $('#m_createdby').text(meta.createdby || '-');
+        $('#m_project').text(meta.project || '-');
+        $('#m_contractno').text(meta.contractno || '-');
+        $('#contractModalTitleText').text(meta.projectcode ? 'Contract ' + meta.projectcode : 'Contract Details');
 
         applyContractFinancialSummary(meta);
 
         let canUploadThisContract = meta.canupload == 1;
         $('#uploadSection').toggle(canUploadThisContract);
+        $('#attachmentContractId').val(meta.id);
 
-        $('#filesContainer').html("Loading...");
+        let canAddTaskThisContract = meta.canaddtask == 1;
+        currentCanUploadTaskDocument = meta.canuploadtaskdocument == 1;
+        $('#openAddTaskBtn').toggleClass('d-none', !canAddTaskThisContract);
+        $('#newTaskDocumentWrapper').toggleClass('d-none', !currentCanUploadTaskDocument);
 
-        $.post("../backend/get_contract_files.php", {id: meta.id}, function(fileData){
-            $('#filesContainer').html(fileData);
-        });
+        $('#contractAttachmentCount').html("<i class='fa fa-spinner fa-spin'></i>");
+        $('#contractUploadFeedback').hide();
+        loadContractFiles();
 
         loadContractTasks(options.focusTaskId || 0);
 

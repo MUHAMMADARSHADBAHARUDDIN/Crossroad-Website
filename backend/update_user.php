@@ -103,6 +103,8 @@ function allowedPermissionsList()
         "receiving_full",
         "receiving_view",
         "receiving_add",
+        "receiving_edit",
+        "receiving_delete",
         "part_request_full",
         "part_request_view",
         "part_request_add",

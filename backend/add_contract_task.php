@@ -6,6 +6,7 @@ require_once "../includes/db_connect.php";
 require_once "../includes/permissions.php";
 require_once "../includes/activity_log.php";
 require_once "../includes/contract_task_documents.php";
+require_once "../includes/contract_notifications.php";
 
 header("Content-Type: text/plain; charset=UTF-8");
 
@@ -39,6 +40,8 @@ function validTaskDate($value){
 $contractId = isset($_POST['contract_id']) ? (int)$_POST['contract_id'] : 0;
 $taskText = trim($_POST['task_text'] ?? "");
 $taskType = trim($_POST['task_type'] ?? "");
+$remark = trim((string)($_POST['remark'] ?? ""));
+$notificationEmail = trim((string)($_POST['notification_email'] ?? ""));
 $taskStartDate = trim($_POST['task_start_date'] ?? "");
 $taskEndDate = trim($_POST['task_end_date'] ?? "");
 $claimAmountRaw = trim((string)($_POST['claim_amount'] ?? ""));
@@ -51,6 +54,16 @@ if($contractId <= 0){
 
 if($taskText === ""){
     exit("Task cannot be empty.");
+}
+
+$allowedTaskTypes = ["preventive", "kickoff", "training", "meeting", "corrective", "claim", "other"];
+if(!in_array($taskType, $allowedTaskTypes, true)){
+    exit("Invalid checklist type.");
+}
+
+if($taskType !== "claim"){
+    $claimAmountRaw = "";
+    $invoice = "";
 }
 
 if($taskType === "claim" && $invoice === ""){
@@ -92,7 +105,7 @@ if(!addTaskColumnExists($mysqli, "contract_tasks", "contract_id")){
 }
 
 $contractStmt = $mysqli->prepare("
-    SELECT created_by, project_name, contract_no
+    SELECT created_by, project_name, project_code, contract_no, contract_start, contract_end
     FROM project_inventory
     WHERE no = ?
     LIMIT 1
@@ -194,6 +207,27 @@ if(addTaskColumnExists($mysqli, "contract_tasks", "created_by")){
     $params[] = $_SESSION['username'];
 }
 
+if(addTaskColumnExists($mysqli, "contract_tasks", "task_type")){
+    $columns[] = "task_type";
+    $placeholders[] = "?";
+    $types .= "s";
+    $params[] = $taskType;
+}
+
+if(addTaskColumnExists($mysqli, "contract_tasks", "remark")){
+    $columns[] = "remark";
+    $placeholders[] = "?";
+    $types .= "s";
+    $params[] = $remark !== "" ? $remark : null;
+}
+
+if(addTaskColumnExists($mysqli, "contract_tasks", "notification_email")){
+    $columns[] = "notification_email";
+    $placeholders[] = "?";
+    $types .= "s";
+    $params[] = $notificationEmail !== "" ? $notificationEmail : null;
+}
+
 if(addTaskColumnExists($mysqli, "contract_tasks", "claim_amount") && $canViewClaim){
     $columns[] = "claim_amount";
     $placeholders[] = "?";
@@ -278,7 +312,9 @@ $description = "User [$username] added a contract task.\n"
     . "Contract No: " . ($contract['contract_no'] ?? "") . "\n"
     . "Project Name: " . ($contract['project_name'] ?? "") . "\n"
     . "Task ID: $newTaskId\n"
+    . "Checklist Type: $taskType\n"
     . "Task: $taskText\n"
+    . "Remark: " . ($remark === "" ? "Not Assigned" : $remark) . "\n"
     . "Task Date: $dateText\n"
     . "Claim Amount: " . ($claimAmount === null ? "Not Assigned" : number_format($claimAmount, 2)) . "\n"
     . "Invoice: " . ($invoice === "" ? "Not Assigned" : $invoice) . "\n"
@@ -288,5 +324,11 @@ $description = "User [$username] added a contract task.\n"
     . "Time: $time";
 
 logActivity($mysqli, $username, $role, "ADD CONTRACT TASK", $description);
+crossroadSendContractNotification($notificationEmail, "A project task was added", $contract, [
+    "task_text" => $taskText,
+    "task_start_date" => $taskStartDate,
+    "task_end_date" => $taskEndDate,
+    "remark" => $remark
+]);
 exit("success");
 ?>

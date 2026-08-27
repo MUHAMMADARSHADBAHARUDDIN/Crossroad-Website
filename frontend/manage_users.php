@@ -97,7 +97,9 @@ $permissionGroups = [
         "full" => "receiving_full",
         "items" => [
             "receiving_view" => "View Receiving Records",
-            "receiving_add" => "Receive Items"
+            "receiving_add" => "Receive Items",
+            "receiving_edit" => "Edit Received Items",
+            "receiving_delete" => "Delete Received Items"
         ]
     ],
     "part_request" => [
